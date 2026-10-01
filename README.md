@@ -5,7 +5,25 @@
 # 📂 프로젝트 구조
 
 ```text
-확정 후 수정
+com.mongle.backend
+├── domain
+│   ├── user
+│   │   ├── entity           
+│   │   └── repository       
+│   ├── dream
+│   │   ├── entity           
+│   │   └── repository       
+│   ├── ai
+│   │   ├── entity           
+│   │   ├── repository
+│   │   ├── gateway          
+│   │   └── liner            
+│   └── world               
+└── global
+    ├── common              # BaseCreatedEntity, BaseEntity, GenerationStatus
+    ├── config              # JpaConfig, SwaggerConfig
+    ├── error               # 기존 공통 예외 처리
+    └── response            # 기존 ApiResponse
 ```
 
 | Package     | Description   |
@@ -14,6 +32,42 @@
 | `global`    | 공통 설정 및 예외 처리 |
 | `resources` | 설정 파일         |
 | `test`      | 테스트 코드        |
+
+기능 개발 시 각 도메인에 `controller/api`, `service`, `dto/request`,
+`dto/response`를 추가한다. 구현체가 하나인 Service는 class로 시작한다.
+
+## 실행과 DB 설정
+
+Java 21을 사용한다. 프로필 미지정 시 `local`이 적용된다.
+
+```sh
+./gradlew bootRun
+./gradlew test
+```
+
+- `local`: H2 메모리 DB(MySQL 모드), `ddl-auto=create-drop`. 재시작하면 데이터가 사라진다.
+- `test`: 별도 H2 메모리 DB. 테스트 클래스에서 명시적으로 활성화한다.
+- `mysql`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` 환경변수로 외부 MySQL에 연결한다.
+  공통 설정의 `ddl-auto=validate`를 사용하며 테이블을 자동 변경하지 않는다.
+
+외부 DB를 새로 준비할 때는 `src/main/resources/db/schema-initial.sql`을 먼저 적용한다.
+이 SQL은 앱에서 자동 실행되지 않으며, 기존 테이블이 있는 DB에 재적용하지 않는다.
+셸에 다음 환경변수를 설정한 뒤 실행한다(`.env` 파일은 자동으로 로드되지 않는다).
+
+```sh
+export DB_URL='jdbc:mysql://localhost:3306/mongle'
+export DB_USERNAME='mongle'
+export DB_PASSWORD='your-local-password'
+./gradlew bootRun --args='--spring.profiles.active=mysql'
+```
+
+Swagger UI는 `local`에서 [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html),
+OpenAPI JSON은 [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)로 확인한다.
+외부 DB 프로필에서는 문서 엔드포인트가 기본 비활성화되어 있다.
+필요한 개발 환경에서 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 활성화한다.
+JWT Scheme은 문서화 설정이며 실제 인증 구현은 S0 기능 개발에서 추가한다.
+
+초기 모델의 기준, 연관관계와 Swagger 작성 예시는 [도메인 초기 세팅 문서](docs/domain-setup.md)를 참고한다.
 
 ---
 
