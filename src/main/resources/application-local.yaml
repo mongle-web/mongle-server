@@ -20,3 +20,9 @@ springdoc:
     path: /swagger-ui.html
     operations-sorter: method
     tags-sorter: alpha
+
+
+mongle:
+  auth:
+    cookie-secure: false
+    allowed-origins: ${MONGLE_AUTH_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
