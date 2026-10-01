@@ -2,6 +2,9 @@ package com.mongle.backend.domain.auth.oauth;
 
 import com.mongle.backend.domain.auth.exception.AuthErrorCode;
 import com.mongle.backend.global.response.ApiResponse;
+import com.mongle.backend.domain.auth.service.TokenService;
+import com.mongle.backend.global.security.AuthCookies;
+import com.mongle.backend.global.error.BusinessException;
 import com.mongle.backend.global.security.SecurityResponseWriter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -18,6 +21,8 @@ import java.util.Arrays;
 @RequiredArgsConstructor
 public class OAuthLoginHandlers {
     private final SecurityResponseWriter responses;
+    private final TokenService tokens;
+    private final AuthCookies cookies;
 
     public AuthenticationSuccessHandler success() {
         return (request, response, authentication) -> {
@@ -26,9 +31,15 @@ public class OAuthLoginHandlers {
                     responses.failure(response, AuthErrorCode.LOGIN_FAILED);
                     return;
                 }
-                // 현재는 소셜 로그인과 계정 저장 결과를 반환한다.
-                // JWT·리프레시 토큰 발급과 로그인 완료 화면 이동은 다음 단계에서 연결한다.
-                responses.write(response, 200, ApiResponse.success(user.getUserResponse()));
+                var issued = tokens.login(user.getUserResponse().userId());
+                cookies.set(response, issued);
+                responses.write(response, 200, ApiResponse.success(issued.response()));
+            } catch (BusinessException exception) {
+                cookies.clear(response);
+                responses.failure(response, exception.getErrorCode());
+            } catch (RuntimeException exception) {
+                cookies.clear(response);
+                responses.failure(response, AuthErrorCode.LOGIN_UNAVAILABLE);
             } finally {
                 clear(request);
             }
