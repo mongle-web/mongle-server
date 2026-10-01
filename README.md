@@ -67,6 +67,11 @@ OpenAPI JSON은 [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api
 필요한 개발 환경에서 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 활성화한다.
 JWT Scheme은 문서화 설정이며 실제 인증 구현은 S0 기능 개발에서 추가한다.
 
+H2 콘솔은 `local`에서 [http://localhost:8080/h2-console](http://localhost:8080/h2-console)로 접속한다.
+Driver Class는 `org.h2.Driver`, JDBC URL은
+`jdbc:h2:mem:mongle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE`,
+사용자는 `sa`, 비밀번호는 비워둔다. Gradle 의존성을 새로고침하고 서버를 재시작해야 콘솔 모듈이 적용된다.
+
 초기 모델의 기준, 연관관계와 Swagger 작성 예시는 [도메인 초기 세팅 문서](docs/domain-setup.md)를 참고한다.
 
 ---

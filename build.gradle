@@ -25,6 +25,7 @@ dependencies {
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	runtimeOnly 'com.h2database:h2'
+	runtimeOnly 'org.springframework.boot:spring-boot-h2console'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
