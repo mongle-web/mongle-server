@@ -74,7 +74,7 @@ public class AiGenerationLog extends BaseCreatedEntity {
     @Column(nullable = false)
     private boolean success;
 
-    @Builder
+    @Builder(access = AccessLevel.PRIVATE)
     private AiGenerationLog(User user, AiTaskType taskType, String modelName, String promptVersion,
                             int inputTokens, int outputTokens, int cachedInputTokens, BigDecimal actualCost,
                             String baselineModel, BigDecimal baselineCost, Long latencyMs, boolean success) {
@@ -90,5 +90,24 @@ public class AiGenerationLog extends BaseCreatedEntity {
         this.baselineCost = Objects.requireNonNull(baselineCost, "baselineCost must not be null");
         this.latencyMs = latencyMs;
         this.success = success;
+    }
+
+    public static AiGenerationLog create(User user, AiTaskType taskType, String modelName, String promptVersion,
+                                         int inputTokens, int outputTokens, int cachedInputTokens, BigDecimal actualCost,
+                                         String baselineModel, BigDecimal baselineCost, Long latencyMs, boolean success) {
+        return builder()
+                .user(user)
+                .taskType(taskType)
+                .modelName(modelName)
+                .promptVersion(promptVersion)
+                .inputTokens(inputTokens)
+                .outputTokens(outputTokens)
+                .cachedInputTokens(cachedInputTokens)
+                .actualCost(actualCost)
+                .baselineModel(baselineModel)
+                .baselineCost(baselineCost)
+                .latencyMs(latencyMs)
+                .success(success)
+                .build();
     }
 }

@@ -46,11 +46,20 @@ public class DreamEntity extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Builder
+    @Builder(access = AccessLevel.PRIVATE)
     private DreamEntity(Dream dream, DreamEntityType entityType, String name, String description) {
         this.dream = Objects.requireNonNull(dream, "dream must not be null");
         this.entityType = Objects.requireNonNull(entityType, "entityType must not be null");
         this.name = Objects.requireNonNull(name, "name must not be null");
         this.description = description;
+    }
+
+    public static DreamEntity create(Dream dream, DreamEntityType entityType, String name, String description) {
+        return builder()
+                .dream(dream)
+                .entityType(entityType)
+                .name(name)
+                .description(description)
+                .build();
     }
 }

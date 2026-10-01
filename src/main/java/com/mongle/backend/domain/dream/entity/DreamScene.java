@@ -42,11 +42,20 @@ public class DreamScene extends BaseEntity {
     @ColumnDefault("false")
     private boolean disconnectedFromPrevious;
 
-    @Builder
+    @Builder(access = AccessLevel.PRIVATE)
     private DreamScene(Dream dream, int sequenceNo, String content, boolean disconnectedFromPrevious) {
         this.dream = Objects.requireNonNull(dream, "dream must not be null");
         this.sequenceNo = sequenceNo;
         this.content = Objects.requireNonNull(content, "content must not be null");
         this.disconnectedFromPrevious = disconnectedFromPrevious;
+    }
+
+    public static DreamScene create(Dream dream, int sequenceNo, String content, boolean disconnectedFromPrevious) {
+        return builder()
+                .dream(dream)
+                .sequenceNo(sequenceNo)
+                .content(content)
+                .disconnectedFromPrevious(disconnectedFromPrevious)
+                .build();
     }
 }

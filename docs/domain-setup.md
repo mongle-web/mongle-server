@@ -32,6 +32,26 @@ ERD의 BIGINT PK에 ID 생성 방식은 없으므로 단일 PK에는 `IDENTITY`/
 `ai_generation_logs.user_id`에는 ERD SQL에서 FK가 빠져 있지만 사용자 참조이므로 FK를 추가했다.
 이 두 가지는 초기 세팅에서 명시한 구현 선택이다. 이메일 UNIQUE 등 추가 제약은 인증 설계를 확정할 때 정한다.
 
+## 엔티티 생성 규칙
+
+엔티티는 외부에서 공개 정적 팩터리 메서드로만 생성한다.
+`User`, `Dream`, `DreamScene`, `DreamEntity`, `AiGenerationLog`는 `create(...)`,
+장면과 요소의 연결인 `DreamSceneEntity`는 `link(scene, entity)`를 사용한다.
+각 팩터리는 엔티티 내부의 `@Builder(access = AccessLevel.PRIVATE)`를 호출한다.
+필수값 검증은 private 생성자에 두며, JPA용 기본 생성자는 protected로 유지한다.
+ID·Auditing 시각·꿈의 초기 분석 상태는 팩터리 입력으로 받지 않는다.
+
+서비스에서 요청 DTO의 값과 조회한 연관 엔티티를 팩터리에 전달한 뒤 Repository로 저장한다.
+엔티티에는 요청 DTO 의존성을 두지 않는다. 아래는 서비스에서 사용할 생성 예시다.
+
+```java
+User user = User.create("test@example.com", "몽글");
+Dream dream = Dream.create(user, "도서관에서 고양이를 만났다.", LocalDate.of(2026, 10, 1), "호기심");
+DreamScene scene = DreamScene.create(dream, 1, "도서관에 들어갔다.", false);
+```
+
+선택 필드는 없으면 null을 전달한다. 연결 생성 시에는 아래 저장 순서를 따른다.
+
 ## 연관관계와 Repository
 
 모든 `ManyToOne`은 단방향 `LAZY`다. 초기 단계에서 양방향 컬렉션, cascade, orphanRemoval을 설정하지 않는다.
@@ -95,7 +115,7 @@ JSON 응답 API는 매핑에 `produces = MediaType.APPLICATION_JSON_VALUE`를 �
 ## 검증 범위
 
 - 꿈·장면·꿈 요소·연결을 실제 저장 후 조회하며 LAZY, 상태 문자열, 복합키와 Auditing을 확인한다.
-- AI 비용 DECIMAL의 저장·조회와 기본 캐시 토큰 수를 확인한다.
+- AI 비용 DECIMAL의 저장·조회와 캐시 토큰 수를 확인한다.
 - 다른 꿈의 요소 연결과 복합키 중복을 차단하는지 확인한다.
 - 별도 H2 MySQL 모드 DB에 ERD 기반 초기 SQL을 적용하고 `ddl-auto=validate`로 매핑을 확인한다.
 - 실제 HTTP로 Swagger UI와 `/v3/api-docs`를 읽고, 테스트 전용 Controller가 Api 인터페이스의 문서화를 상속하는지 확인한다.

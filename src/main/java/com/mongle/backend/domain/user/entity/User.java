@@ -30,9 +30,16 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 100)
     private String nickname;
 
-    @Builder
+    @Builder(access = AccessLevel.PRIVATE)
     private User(String email, String nickname) {
         this.email = Objects.requireNonNull(email, "email must not be null");
         this.nickname = Objects.requireNonNull(nickname, "nickname must not be null");
+    }
+
+    public static User create(String email, String nickname) {
+        return builder()
+                .email(email)
+                .nickname(nickname)
+                .build();
     }
 }

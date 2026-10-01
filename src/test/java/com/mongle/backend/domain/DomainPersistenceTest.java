@@ -40,17 +40,10 @@ class DomainPersistenceTest {
     @Test
     void persistsAndReloadsDreamGraphWithCompositeKeyAndStringEnums() {
         User user = createUser();
-        Dream dream = dreamRepository.save(Dream.builder()
-                .user(user)
-                .originalText("낯선 도서관에서 고양이를 만났다.")
-                .dreamedAt(LocalDate.of(2026, 10, 1))
-                .representativeEmotion("호기심")
-                .build());
-        DreamScene scene = DreamScene.builder()
-                .dream(dream).sequenceNo(1).content("도서관에 들어갔다.").build();
-        DreamEntity character = DreamEntity.builder()
-                .dream(dream).entityType(DreamEntityType.CHARACTER).name("고양이")
-                .description("말하는 고양이").build();
+        Dream dream = dreamRepository.save(Dream.create(
+                user, "낯선 도서관에서 고양이를 만났다.", LocalDate.of(2026, 10, 1), "호기심"));
+        DreamScene scene = DreamScene.create(dream, 1, "도서관에 들어갔다.", false);
+        DreamEntity character = DreamEntity.create(dream, DreamEntityType.CHARACTER, "고양이", "말하는 고양이");
         entityManager.persist(scene);
         entityManager.persist(character);
         DreamSceneEntity link = DreamSceneEntity.link(scene, character);
@@ -64,6 +57,7 @@ class DomainPersistenceTest {
                 .isLoaded(reloaded, "user")).isFalse();
         assertThat(reloaded.getOriginalText()).isEqualTo("낯선 도서관에서 고양이를 만났다.");
         assertThat(reloaded.getDreamedAt()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(reloaded.getRepresentativeEmotion()).isEqualTo("호기심");
         assertThat(reloaded.getAnalysisStatus()).isEqualTo(GenerationStatus.PENDING);
         assertThat(reloaded.getCreatedAt()).isNotNull();
         assertThat(reloaded.getUpdatedAt()).isNotNull();
@@ -71,8 +65,11 @@ class DomainPersistenceTest {
         DreamSceneEntity reloadedLink = entityManager.find(DreamSceneEntity.class,
                 new DreamSceneEntityId(scene.getId(), character.getId()));
         assertThat(reloadedLink.getDreamScene().getContent()).isEqualTo("도서관에 들어갔다.");
+        assertThat(reloadedLink.getDreamScene().getSequenceNo()).isEqualTo(1);
         assertThat(reloadedLink.getDreamScene().isDisconnectedFromPrevious()).isFalse();
         assertThat(reloadedLink.getDreamEntity().getEntityType()).isEqualTo(DreamEntityType.CHARACTER);
+        assertThat(reloadedLink.getDreamEntity().getName()).isEqualTo("고양이");
+        assertThat(reloadedLink.getDreamEntity().getDescription()).isEqualTo("말하는 고양이");
         assertThat(entityManager.createNativeQuery("select analysis_status from dreams where id = :id")
                 .setParameter("id", dream.getId()).getSingleResult()).isEqualTo("PENDING");
         assertThat(entityManager.createNativeQuery("select entity_type from dream_entities where id = :id")
@@ -82,8 +79,7 @@ class DomainPersistenceTest {
     @Test
     void auditsUpdatesWithoutChangingCreationTime() {
         User user = createUser();
-        Dream dream = dreamRepository.saveAndFlush(Dream.builder()
-                .user(user).originalText("첫 기록").build());
+        Dream dream = dreamRepository.saveAndFlush(Dream.create(user, "첫 기록", null, null));
         LocalDateTime createdAt = dream.getCreatedAt();
         LocalDateTime updatedAt = dream.getUpdatedAt();
         // 기능별 수정 메서드는 다음 PR에서 추가하므로 dirty checking을 직접 일으킨다.
@@ -101,19 +97,22 @@ class DomainPersistenceTest {
 
     @Test
     void persistsAiUsageCostsWithoutFloatingPointLoss() {
-        AiGenerationLog log = logRepository.saveAndFlush(AiGenerationLog.builder()
-                .user(createUser()).taskType(AiTaskType.DREAM_STRUCTURE)
-                .modelName("test-model").promptVersion("v1")
-                .inputTokens(100).outputTokens(50)
-                .actualCost(new BigDecimal("0.00012345"))
-                .baselineModel("test-baseline").baselineCost(new BigDecimal("0.00054321"))
-                .latencyMs(200L).success(true).build());
+        AiGenerationLog log = logRepository.saveAndFlush(AiGenerationLog.create(
+                createUser(), AiTaskType.DREAM_STRUCTURE, "test-model", "v1",
+                100, 50, 25, new BigDecimal("0.00012345"),
+                "test-baseline", new BigDecimal("0.00054321"), 200L, true));
         entityManager.clear();
 
         AiGenerationLog reloaded = logRepository.findById(log.getId()).orElseThrow();
         assertThat(reloaded.getActualCost()).isEqualByComparingTo("0.00012345");
         assertThat(reloaded.getBaselineCost()).isEqualByComparingTo("0.00054321");
-        assertThat(reloaded.getCachedInputTokens()).isZero();
+        assertThat(reloaded.getModelName()).isEqualTo("test-model");
+        assertThat(reloaded.getPromptVersion()).isEqualTo("v1");
+        assertThat(reloaded.getInputTokens()).isEqualTo(100);
+        assertThat(reloaded.getOutputTokens()).isEqualTo(50);
+        assertThat(reloaded.getCachedInputTokens()).isEqualTo(25);
+        assertThat(reloaded.getBaselineModel()).isEqualTo("test-baseline");
+        assertThat(reloaded.getLatencyMs()).isEqualTo(200L);
         assertThat(reloaded.getTaskType()).isEqualTo(AiTaskType.DREAM_STRUCTURE);
         assertThat(reloaded.getCreatedAt()).isNotNull();
         assertThat(reloaded.isSuccess()).isTrue();
@@ -122,11 +121,10 @@ class DomainPersistenceTest {
     @Test
     void rejectsLinkingScenesToEntitiesFromAnotherDream() {
         User user = createUser();
-        Dream first = Dream.builder().user(user).originalText("첫 꿈").build();
-        Dream second = Dream.builder().user(user).originalText("다른 꿈").build();
-        DreamScene scene = DreamScene.builder().dream(first).sequenceNo(1).content("장면").build();
-        DreamEntity entity = DreamEntity.builder()
-                .dream(second).entityType(DreamEntityType.PLACE).name("도서관").build();
+        Dream first = Dream.create(user, "첫 꿈", null, null);
+        Dream second = Dream.create(user, "다른 꿈", null, null);
+        DreamScene scene = DreamScene.create(first, 1, "장면", false);
+        DreamEntity entity = DreamEntity.create(second, DreamEntityType.PLACE, "도서관", null);
 
         assertThatThrownBy(() -> DreamSceneEntity.link(scene, entity))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -135,11 +133,9 @@ class DomainPersistenceTest {
 
     @Test
     void databaseRejectsDuplicateSceneEntityLinks() {
-        Dream dream = dreamRepository.save(Dream.builder()
-                .user(createUser()).originalText("꿈").build());
-        DreamScene scene = DreamScene.builder().dream(dream).sequenceNo(1).content("장면").build();
-        DreamEntity entity = DreamEntity.builder()
-                .dream(dream).entityType(DreamEntityType.SYMBOL).name("열쇠").build();
+        Dream dream = dreamRepository.save(Dream.create(createUser(), "꿈", null, null));
+        DreamScene scene = DreamScene.create(dream, 1, "장면", false);
+        DreamEntity entity = DreamEntity.create(dream, DreamEntityType.SYMBOL, "열쇠", null);
         entityManager.persist(scene);
         entityManager.persist(entity);
         entityManager.persist(DreamSceneEntity.link(scene, entity));
@@ -152,7 +148,6 @@ class DomainPersistenceTest {
     }
 
     private User createUser() {
-        return userRepository.saveAndFlush(User.builder()
-                .email("test@example.com").nickname("몽글").build());
+        return userRepository.saveAndFlush(User.create("test@example.com", "몽글"));
     }
 }

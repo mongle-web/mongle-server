@@ -54,11 +54,20 @@ public class Dream extends BaseEntity {
     @Column(name = "analysis_status", nullable = false, length = 30)
     private GenerationStatus analysisStatus = GenerationStatus.PENDING;
 
-    @Builder
+    @Builder(access = AccessLevel.PRIVATE)
     private Dream(User user, String originalText, LocalDate dreamedAt, String representativeEmotion) {
         this.user = Objects.requireNonNull(user, "user must not be null");
         this.originalText = Objects.requireNonNull(originalText, "originalText must not be null");
         this.dreamedAt = dreamedAt;
         this.representativeEmotion = representativeEmotion;
+    }
+
+    public static Dream create(User user, String originalText, LocalDate dreamedAt, String representativeEmotion) {
+        return builder()
+                .user(user)
+                .originalText(originalText)
+                .dreamedAt(dreamedAt)
+                .representativeEmotion(representativeEmotion)
+                .build();
     }
 }

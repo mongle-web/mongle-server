@@ -8,6 +8,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -32,20 +33,24 @@ public class DreamSceneEntity {
     @JoinColumn(name = "dream_entity_id", nullable = false)
     private DreamEntity dreamEntity;
 
-    public static DreamSceneEntity link(DreamScene scene, DreamEntity entity) {
-        Objects.requireNonNull(scene, "scene must not be null");
-        Objects.requireNonNull(entity, "entity must not be null");
-        Dream sceneDream = scene.getDream();
-        Dream entityDream = entity.getDream();
+    @Builder(access = AccessLevel.PRIVATE)
+    private DreamSceneEntity(DreamScene dreamScene, DreamEntity dreamEntity) {
+        this.dreamScene = Objects.requireNonNull(dreamScene, "scene must not be null");
+        this.dreamEntity = Objects.requireNonNull(dreamEntity, "entity must not be null");
+        Dream sceneDream = dreamScene.getDream();
+        Dream entityDream = dreamEntity.getDream();
         if (sceneDream != entityDream && (sceneDream.getId() == null
                 || !sceneDream.getId().equals(entityDream.getId()))) {
             throw new IllegalArgumentException("장면과 꿈 요소는 같은 꿈에 속해야 합니다.");
         }
 
-        DreamSceneEntity link = new DreamSceneEntity();
-        link.id = new DreamSceneEntityId(scene.getId(), entity.getId());
-        link.dreamScene = scene;
-        link.dreamEntity = entity;
-        return link;
+        this.id = new DreamSceneEntityId(dreamScene.getId(), dreamEntity.getId());
+    }
+
+    public static DreamSceneEntity link(DreamScene scene, DreamEntity entity) {
+        return builder()
+                .dreamScene(scene)
+                .dreamEntity(entity)
+                .build();
     }
 }
