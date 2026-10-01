@@ -35,12 +35,12 @@ public class DreamSceneEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private DreamSceneEntity(DreamScene dreamScene, DreamEntity dreamEntity) {
-        this.dreamScene = Objects.requireNonNull(dreamScene, "scene must not be null");
-        this.dreamEntity = Objects.requireNonNull(dreamEntity, "entity must not be null");
+        this.dreamScene = Objects.requireNonNull(dreamScene, "장면이 필요합니다.");
+        this.dreamEntity = Objects.requireNonNull(dreamEntity, "꿈 요소가 필요합니다.");
         Dream sceneDream = dreamScene.getDream();
         Dream entityDream = dreamEntity.getDream();
-        if (sceneDream != entityDream && (sceneDream.getId() == null
-                || !sceneDream.getId().equals(entityDream.getId()))) {
+        if (sceneDream == null || entityDream == null || (sceneDream != entityDream && (sceneDream.getId() == null
+                || !sceneDream.getId().equals(entityDream.getId())))) {
             throw new IllegalArgumentException("장면과 꿈 요소는 같은 꿈에 속해야 합니다.");
         }
 

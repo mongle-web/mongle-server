@@ -41,7 +41,7 @@ class DomainPersistenceTest {
     void persistsAndReloadsDreamGraphWithCompositeKeyAndStringEnums() {
         User user = createUser();
         Dream dream = dreamRepository.save(Dream.create(
-                user, "낯선 도서관에서 고양이를 만났다.", LocalDate.of(2026, 10, 1), "호기심"));
+                user, "낯선 도서관에서 고양이를 만났다.", LocalDate.of(2026, 10, 1)));
         DreamScene scene = DreamScene.create(dream, 1, "도서관에 들어갔다.", false);
         DreamEntity character = DreamEntity.create(dream, DreamEntityType.CHARACTER, "고양이", "말하는 고양이");
         entityManager.persist(scene);
@@ -57,7 +57,7 @@ class DomainPersistenceTest {
                 .isLoaded(reloaded, "user")).isFalse();
         assertThat(reloaded.getOriginalText()).isEqualTo("낯선 도서관에서 고양이를 만났다.");
         assertThat(reloaded.getDreamedAt()).isEqualTo(LocalDate.of(2026, 10, 1));
-        assertThat(reloaded.getRepresentativeEmotion()).isEqualTo("호기심");
+        assertThat(reloaded.getEmotions()).isEmpty();
         assertThat(reloaded.getAnalysisStatus()).isEqualTo(GenerationStatus.PENDING);
         assertThat(reloaded.getCreatedAt()).isNotNull();
         assertThat(reloaded.getUpdatedAt()).isNotNull();
@@ -79,7 +79,7 @@ class DomainPersistenceTest {
     @Test
     void auditsUpdatesWithoutChangingCreationTime() {
         User user = createUser();
-        Dream dream = dreamRepository.saveAndFlush(Dream.create(user, "첫 기록", null, null));
+        Dream dream = dreamRepository.saveAndFlush(Dream.create(user, "첫 기록", LocalDate.of(2026, 10, 1)));
         // DB가 저장한 시간 정밀도를 기준으로 생성·수정 시각을 비교한다.
         entityManager.refresh(dream);
         LocalDateTime createdAt = dream.getCreatedAt();
@@ -93,8 +93,8 @@ class DomainPersistenceTest {
         assertThat(reloaded.getOriginalText()).isEqualTo("수정한 기록");
         assertThat(reloaded.getCreatedAt()).isEqualTo(createdAt);
         assertThat(reloaded.getUpdatedAt()).isAfter(updatedAt);
-        assertThat(reloaded.getDreamedAt()).isNull();
-        assertThat(reloaded.getRepresentativeEmotion()).isNull();
+        assertThat(reloaded.getDreamedAt()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(reloaded.getEmotions()).isEmpty();
     }
 
     @Test
@@ -123,8 +123,8 @@ class DomainPersistenceTest {
     @Test
     void rejectsLinkingScenesToEntitiesFromAnotherDream() {
         User user = createUser();
-        Dream first = Dream.create(user, "첫 꿈", null, null);
-        Dream second = Dream.create(user, "다른 꿈", null, null);
+        Dream first = Dream.create(user, "첫 꿈", LocalDate.of(2026, 10, 1));
+        Dream second = Dream.create(user, "다른 꿈", LocalDate.of(2026, 10, 2));
         DreamScene scene = DreamScene.create(first, 1, "장면", false);
         DreamEntity entity = DreamEntity.create(second, DreamEntityType.PLACE, "도서관", null);
 
@@ -135,7 +135,7 @@ class DomainPersistenceTest {
 
     @Test
     void databaseRejectsDuplicateSceneEntityLinks() {
-        Dream dream = dreamRepository.save(Dream.create(createUser(), "꿈", null, null));
+        Dream dream = dreamRepository.save(Dream.create(createUser(), "꿈", LocalDate.of(2026, 10, 1)));
         DreamScene scene = DreamScene.create(dream, 1, "장면", false);
         DreamEntity entity = DreamEntity.create(dream, DreamEntityType.SYMBOL, "열쇠", null);
         entityManager.persist(scene);
