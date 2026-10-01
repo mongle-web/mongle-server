@@ -25,6 +25,18 @@ CREATE TABLE social_accounts (
 );
 CREATE INDEX idx_social_accounts_user_id ON social_accounts (user_id);
 
+CREATE TABLE refresh_sessions (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    token_hash VARCHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_refresh_sessions_token_hash UNIQUE (token_hash),
+    CONSTRAINT fk_refresh_sessions_user FOREIGN KEY (user_id) REFERENCES users (id)
+);
+CREATE INDEX idx_refresh_sessions_user_id ON refresh_sessions (user_id);
+
 CREATE TABLE dreams (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
