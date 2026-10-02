@@ -16,6 +16,18 @@ import static org.mockito.Mockito.*;
 
 class DreamPolicyTest {
     @Test
+    void rejectsUnicodeWhitespaceTitlesButAllowsClearingAndRealText() {
+        for (String title : List.of("", " \t\n", "\u00a0", "\u2007", "\u202f", " \u00a0\u2007\u202f\t")) {
+            assertThatThrownBy(() -> DreamPolicy.title(title)).isInstanceOfSatisfying(
+                    BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(DreamErrorCode.INVALID_TITLE));
+        }
+        assertThatCode(() -> DreamPolicy.title(null)).doesNotThrowAnyException();
+        assertThatCode(() -> DreamPolicy.title("\u00a0꿈 제목\u202f")).doesNotThrowAnyException();
+        assertThatCode(() -> DreamPolicy.title("🌙".repeat(100))).doesNotThrowAnyException();
+        assertThatThrownBy(() -> DreamPolicy.title("🌙".repeat(101))).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     void allowsBlankAutosaveButRequiresTextBeforeNext() {
         var draft = Dream.draft(User.create("test@example.com", "몽글"), "", LocalDate.of(2026, 10, 1));
         assertThatThrownBy(draft::submit).isInstanceOf(BusinessException.class);

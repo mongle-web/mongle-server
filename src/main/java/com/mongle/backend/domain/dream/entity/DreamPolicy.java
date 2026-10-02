@@ -24,7 +24,8 @@ public final class DreamPolicy {
     }
 
     public static void title(String value) {
-        if (value != null && (value.isBlank() || value.codePointCount(0, value.length()) > 100)) {
+        if (value != null && (value.codePoints().allMatch(c -> Character.isWhitespace(c) || Character.isSpaceChar(c))
+                || value.codePointCount(0, value.length()) > 100)) {
             throw new BusinessException(DreamErrorCode.INVALID_TITLE);
         }
     }

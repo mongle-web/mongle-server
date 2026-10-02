@@ -2,6 +2,8 @@
 -- DELIMITER를 지원하는 MySQL 클라이언트에서 파일 전체를 실행한다.
 -- 아래 사전 검증을 통과하지 못하면 기존 데이터의 날짜·중복·감정부터 정리한다.
 -- MySQL DDL은 자동 커밋되므로 운영 DB 적용 전 백업하고 부분 적용 여부를 확인한다.
+-- 사전 검증 실패로 남은 프로시저를 제거해 데이터 정리 후 다시 실행할 수 있게 한다.
+DROP PROCEDURE IF EXISTS migrate_dream_record;
 DELIMITER $$
 CREATE PROCEDURE migrate_dream_record()
 BEGIN
