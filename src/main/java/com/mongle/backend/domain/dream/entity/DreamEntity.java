@@ -62,7 +62,8 @@ public class DreamEntity extends BaseEntity {
         this.description = description;
     }
 
-    public static DreamEntity create(Dream dream, DreamEntityType entityType, String name, String description) {
+    public static DreamEntity create(
+            Dream dream, DreamEntityType entityType, String name, String description) {
         return builder()
                 .dream(dream)
                 .entityType(entityType)

@@ -17,10 +17,16 @@ import java.util.*;
 
 @Getter
 @Entity
-@Table(name = "dreams", uniqueConstraints = @UniqueConstraint(name = "uk_dreams_user_date", columnNames = {"user_id", "dreamed_at"}))
+@Table(
+        name = "dreams",
+        uniqueConstraints =
+                @UniqueConstraint(
+                        name = "uk_dreams_user_date",
+                        columnNames = {"user_id", "dreamed_at"}))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Dream extends BaseEntity {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -37,24 +43,35 @@ public class Dream extends BaseEntity {
     private String title;
 
     @ElementCollection
-    @CollectionTable(name = "dream_emotions", joinColumns = @JoinColumn(name = "dream_id"),
-            uniqueConstraints = @UniqueConstraint(name = "uk_dream_emotions", columnNames = {"dream_id", "emotion"}))
-    @Enumerated(EnumType.STRING) @JdbcTypeCode(SqlTypes.VARCHAR)
+    @CollectionTable(
+            name = "dream_emotions",
+            joinColumns = @JoinColumn(name = "dream_id"),
+            uniqueConstraints =
+                    @UniqueConstraint(
+                            name = "uk_dream_emotions",
+                            columnNames = {"dream_id", "emotion"}))
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "emotion", nullable = false, length = 20)
     private Set<DreamEmotion> emotions = new HashSet<>();
 
-    @Enumerated(EnumType.STRING) @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "record_status", nullable = false, length = 30)
     @ColumnDefault("'EMOTION_PENDING'")
     private DreamRecordStatus recordStatus;
 
-    @Column(name = "is_edited", nullable = false) @ColumnDefault("false")
+    @Column(name = "is_edited", nullable = false)
+    @ColumnDefault("false")
     private boolean edited;
 
-    @Version @Column(nullable = false) @ColumnDefault("0")
+    @Version
+    @Column(nullable = false)
+    @ColumnDefault("0")
     private long revision;
 
-    @Enumerated(EnumType.STRING) @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @ColumnDefault("'PENDING'")
     @Column(name = "analysis_status", nullable = false, length = 30)
     private GenerationStatus analysisStatus = GenerationStatus.PENDING;
@@ -76,11 +93,13 @@ public class Dream extends BaseEntity {
     }
 
     public void checkRevision(Long expected) {
-        if (expected == null || expected != revision) throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
+        if (expected == null || expected != revision)
+            throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
     }
 
     public void saveDraft(String text) {
-        if (recordStatus == DreamRecordStatus.COMPLETED) throw new BusinessException(DreamErrorCode.INVALID_STATE);
+        if (recordStatus == DreamRecordStatus.COMPLETED)
+            throw new BusinessException(DreamErrorCode.INVALID_STATE);
         DreamPolicy.text(text, recordStatus == DreamRecordStatus.DRAFT);
         originalText = text;
     }
@@ -101,17 +120,26 @@ public class Dream extends BaseEntity {
         recordStatus = DreamRecordStatus.COMPLETED;
     }
 
-    public void update(boolean textProvided, String text, boolean emotionsProvided, List<DreamEmotion> values,
-                       boolean titleProvided, String nextTitle) {
+    public void update(
+            boolean textProvided,
+            String text,
+            boolean emotionsProvided,
+            List<DreamEmotion> values,
+            boolean titleProvided,
+            String nextTitle) {
         requireState(DreamRecordStatus.COMPLETED);
         if (textProvided) DreamPolicy.text(text, false);
         if (emotionsProvided) DreamPolicy.emotions(values);
         if (titleProvided) DreamPolicy.title(nextTitle);
-        boolean changed = (textProvided && !Objects.equals(originalText, text))
-                || (emotionsProvided && !emotions.equals(new HashSet<>(values)))
-                || (titleProvided && !Objects.equals(title, nextTitle));
+        boolean changed =
+                (textProvided && !Objects.equals(originalText, text))
+                        || (emotionsProvided && !emotions.equals(new HashSet<>(values)))
+                        || (titleProvided && !Objects.equals(title, nextTitle));
         if (textProvided) originalText = text;
-        if (emotionsProvided) { emotions.clear(); emotions.addAll(values); }
+        if (emotionsProvided) {
+            emotions.clear();
+            emotions.addAll(values);
+        }
         if (titleProvided) title = nextTitle;
         // 분석 상태·분석 결과는 그대로 두고 실제로 바뀐 완성 기록만 수정 표시를 남긴다.
         if (changed) edited = true;

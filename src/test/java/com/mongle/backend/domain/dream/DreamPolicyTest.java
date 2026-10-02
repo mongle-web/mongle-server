@@ -16,20 +16,43 @@ import static org.mockito.Mockito.*;
 
 class DreamPolicyTest {
     @Test
+    void rejectsUnicodeWhitespaceTitlesButAllowsClearingAndRealText() {
+        for (String title :
+                List.of("", " \t\n", "\u00a0", "\u2007", "\u202f", " \u00a0\u2007\u202f\t")) {
+            assertThatThrownBy(() -> DreamPolicy.title(title))
+                    .isInstanceOfSatisfying(
+                            BusinessException.class,
+                            e ->
+                                    assertThat(e.getErrorCode())
+                                            .isEqualTo(DreamErrorCode.INVALID_TITLE));
+        }
+        assertThatCode(() -> DreamPolicy.title(null)).doesNotThrowAnyException();
+        assertThatCode(() -> DreamPolicy.title("\u00a0꿈 제목\u202f")).doesNotThrowAnyException();
+        assertThatCode(() -> DreamPolicy.title("🌙".repeat(100))).doesNotThrowAnyException();
+        assertThatThrownBy(() -> DreamPolicy.title("🌙".repeat(101)))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     void allowsBlankAutosaveButRequiresTextBeforeNext() {
-        var draft = Dream.draft(User.create("test@example.com", "몽글"), "", LocalDate.of(2026, 10, 1));
+        var draft =
+                Dream.draft(User.create("test@example.com", "몽글"), "", LocalDate.of(2026, 10, 1));
         assertThatThrownBy(draft::submit).isInstanceOf(BusinessException.class);
         draft.saveDraft("꿈 내용");
         draft.submit();
         assertThat(draft.getRecordStatus()).isEqualTo(DreamRecordStatus.EMOTION_PENDING);
-        assertThatThrownBy(() -> draft.complete(List.of(DreamEmotion.HAPPY, DreamEmotion.HAPPY))).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> draft.complete(List.of(DreamEmotion.HAPPY, DreamEmotion.HAPPY)))
+                .isInstanceOf(BusinessException.class);
         draft.complete(List.of(DreamEmotion.CALM, DreamEmotion.HAPPY));
-        assertThat(draft.getEmotions()).containsExactlyInAnyOrder(DreamEmotion.CALM, DreamEmotion.HAPPY);
+        assertThat(draft.getEmotions())
+                .containsExactlyInAnyOrder(DreamEmotion.CALM, DreamEmotion.HAPPY);
     }
 
     @Test
     void refusesLateGeneratedTitleAfterUserEdit() {
-        var dream = Dream.create(User.create("test@example.com", "몽글"), "원문", LocalDate.of(2026, 10, 1));
+        var dream =
+                Dream.create(
+                        User.create("test@example.com", "몽글"), "원문", LocalDate.of(2026, 10, 1));
         dream.complete(List.of(DreamEmotion.HAPPY));
         dream.update(false, null, false, null, true, "내 제목");
         dream.applyGeneratedTitle("늦게 도착한 AI 제목", 0);
@@ -42,7 +65,9 @@ class DreamPolicyTest {
 
     @Test
     void appliesGeneratedTitleOnlyToTheUnchangedSourceRevision() {
-        var dream = Dream.create(User.create("test@example.com", "몽글"), "원문", LocalDate.of(2026, 10, 1));
+        var dream =
+                Dream.create(
+                        User.create("test@example.com", "몽글"), "원문", LocalDate.of(2026, 10, 1));
         dream.applyGeneratedTitle("다른 버전의 제목", 1);
         assertThat(dream.getTitle()).isNull();
         dream.applyGeneratedTitle("AI 제목", 0);
@@ -57,18 +82,38 @@ class DreamPolicyTest {
         var user = User.create("test@example.com", "몽글");
         when(users.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
         when(dreams.save(any(Dream.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        var service = new DreamService(dreams, users, mock(DreamAnalysisRepository.class),
-                Clock.fixed(Instant.parse("2026-10-01T15:00:00Z"), ZoneOffset.UTC));
-        assertThat(service.create(1L, new DreamCreateRequest(LocalDate.of(2026, 10, 2), "자정의 꿈")).dreamedAt()).isEqualTo(LocalDate.of(2026, 10, 2));
+        var service =
+                new DreamService(
+                        dreams,
+                        users,
+                        mock(DreamAnalysisRepository.class),
+                        Clock.fixed(Instant.parse("2026-10-01T15:00:00Z"), ZoneOffset.UTC));
+        assertThat(
+                        service.create(
+                                        1L,
+                                        new DreamCreateRequest(LocalDate.of(2026, 10, 2), "자정의 꿈"))
+                                .dreamedAt())
+                .isEqualTo(LocalDate.of(2026, 10, 2));
     }
 
     @Test
     void 한국_자정_직전에는_다음_날짜를_거절한다() {
         var users = mock(UserRepository.class);
-        when(users.findByIdForUpdate(1L)).thenReturn(Optional.of(User.create("test@example.com", "몽글")));
-        var service = new DreamService(mock(DreamRepository.class), users, mock(DreamAnalysisRepository.class),
-                Clock.fixed(Instant.parse("2026-10-01T14:59:59Z"), ZoneOffset.UTC));
-        assertThatThrownBy(() -> service.create(1L, new DreamCreateRequest(LocalDate.of(2026, 10, 2), "내일 꿈")))
-                .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(DreamErrorCode.FUTURE_DATE));
+        when(users.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(User.create("test@example.com", "몽글")));
+        var service =
+                new DreamService(
+                        mock(DreamRepository.class),
+                        users,
+                        mock(DreamAnalysisRepository.class),
+                        Clock.fixed(Instant.parse("2026-10-01T14:59:59Z"), ZoneOffset.UTC));
+        assertThatThrownBy(
+                        () ->
+                                service.create(
+                                        1L,
+                                        new DreamCreateRequest(LocalDate.of(2026, 10, 2), "내일 꿈")))
+                .isInstanceOfSatisfying(
+                        BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(DreamErrorCode.FUTURE_DATE));
     }
 }

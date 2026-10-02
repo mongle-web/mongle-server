@@ -50,7 +50,8 @@ public class DreamScene extends BaseEntity {
     private boolean disconnectedFromPrevious;
 
     @Builder(access = AccessLevel.PRIVATE)
-    private DreamScene(Dream dream, int sequenceNo, String content, boolean disconnectedFromPrevious) {
+    private DreamScene(
+            Dream dream, int sequenceNo, String content, boolean disconnectedFromPrevious) {
         this.dream = Objects.requireNonNull(dream, "꿈 기록이 필요합니다.");
         this.user = dream.getUser();
         this.sequenceNo = sequenceNo;
@@ -58,7 +59,8 @@ public class DreamScene extends BaseEntity {
         this.disconnectedFromPrevious = disconnectedFromPrevious;
     }
 
-    public static DreamScene create(Dream dream, int sequenceNo, String content, boolean disconnectedFromPrevious) {
+    public static DreamScene create(
+            Dream dream, int sequenceNo, String content, boolean disconnectedFromPrevious) {
         return builder()
                 .dream(dream)
                 .sequenceNo(sequenceNo)

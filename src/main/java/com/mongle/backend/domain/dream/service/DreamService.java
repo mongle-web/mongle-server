@@ -35,7 +35,8 @@ public class DreamService {
         if (dreams.existsByUserIdAndDreamedAt(userId, request.dreamedAt())) {
             throw new BusinessException(DreamErrorCode.DATE_OCCUPIED);
         }
-        return response(dreams.save(Dream.create(user, request.originalText(), request.dreamedAt())));
+        return response(
+                dreams.save(Dream.create(user, request.originalText(), request.dreamedAt())));
     }
 
     @Transactional
@@ -46,11 +47,13 @@ public class DreamService {
         var existing = dreams.findByUserIdAndDreamedAt(userId, date);
         if (existing.isEmpty()) {
             // 삭제된 초안의 지연 저장 요청이 새 기록을 만드는 것을 막는다.
-            if (request.revision() != null || request.dreamId() != null) throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
+            if (request.revision() != null || request.dreamId() != null)
+                throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
             return response(dreams.save(Dream.draft(user, request.originalText(), date)));
         }
         var dream = existing.get();
-        if (!dream.getId().equals(request.dreamId())) throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
+        if (!dream.getId().equals(request.dreamId()))
+            throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
         dream.checkRevision(request.revision());
         dream.saveDraft(request.originalText());
         return response(dream);
@@ -74,14 +77,18 @@ public class DreamService {
         return response(dream);
     }
 
-    public DreamResponse get(Long userId, Long id) { return DreamResponse.from(owned(userId, id)); }
+    public DreamResponse get(Long userId, Long id) {
+        return DreamResponse.from(owned(userId, id));
+    }
 
-    public record IncompleteDreams(List<DreamResponse> items, boolean hasNext) { }
+    public record IncompleteDreams(List<DreamResponse> items, boolean hasNext) {}
 
     public IncompleteDreams incomplete(Long userId, int page, int size) {
-        var result = dreams.findByUserIdAndRecordStatusNotOrderByDreamedAtDescIdDesc(
-                userId, DreamRecordStatus.COMPLETED, PageRequest.of(page, size));
-        return new IncompleteDreams(result.getContent().stream().map(DreamResponse::from).toList(), result.hasNext());
+        var result =
+                dreams.findByUserIdAndRecordStatusNotOrderByDreamedAtDescIdDesc(
+                        userId, DreamRecordStatus.COMPLETED, PageRequest.of(page, size));
+        return new IncompleteDreams(
+                result.getContent().stream().map(DreamResponse::from).toList(), result.hasNext());
     }
 
     @Transactional
@@ -89,11 +96,18 @@ public class DreamService {
         lockUser(userId);
         var dream = owned(userId, id);
         dream.checkRevision(request.getRevision());
-        if (!request.isTextProvided() && !request.isEmotionsProvided() && !request.isTitleProvided()) {
+        if (!request.isTextProvided()
+                && !request.isEmotionsProvided()
+                && !request.isTitleProvided()) {
             throw new BusinessException(DreamErrorCode.EMPTY_UPDATE);
         }
-        dream.update(request.isTextProvided(), request.getOriginalText(), request.isEmotionsProvided(),
-                request.getEmotions(), request.isTitleProvided(), request.getTitle());
+        dream.update(
+                request.isTextProvided(),
+                request.getOriginalText(),
+                request.isEmotionsProvided(),
+                request.getEmotions(),
+                request.isTitleProvided(),
+                request.getTitle());
         return response(dream);
     }
 
@@ -120,9 +134,11 @@ public class DreamService {
     }
 
     private User lockUser(Long userId) {
-        var user = users.findByIdForUpdate(userId)
-                .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
-        if (!user.isOnboardingCompleted()) throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+        var user =
+                users.findByIdForUpdate(userId)
+                        .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        if (!user.isOnboardingCompleted())
+            throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
         return user;
     }
 

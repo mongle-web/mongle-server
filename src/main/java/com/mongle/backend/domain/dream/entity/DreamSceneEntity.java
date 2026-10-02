@@ -20,8 +20,7 @@ import java.util.Objects;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DreamSceneEntity {
 
-    @EmbeddedId
-    private DreamSceneEntityId id;
+    @EmbeddedId private DreamSceneEntityId id;
 
     @MapsId("dreamSceneId")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -39,8 +38,11 @@ public class DreamSceneEntity {
         this.dreamEntity = Objects.requireNonNull(dreamEntity, "꿈 요소가 필요합니다.");
         Dream sceneDream = dreamScene.getDream();
         Dream entityDream = dreamEntity.getDream();
-        if (sceneDream == null || entityDream == null || (sceneDream != entityDream && (sceneDream.getId() == null
-                || !sceneDream.getId().equals(entityDream.getId())))) {
+        if (sceneDream == null
+                || entityDream == null
+                || (sceneDream != entityDream
+                        && (sceneDream.getId() == null
+                                || !sceneDream.getId().equals(entityDream.getId())))) {
             throw new IllegalArgumentException("장면과 꿈 요소는 같은 꿈에 속해야 합니다.");
         }
 
@@ -48,9 +50,6 @@ public class DreamSceneEntity {
     }
 
     public static DreamSceneEntity link(DreamScene scene, DreamEntity entity) {
-        return builder()
-                .dreamScene(scene)
-                .dreamEntity(entity)
-                .build();
+        return builder().dreamScene(scene).dreamEntity(entity).build();
     }
 }
