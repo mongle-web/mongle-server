@@ -40,6 +40,18 @@ class InitialSchemaValidationTest {
                 """, String.class)).contains("user_id", "provider", "provider_user_id", "created_at", "updated_at");
         assertThat(jdbcTemplate.queryForList("""
                 select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'dreams'
+                """, String.class)).contains("title", "record_status", "is_edited", "revision").doesNotContain("representative_emotion");
+        assertThat(jdbcTemplate.queryForObject("""
+                select is_nullable from information_schema.columns
+                where table_schema = 'public' and table_name = 'dreams' and column_name = 'dreamed_at'
+                """, String.class)).isEqualTo("NO");
+        assertThat(jdbcTemplate.queryForObject("""
+                select is_nullable from information_schema.columns
+                where table_schema = 'public' and table_name = 'dream_scenes' and column_name = 'dream_id'
+                """, String.class)).isEqualTo("YES");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
                 where table_schema = 'public' and table_name = 'refresh_sessions'
                 """, String.class)).containsExactlyInAnyOrder("id", "user_id", "token_hash", "expires_at", "created_at");
         assertThat(jdbcTemplate.queryForList("""
