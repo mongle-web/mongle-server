@@ -91,9 +91,8 @@ class TokenApiIntegrationTest {
             assertThat(refreshed.body()).doesNotContain(first.refreshToken(), "refreshToken");
             assertThat(refreshed.headers().allValues("Set-Cookie").toString())
                     .contains("MONGLE_REFRESH", "HttpOnly", "SameSite=Lax", "Path=/api/v1/auth");
-            assertThatThrownBy(() -> tokens.refresh(first.refreshToken())).isInstanceOfSatisfying(
-                    BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
             assertThat(postWithCsrf(client, "/api/v1/auth/logout", csrf).statusCode()).isEqualTo(200);
+            assertThatThrownBy(() -> tokens.refresh(first.refreshToken())).isInstanceOf(BusinessException.class);
             assertThat(send(client, "GET", "/api/v1/users/me", first.response(), null).statusCode()).isEqualTo(401);
             assertThat(send(client, "GET", "/api/v1/users/me", otherDevice.response(), null).statusCode()).isEqualTo(200);
             assertThat(postWithCsrf(client, "/api/v1/auth/logout", csrf).statusCode()).isEqualTo(200);
@@ -118,7 +117,7 @@ class TokenApiIntegrationTest {
     }
 
     @Test
-    void storesOnlyHashAndAllowsOnlyOneConcurrentRefresh() throws Exception {
+    void storesOnlyHashAndRevokesSessionAfterConcurrentRefreshReuse() throws Exception {
         var user = users.saveAndFlush(User.register(UUID.randomUUID() + "@example.com"));
         var issued = tokens.login(user.getId());
         assertThat(jdbc.queryForList("select token_hash from refresh_sessions where user_id = ?", String.class, user.getId()))
@@ -141,6 +140,69 @@ class TokenApiIntegrationTest {
             assertThat(java.util.List.of(a.get(10, TimeUnit.SECONDS), b.get(10, TimeUnit.SECONDS)))
                     .containsExactlyInAnyOrder(true, false);
         }
+        assertThat(jdbc.queryForObject("select count(*) from refresh_sessions where user_id = ?", Long.class, user.getId()))
+                .isZero();
+        try (HttpClient client = HttpClient.newHttpClient()) {
+            assertThat(send(client, "GET", "/api/v1/users/me", issued.response(), null).statusCode()).isEqualTo(401);
+        }
+    }
+
+    @Test
+    void replayOfAnyPreviousTokenCommitsRevocationAndRejectsAttackersTokens() throws Exception {
+        var user = users.saveAndFlush(User.create(UUID.randomUUID() + "@example.com", "테스트"));
+        var original = tokens.login(user.getId());
+        var otherDevice = tokens.login(user.getId());
+        var rotated = tokens.refresh(original.refreshToken());
+        var latest = tokens.refresh(rotated.refreshToken());
+        Long sessionId = jdbc.queryForObject("select id from refresh_sessions where user_id = ? order by id limit 1",
+                Long.class, user.getId());
+        assertThat(jdbc.queryForList("select token_hash from refresh_session_tokens where session_id = ?", String.class, sessionId))
+                .hasSize(3).allSatisfy(hash -> assertThat(hash).hasSize(64)
+                        .isNotEqualTo(original.refreshToken()).isNotEqualTo(rotated.refreshToken()).isNotEqualTo(latest.refreshToken()));
+        try (HttpClient client = HttpClient.newHttpClient()) {
+            assertThat(send(client, "GET", "/api/v1/users/me", latest.response(), null).statusCode()).isEqualTo(200);
+            assertThatThrownBy(() -> tokens.refresh(original.refreshToken())).isInstanceOfSatisfying(
+                    BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(AuthErrorCode.INVALID_REFRESH_TOKEN));
+            // HTTP 401로 끝나는 재사용 탐지에서도 삭제가 실제 커밋되어야 한다.
+            assertThat(sessions.findById(sessionId)).isEmpty();
+            assertThat(jdbc.queryForObject("select count(*) from refresh_session_tokens where session_id = ?", Long.class, sessionId))
+                    .isZero();
+            for (var issued : java.util.List.of(original, rotated, latest)) {
+                assertThat(send(client, "GET", "/api/v1/users/me", issued.response(), null).statusCode()).isEqualTo(401);
+                assertThatThrownBy(() -> tokens.refresh(issued.refreshToken())).isInstanceOf(BusinessException.class);
+            }
+            assertThat(send(client, "GET", "/api/v1/users/me", otherDevice.response(), null).statusCode()).isEqualTo(200);
+            assertThatCode(() -> tokens.refresh(otherDevice.refreshToken())).doesNotThrowAnyException();
+        }
+    }
+
+    @Test
+    void unknownTokenDoesNotRevokeSessionsAndLogoutAcceptsKnownPreviousToken() {
+        var user = users.saveAndFlush(User.register(UUID.randomUUID() + "@example.com"));
+        var original = tokens.login(user.getId());
+        assertThatThrownBy(() -> tokens.refresh("A".repeat(43))).isInstanceOf(BusinessException.class);
+        var rotated = tokens.refresh(original.refreshToken());
+        tokens.logout(original.refreshToken());
+        assertThatThrownBy(() -> tokens.refresh(rotated.refreshToken())).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void lineageMigrationRevokesUntrackedLegacySessionsAndCanBeRepeated() {
+        var user = users.saveAndFlush(User.register(UUID.randomUUID() + "@example.com"));
+        var original = tokens.login(user.getId());
+        var trackedUser = users.saveAndFlush(User.register(UUID.randomUUID() + "@example.com"));
+        var tracked = tokens.login(trackedUser.getId());
+        Long sessionId = jdbc.queryForObject("select id from refresh_sessions where user_id = ?", Long.class, user.getId());
+        jdbc.update("delete from refresh_session_tokens where session_id = ?", sessionId);
+        var script = new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
+                new org.springframework.core.io.ClassPathResource("db/migrations/20261003-refresh-token-lineage.sql"));
+        script.execute(java.util.Objects.requireNonNull(jdbc.getDataSource()));
+        script.execute(java.util.Objects.requireNonNull(jdbc.getDataSource()));
+        assertThat(jdbc.queryForObject("select count(*) from refresh_session_tokens where session_id = ?", Long.class, sessionId))
+                .isZero();
+        assertThat(sessions.findById(sessionId)).isEmpty();
+        assertThatThrownBy(() -> tokens.refresh(original.refreshToken())).isInstanceOf(BusinessException.class);
+        assertThatCode(() -> tokens.refresh(tracked.refreshToken())).doesNotThrowAnyException();
     }
 
     @Test

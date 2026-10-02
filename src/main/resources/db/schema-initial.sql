@@ -37,6 +37,15 @@ CREATE TABLE refresh_sessions (
 );
 CREATE INDEX idx_refresh_sessions_user_id ON refresh_sessions (user_id);
 
+CREATE TABLE refresh_session_tokens (
+    session_id BIGINT NOT NULL,
+    token_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (session_id, token_hash),
+    CONSTRAINT uk_refresh_session_tokens_hash UNIQUE (token_hash),
+    CONSTRAINT fk_refresh_session_tokens_session FOREIGN KEY (session_id)
+        REFERENCES refresh_sessions (id) ON DELETE CASCADE
+);
+
 CREATE TABLE dreams (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id BIGINT NOT NULL,

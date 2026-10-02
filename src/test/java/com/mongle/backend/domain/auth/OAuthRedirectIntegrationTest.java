@@ -35,6 +35,8 @@ class OAuthRedirectIntegrationTest {
             for (String provider : new String[]{"google", "kakao"}) {
                 var response = get(client, "/oauth2/authorization/" + provider);
                 assertThat(response.statusCode()).isEqualTo(302);
+                assertThat(response.headers().allValues("Set-Cookie").toString())
+                        .contains("JSESSIONID", "Secure", "HttpOnly");
                 var target = URI.create(response.headers().firstValue("Location").orElseThrow());
                 assertThat(target.getHost()).isEqualTo(provider.equals("google")
                         ? "accounts.google.com" : "kauth.kakao.com");

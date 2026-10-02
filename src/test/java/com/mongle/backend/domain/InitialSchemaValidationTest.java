@@ -42,5 +42,9 @@ class InitialSchemaValidationTest {
                 select column_name from information_schema.columns
                 where table_schema = 'public' and table_name = 'refresh_sessions'
                 """, String.class)).containsExactlyInAnyOrder("id", "user_id", "token_hash", "expires_at", "created_at");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'refresh_session_tokens'
+                """, String.class)).containsExactlyInAnyOrder("session_id", "token_hash");
     }
 }
