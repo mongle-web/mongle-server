@@ -6,10 +6,44 @@
 CREATE TABLE users (
     id BIGINT NOT NULL AUTO_INCREMENT,
     email VARCHAR(255) NOT NULL,
-    nickname VARCHAR(100) NOT NULL,
+    nickname VARCHAR(100) NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id)
+);
+
+CREATE TABLE social_accounts (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    provider VARCHAR(20) NOT NULL,
+    provider_user_id VARBINARY(255) NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_social_accounts_provider_user_id UNIQUE (provider, provider_user_id),
+    CONSTRAINT fk_social_accounts_user FOREIGN KEY (user_id) REFERENCES users (id)
+);
+CREATE INDEX idx_social_accounts_user_id ON social_accounts (user_id);
+
+CREATE TABLE refresh_sessions (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    token_hash VARCHAR(64) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_refresh_sessions_token_hash UNIQUE (token_hash),
+    CONSTRAINT fk_refresh_sessions_user FOREIGN KEY (user_id) REFERENCES users (id)
+);
+CREATE INDEX idx_refresh_sessions_user_id ON refresh_sessions (user_id);
+
+CREATE TABLE refresh_session_tokens (
+    session_id BIGINT NOT NULL,
+    token_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (session_id, token_hash),
+    CONSTRAINT uk_refresh_session_tokens_hash UNIQUE (token_hash),
+    CONSTRAINT fk_refresh_session_tokens_session FOREIGN KEY (session_id)
+        REFERENCES refresh_sessions (id) ON DELETE CASCADE
 );
 
 CREATE TABLE dreams (

@@ -13,3 +13,9 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
+
+
+mongle:
+  auth:
+    cookie-secure: false
+    allowed-origins: ${MONGLE_AUTH_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
