@@ -4,6 +4,7 @@ import com.mongle.backend.domain.auth.config.AuthProperties;
 import com.mongle.backend.domain.auth.dto.TokenResponse;
 import com.mongle.backend.domain.auth.entity.RefreshSession;
 import com.mongle.backend.domain.auth.exception.AuthErrorCode;
+import com.mongle.backend.domain.auth.exception.RefreshTokenReuseException;
 import com.mongle.backend.domain.auth.repository.RefreshSessionRepository;
 import com.mongle.backend.domain.user.dto.UserResponse;
 import com.mongle.backend.domain.user.repository.UserRepository;
@@ -51,14 +52,22 @@ public class TokenService {
         return issue(session, refresh, now);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = RefreshTokenReuseException.class)
     public IssuedTokens refresh(String refreshToken) {
         validateRefresh(refreshToken);
-        var session = sessions.findByTokenHashForUpdate(hash(refreshToken))
+        String presentedHash = hash(refreshToken);
+        // 바뀌지 않는 세션 ID로 잠근 뒤 최신 해시를 비교해야 동시 갱신도 탐지된다.
+        var session = sessions.findSessionIdByTokenHash(presentedHash)
+                .flatMap(sessions::findByIdForUpdate)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
         Instant now = authClock.instant();
         if (session.isExpired(LocalDateTime.ofInstant(now, ZoneOffset.UTC))) {
             throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        }
+        if (!session.getTokenHash().equals(presentedHash)) {
+            sessions.delete(session);
+            sessions.flush();
+            throw new RefreshTokenReuseException();
         }
         String replacement = randomToken();
         session.rotate(hash(replacement));
@@ -72,7 +81,8 @@ public class TokenService {
         if (!isRefreshToken(refreshToken)) {
             return;
         }
-        sessions.findByTokenHashForUpdate(hash(refreshToken)).ifPresent(sessions::delete);
+        sessions.findSessionIdByTokenHash(hash(refreshToken))
+                .flatMap(sessions::findByIdForUpdate).ifPresent(sessions::delete);
     }
 
     private IssuedTokens issue(RefreshSession session, String refresh, Instant now) {

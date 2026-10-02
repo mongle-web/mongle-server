@@ -35,4 +35,4 @@ server:
       cookie:
         http-only: true
         same-site: lax
-        secure: ${OAUTH_COOKIE_SECURE:false}
+        secure: ${OAUTH_COOKIE_SECURE:true}
