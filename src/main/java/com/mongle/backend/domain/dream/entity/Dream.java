@@ -151,6 +151,10 @@ public class Dream extends BaseEntity {
         if (revision == sourceRevision && title == null && !edited) title = generatedTitle;
     }
 
+    public void changeAnalysisStatus(GenerationStatus status) {
+        analysisStatus = Objects.requireNonNull(status);
+    }
+
     private void requireState(DreamRecordStatus expected) {
         if (recordStatus != expected) throw new BusinessException(DreamErrorCode.INVALID_STATE);
     }

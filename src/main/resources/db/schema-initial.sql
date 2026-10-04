@@ -70,9 +70,34 @@ CREATE TABLE dream_emotions (
     CONSTRAINT fk_dream_emotions_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
 );
 
+CREATE TABLE dream_analyses (
+ id BIGINT NOT NULL AUTO_INCREMENT,
+ dream_id BIGINT NULL,
+ user_id BIGINT NOT NULL,
+ source_dream_id BIGINT NOT NULL,
+ dreamed_at DATE NOT NULL,
+ source_revision BIGINT NOT NULL,
+ observed_revision BIGINT NOT NULL,
+ prompt_version VARCHAR(50) NOT NULL,
+ status VARCHAR(30) NOT NULL,
+ attempt_id VARCHAR(36) NULL,
+ lease_until DATETIME(6) NULL,
+ failure_code VARCHAR(50) NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ updated_at DATETIME NOT NULL,
+ PRIMARY KEY (id),
+ CONSTRAINT uk_dream_analysis_dream UNIQUE (dream_id),
+ CONSTRAINT uk_dream_analysis_source UNIQUE (source_dream_id),
+ CONSTRAINT fk_dream_analysis_user FOREIGN KEY (user_id) REFERENCES users(id),
+ CONSTRAINT fk_dream_analysis_dream FOREIGN KEY (dream_id) REFERENCES dreams(id)
+);
+CREATE INDEX idx_analysis_user_status_date ON dream_analyses(user_id,status,dreamed_at);
+
 CREATE TABLE dream_scenes (
     id BIGINT NOT NULL AUTO_INCREMENT,
     dream_id BIGINT NULL,
+    analysis_id BIGINT NULL,
     user_id BIGINT NOT NULL,
     sequence_no INT NOT NULL,
     content TEXT NOT NULL,
@@ -80,6 +105,8 @@ CREATE TABLE dream_scenes (
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT uk_analysis_scene_sequence UNIQUE (analysis_id, sequence_no),
+    CONSTRAINT fk_dream_scenes_analysis FOREIGN KEY (analysis_id) REFERENCES dream_analyses(id),
     CONSTRAINT fk_dream_scenes_user FOREIGN KEY (user_id) REFERENCES users (id),
     CONSTRAINT fk_dream_scenes_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
 );
@@ -87,13 +114,17 @@ CREATE TABLE dream_scenes (
 CREATE TABLE dream_entities (
     id BIGINT NOT NULL AUTO_INCREMENT,
     dream_id BIGINT NULL,
+    analysis_id BIGINT NULL,
     user_id BIGINT NOT NULL,
     entity_type VARCHAR(30) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    normalized_name VARCHAR(255) NULL,
     description TEXT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT uk_analysis_entity_name UNIQUE (analysis_id, entity_type, normalized_name),
+    CONSTRAINT fk_dream_entities_analysis FOREIGN KEY (analysis_id) REFERENCES dream_analyses(id),
     CONSTRAINT fk_dream_entities_user FOREIGN KEY (user_id) REFERENCES users (id),
     CONSTRAINT fk_dream_entities_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
 );
