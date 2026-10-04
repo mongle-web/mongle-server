@@ -28,25 +28,35 @@ public class AnalysisTransactions {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Reservation begin(Long userId, Long dreamId, Long revision, boolean available) {
         lock(userId);
+
         var dream =
                 dreams.findByIdAndUserId(dreamId, userId)
                         .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
         var prior = analyses.findBySourceDreamIdAndUserId(dreamId, userId);
         var now = authClock.instant();
+
         if (prior.isPresent()
                 && (prior.get().getStatus() == GenerationStatus.COMPLETED
-                        || prior.get().active(now)))
+                        || prior.get().active(now))) {
             return new Reservation(response(prior.get()), null);
-        if (dream.getRecordStatus() != DreamRecordStatus.COMPLETED)
+        }
+
+        if (dream.getRecordStatus() != DreamRecordStatus.COMPLETED) {
             throw new BusinessException(DreamErrorCode.INVALID_STATE);
+        }
+
         dream.checkRevision(revision);
-        if (!available) throw new BusinessException(AnalysisErrorCode.UNAVAILABLE);
+
+        if (!available) {
+            throw new BusinessException(AnalysisErrorCode.UNAVAILABLE);
+        }
+
         var analysis = prior.orElseGet(() -> DreamAnalysis.create(dream));
         analysis.start(revision, now, Duration.ofMinutes(2));
         dream.changeAnalysisStatus(GenerationStatus.PROCESSING);
         analyses.save(analysis);
         em.flush();
-        analysis.observe(dream.getRevision());
+
         var input =
                 new StructureGenerator.Input(
                         userId,
@@ -54,58 +64,79 @@ public class AnalysisTransactions {
                         analysis.getAttemptId(),
                         dream.getOriginalText(),
                         dream.getEmotions());
+
         return new Reservation(response(analysis), input);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AnalysisResponse finish(StructureGenerator.Input input, StructureResult result) {
         lock(input.userId());
+
         var analysis = owned(input.userId(), input.analysisId());
-        if (!analysis.accepts(input.attemptId())) return response(analysis);
+
+        if (!analysis.accepts(input.attemptId())) {
+            return response(analysis);
+        }
+
         var dream = analysis.getDream();
+
         if (dream == null) {
             analysis.fail("SOURCE_DELETED");
             return response(analysis);
         }
+
         if (dream.getRevision() != analysis.getObservedRevision()) {
             analysis.fail("SOURCE_CHANGED");
             dream.changeAnalysisStatus(GenerationStatus.FAILED);
             em.flush();
             return response(analysis);
         }
+
         Map<String, DreamEntity> elements = new HashMap<>();
+
         for (var e : result.elements()) {
             var entity = DreamEntity.create(analysis, e.type(), e.name(), e.description());
             em.persist(entity);
             elements.put(e.key(), entity);
         }
+
         for (var s : result.scenes()) {
             var scene =
                     DreamScene.create(
                             analysis, s.sequence(), s.content(), s.disconnectedFromPrevious());
             em.persist(scene);
-            for (var key : s.elementKeys())
+
+            for (var key : s.elementKeys()) {
                 em.persist(DreamSceneEntity.link(scene, elements.get(key)));
+            }
         }
+
         dream.changeAnalysisStatus(GenerationStatus.COMPLETED);
         em.flush();
         analysis.finish(dream.getRevision());
+
         return response(analysis);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AnalysisResponse fail(StructureGenerator.Input input, String code) {
         lock(input.userId());
-        var a = owned(input.userId(), input.analysisId());
-        if (a.accepts(input.attemptId())) {
-            boolean unchanged =
-                    a.getDream() != null && a.getDream().getRevision() == a.getObservedRevision();
-            a.fail(code);
-            if (a.getDream() != null) a.getDream().changeAnalysisStatus(GenerationStatus.FAILED);
-            em.flush();
-            if (unchanged) a.observe(a.getDream().getRevision());
+
+        var analysis = owned(input.userId(), input.analysisId());
+
+        if (!analysis.accepts(input.attemptId())) {
+            return response(analysis);
         }
-        return response(a);
+
+        analysis.fail(code);
+
+        if (analysis.getDream() != null) {
+            analysis.getDream().changeAnalysisStatus(GenerationStatus.FAILED);
+        }
+
+        em.flush();
+
+        return response(analysis);
     }
 
     @Transactional(readOnly = true)

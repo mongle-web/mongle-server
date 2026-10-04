@@ -2,6 +2,7 @@ package com.mongle.backend.domain.dream.analysis;
 
 import com.mongle.backend.domain.dream.dto.*;
 import com.mongle.backend.domain.dream.entity.*;
+import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.domain.dream.service.DreamService;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
@@ -18,6 +19,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import static org.assertj.core.api.Assertions.*;
 
@@ -74,6 +76,114 @@ class DreamAnalysisIntegrationTest {
                 user,
                 d.dreamId(),
                 new DreamEmotionsRequest(d.revision(), List.of(DreamEmotion.HAPPY)));
+    }
+
+    @Test
+    void analysisStatusChangesKeepSourceRevisionAndStillUpdateAuditTimestamp() {
+        var dream = completed(today);
+        jdbc.update(
+                "update dreams set updated_at=TIMESTAMP '2000-01-01 00:00:00' where id=?",
+                dream.dreamId());
+
+        var reservation = transactions.begin(user, dream.dreamId(), dream.revision(), true);
+        var processing = dreams.get(user, dream.dreamId());
+
+        assertThat(processing.analysisStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(processing.revision()).isEqualTo(dream.revision());
+        assertThat(reservation.response().sourceChanged()).isFalse();
+        assertAuditTimestampWasUpdated(dream.dreamId());
+
+        long analysisVersion =
+                jdbc.queryForObject(
+                        "select version from dream_analyses where id=?",
+                        Long.class,
+                        reservation.response().analysisId());
+
+        jdbc.update(
+                "update dreams set updated_at=TIMESTAMP '2000-01-01 00:00:00' where id=?",
+                dream.dreamId());
+
+        var output = new StructureValidator().parse(StructureValidatorTest.VALID);
+        var analysis = transactions.finish(reservation.input(), output);
+        var completed = dreams.get(user, dream.dreamId());
+
+        assertThat(completed.analysisStatus()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(completed.revision()).isEqualTo(dream.revision());
+        assertThat(analysis.sourceRevision()).isEqualTo(dream.revision());
+        assertThat(analysis.sourceChanged()).isFalse();
+        assertAuditTimestampWasUpdated(dream.dreamId());
+        assertThat(
+                        jdbc.queryForObject(
+                                "select version from dream_analyses where id=?",
+                                Long.class,
+                                analysis.analysisId()))
+                .isGreaterThan(analysisVersion);
+    }
+
+    private void assertAuditTimestampWasUpdated(Long dreamId) {
+        var updatedAt =
+                jdbc.queryForObject(
+                        "select updated_at from dreams where id=?",
+                        java.sql.Timestamp.class,
+                        dreamId);
+
+        assertThat(updatedAt.toLocalDateTime()).isAfter(LocalDateTime.of(2000, 1, 1, 0, 0));
+    }
+
+    @Test
+    void failedAnalysisCanRetryWithOriginalRevision() {
+        var dream = completed(today);
+        generator.action =
+                input -> {
+                    throw new IllegalStateException("테스트 생성 실패");
+                };
+
+        var failed = service.analyze(user, dream.dreamId(), dream.revision());
+
+        assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(failed.failureCode()).isEqualTo("CALL_FAILED");
+        assertThat(failed.sourceChanged()).isFalse();
+        assertThat(dreams.get(user, dream.dreamId()).revision()).isEqualTo(dream.revision());
+
+        generator.action = input -> StructureValidatorTest.VALID;
+        var retried = service.analyze(user, dream.dreamId(), dream.revision());
+
+        assertThat(retried.analysisId()).isEqualTo(failed.analysisId());
+        assertThat(retried.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(retried.sourceChanged()).isFalse();
+        assertThat(dreams.get(user, dream.dreamId()).revision()).isEqualTo(dream.revision());
+    }
+
+    @Test
+    void sourceFieldChangesRemainVersionedAfterAnalysis() {
+        var dream = completed(today);
+        var analysis = service.analyze(user, dream.dreamId(), dream.revision());
+        long revision = dream.revision();
+
+        List<Consumer<DreamUpdateRequest>> changes =
+                List.of(
+                        request -> request.setOriginalText("숲을 걷는 꿈"),
+                        request -> request.setEmotions(List.of(DreamEmotion.CALM)),
+                        request -> request.setTitle("숲에서 보낸 밤"));
+
+        for (var change : changes) {
+            var request = new DreamUpdateRequest();
+            request.setRevision(revision);
+            change.accept(request);
+
+            var updated = dreams.update(user, dream.dreamId(), request);
+
+            assertThat(updated.revision()).isGreaterThan(revision);
+            assertThat(transactions.get(user, analysis.analysisId()).sourceChanged()).isTrue();
+            assertThatThrownBy(() -> dreams.update(user, dream.dreamId(), request))
+                    .isInstanceOfSatisfying(
+                            BusinessException.class,
+                            exception ->
+                                    assertThat(exception.getErrorCode())
+                                            .isEqualTo(DreamErrorCode.VERSION_CONFLICT));
+
+            revision = updated.revision();
+        }
     }
 
     @Test
@@ -147,8 +257,7 @@ class DreamAnalysisIntegrationTest {
     void deletionPreservesGroupingAndAllowsAnotherDreamOnTheSameDate() {
         var d = completed(today);
         var a = service.analyze(user, d.dreamId(), d.revision());
-        var current = dreams.get(user, d.dreamId());
-        dreams.delete(user, d.dreamId(), current.revision());
+        dreams.delete(user, d.dreamId(), d.revision());
         var kept = transactions.get(user, a.analysisId());
         assertThat(kept.sourceDeleted()).isTrue();
         assertThat(kept.dreamedAt()).isEqualTo(today);
@@ -170,11 +279,13 @@ class DreamAnalysisIntegrationTest {
         var d = completed(today);
         generator.action =
                 i -> {
-                    var current = dreams.get(user, d.dreamId());
                     var req = new DreamUpdateRequest();
-                    req.setRevision(current.revision());
+                    req.setRevision(d.revision());
                     req.setOriginalText("원문 수정");
-                    dreams.update(user, d.dreamId(), req);
+                    var updated = dreams.update(user, d.dreamId(), req);
+
+                    assertThat(updated.revision()).isGreaterThan(d.revision());
+
                     return StructureValidatorTest.VALID;
                 };
         var a = service.analyze(user, d.dreamId(), d.revision());
@@ -187,8 +298,7 @@ class DreamAnalysisIntegrationTest {
         var d = completed(today);
         generator.action =
                 i -> {
-                    var current = dreams.get(user, d.dreamId());
-                    dreams.delete(user, d.dreamId(), current.revision());
+                    dreams.delete(user, d.dreamId(), d.revision());
                     return StructureValidatorTest.VALID;
                 };
         var a = service.analyze(user, d.dreamId(), d.revision());
