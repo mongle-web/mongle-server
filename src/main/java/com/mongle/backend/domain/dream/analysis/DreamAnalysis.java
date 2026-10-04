@@ -88,10 +88,6 @@ public class DreamAnalysis extends BaseEntity {
         promptVersion = StructurePrompt.VERSION;
     }
 
-    public void observe(long revision) {
-        observedRevision = revision;
-    }
-
     public boolean accepts(String attempt) {
         return status == GenerationStatus.PROCESSING && attemptId.equals(attempt);
     }
