@@ -27,8 +27,10 @@ public class AnalysisRecordService {
             Clock authClock,
             @Value("${mongle.analysis.recent-days:30}") int days,
             @Value("${mongle.analysis.recent-limit:10}") int limit) {
-        if (days < 1 || days > 365 || limit < 1 || limit > 30)
+        if (days < 1 || days > 365 || limit < 1 || limit > 10) {
             throw new IllegalArgumentException("최근 분석 범위 설정이 올바르지 않습니다.");
+        }
+
         this.em = em;
         this.analyses = analyses;
         this.transactions = transactions;
