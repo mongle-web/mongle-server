@@ -1,7 +1,10 @@
 package com.mongle.backend.domain.dream;
 
-import com.mongle.backend.domain.dream.entity.*;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
 import com.mongle.backend.domain.dream.dto.DreamCreateRequest;
+import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.domain.dream.repository.*;
 import com.mongle.backend.domain.dream.service.DreamService;
@@ -9,11 +12,11 @@ import com.mongle.backend.domain.dream.story.DreamStoryRepository;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.error.BusinessException;
+
 import org.junit.jupiter.api.Test;
+
 import java.time.*;
 import java.util.*;
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 class DreamPolicyTest {
     @Test
@@ -29,8 +32,8 @@ class DreamPolicyTest {
         }
         assertThatCode(() -> DreamPolicy.title(null)).doesNotThrowAnyException();
         assertThatCode(() -> DreamPolicy.title("\u00a0꿈 제목\u202f")).doesNotThrowAnyException();
-        assertThatCode(() -> DreamPolicy.title("🌙".repeat(100))).doesNotThrowAnyException();
-        assertThatThrownBy(() -> DreamPolicy.title("🌙".repeat(101)))
+        assertThatCode(() -> DreamPolicy.title("🌙".repeat(20))).doesNotThrowAnyException();
+        assertThatThrownBy(() -> DreamPolicy.title("🌙".repeat(21)))
                 .isInstanceOf(BusinessException.class);
     }
 

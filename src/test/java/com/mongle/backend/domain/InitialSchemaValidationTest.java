@@ -41,7 +41,7 @@ class InitialSchemaValidationTest {
         assertThat(jdbcTemplate.queryForList("""
                 select column_name from information_schema.columns
                 where table_schema = 'public' and table_name = 'dreams'
-                """, String.class)).contains("title", "record_status", "is_edited", "revision").doesNotContain("representative_emotion");
+                """, String.class)).contains("title", "record_status", "is_edited", "revision", "source_revision").doesNotContain("representative_emotion");
         assertThat(jdbcTemplate.queryForObject("""
                 select is_nullable from information_schema.columns
                 where table_schema = 'public' and table_name = 'dreams' and column_name = 'dreamed_at'

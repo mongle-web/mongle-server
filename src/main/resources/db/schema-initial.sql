@@ -55,6 +55,7 @@ CREATE TABLE dreams (
     record_status VARCHAR(30) NOT NULL DEFAULT 'EMOTION_PENDING',
     is_edited BOOLEAN NOT NULL DEFAULT FALSE,
     revision BIGINT NOT NULL DEFAULT 0,
+    source_revision BIGINT NOT NULL DEFAULT 0,
     analysis_status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
