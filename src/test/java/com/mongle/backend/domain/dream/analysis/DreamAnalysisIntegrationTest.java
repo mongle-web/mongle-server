@@ -1,5 +1,7 @@
 package com.mongle.backend.domain.dream.analysis;
 
+import static org.assertj.core.api.Assertions.*;
+
 import com.mongle.backend.domain.dream.dto.*;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
@@ -8,6 +10,7 @@ import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.error.BusinessException;
+
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.*;
@@ -15,13 +18,13 @@ import org.springframework.context.annotation.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -109,7 +112,7 @@ class DreamAnalysisIntegrationTest {
 
         assertThat(completed.analysisStatus()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(completed.revision()).isEqualTo(dream.revision());
-        assertThat(analysis.sourceRevision()).isEqualTo(dream.revision());
+        assertThat(analysis.sourceRevision()).isEqualTo(dream.sourceRevision());
         assertThat(analysis.sourceChanged()).isFalse();
         assertAuditTimestampWasUpdated(dream.dreamId());
         assertThat(
@@ -163,8 +166,7 @@ class DreamAnalysisIntegrationTest {
         List<Consumer<DreamUpdateRequest>> changes =
                 List.of(
                         request -> request.setOriginalText("숲을 걷는 꿈"),
-                        request -> request.setEmotions(List.of(DreamEmotion.CALM)),
-                        request -> request.setTitle("숲에서 보낸 밤"));
+                        request -> request.setOriginalText("다른 숲을 걷는 꿈"));
 
         for (var change : changes) {
             var request = new DreamUpdateRequest();
@@ -294,6 +296,51 @@ class DreamAnalysisIntegrationTest {
     }
 
     @Test
+    void titleEditDuringAnalysisAndClearAfterCompletionKeepResultCurrent() {
+        var dream = completed(today);
+        generator.action =
+                input -> {
+                    var edit = new DreamUpdateRequest();
+                    edit.setRevision(dream.revision());
+                    edit.setTitle("내 제목");
+                    var updated = dreams.update(user, dream.dreamId(), edit);
+                    assertThat(updated.sourceRevision()).isEqualTo(dream.sourceRevision());
+                    assertThat(updated.revision()).isGreaterThan(dream.revision());
+                    return StructureValidatorTest.VALID;
+                };
+        var analysis = service.analyze(user, dream.dreamId(), dream.revision());
+        assertThat(analysis.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(analysis.sourceChanged()).isFalse();
+        var edit = new DreamUpdateRequest();
+        edit.setRevision(dreams.get(user, dream.dreamId()).revision());
+        edit.setTitle("");
+        dreams.update(user, dream.dreamId(), edit);
+        assertThat(transactions.get(user, analysis.analysisId()).sourceChanged()).isFalse();
+        assertThat(generator.calls).hasValue(1);
+    }
+
+    @Test
+    void editingThenRestoringSourceDuringAnalysisStillDiscardsAttempt() {
+        var dream = completed(today);
+        generator.action =
+                input -> {
+                    var first = new DreamUpdateRequest();
+                    first.setRevision(dream.revision());
+                    first.setOriginalText("임시 원문");
+                    var changed = dreams.update(user, dream.dreamId(), first);
+                    var restore = new DreamUpdateRequest();
+                    restore.setRevision(changed.revision());
+                    restore.setOriginalText(dream.originalText());
+                    var restored = dreams.update(user, dream.dreamId(), restore);
+                    assertThat(restored.sourceRevision()).isEqualTo(dream.sourceRevision() + 2);
+                    return StructureValidatorTest.VALID;
+                };
+        var analysis = service.analyze(user, dream.dreamId(), dream.revision());
+        assertThat(analysis.failureCode()).isEqualTo("SOURCE_CHANGED");
+        assertThat(analysis.scenes()).isEmpty();
+    }
+
+    @Test
     void deletionDuringGenerationDiscardsOutput() {
         var d = completed(today);
         generator.action =
@@ -364,7 +411,8 @@ class DreamAnalysisIntegrationTest {
         long existingSceneId =
                 jdbc.queryForObject("select coalesce(max(id),0) from dream_scenes", Long.class);
         jdbc.execute(
-                "alter table dream_scene_entities add constraint ck_analysis_test_links check (dream_scene_id <= "
+                "alter table dream_scene_entities add constraint ck_analysis_test_links check"
+                        + " (dream_scene_id <= "
                         + existingSceneId
                         + ")");
         try {

@@ -3,14 +3,18 @@ package com.mongle.backend.domain.dream.analysis;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
-import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
+import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.error.BusinessException;
+
 import jakarta.persistence.EntityManager;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
+
 import java.time.*;
 import java.util.*;
 
@@ -52,7 +56,7 @@ public class AnalysisTransactions {
         }
 
         var analysis = prior.orElseGet(() -> DreamAnalysis.create(dream));
-        analysis.start(revision, now, Duration.ofMinutes(2));
+        analysis.start(dream.getSourceRevision(), now, Duration.ofMinutes(2));
         dream.changeAnalysisStatus(GenerationStatus.PROCESSING);
         analyses.save(analysis);
         em.flush();
@@ -85,7 +89,7 @@ public class AnalysisTransactions {
             return response(analysis);
         }
 
-        if (dream.getRevision() != analysis.getObservedRevision()) {
+        if (dream.getSourceRevision() != analysis.getObservedRevision()) {
             analysis.fail("SOURCE_CHANGED");
             dream.changeAnalysisStatus(GenerationStatus.FAILED);
             em.flush();
@@ -113,7 +117,7 @@ public class AnalysisTransactions {
 
         dream.changeAnalysisStatus(GenerationStatus.COMPLETED);
         em.flush();
-        analysis.finish(dream.getRevision());
+        analysis.finish(dream.getSourceRevision());
 
         return response(analysis);
     }
@@ -160,7 +164,8 @@ public class AnalysisTransactions {
     public AnalysisResponse response(DreamAnalysis a) {
         var sceneRows =
                 em.createQuery(
-                                "select s from DreamScene s where s.analysis.id=:id order by s.sequenceNo",
+                                "select s from DreamScene s where s.analysis.id=:id order by"
+                                    + " s.sequenceNo",
                                 DreamScene.class)
                         .setParameter("id", a.getId())
                         .getResultList();
@@ -172,7 +177,8 @@ public class AnalysisTransactions {
                         .getResultList();
         var links =
                 em.createQuery(
-                                "select l from DreamSceneEntity l join fetch l.dreamScene join fetch l.dreamEntity where l.dreamScene.analysis.id=:id",
+                                "select l from DreamSceneEntity l join fetch l.dreamScene join"
+                                    + " fetch l.dreamEntity where l.dreamScene.analysis.id=:id",
                                 DreamSceneEntity.class)
                         .setParameter("id", a.getId())
                         .getResultList();
@@ -210,7 +216,7 @@ public class AnalysisTransactions {
                 a.getStatus(),
                 a.getFailureCode(),
                 a.getDream() == null,
-                a.getDream() != null && a.getDream().getRevision() != a.getObservedRevision(),
+                a.getDream() != null && a.getDream().getSourceRevision() != a.getObservedRevision(),
                 scenes,
                 elements);
     }
