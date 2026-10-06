@@ -34,7 +34,9 @@ Gateway #5의 실제 인터페이스·오류 계약은 확정 후 `StoryGenerato
 `regenerate`를 생략하거나 null로 전달하면 false이다. 재생성에 storyVersion이 없으면 400이다.
 현재 꿈 revision 불일치, 완료 분석 부재·오래된 분석, 오래된 재생성 버전은 각각 409이다.
 진행 중 중복은 202, 완료/실패 상태 반환은 200이다. 실패는 `status=FAILED`와 `failureCode`로 처리한다.
-미연결 Gateway는 503이며 새 시도를 저장하지 않는다. DB 저장 실패는 실패 상태를 별도로 기록하고 502를 반환한다.
+미연결 Gateway는 503이며 새 시도를 저장하지 않는다. DB 저장 실패는 실패 상태를 별도로 기록하도록 시도하고 502를 반환한다.
+실패 상태 저장도 실패하면 기존 PROCESSING 상태는 작업 유효시간 만료까지 남을 수 있지만,
+응답은 STORY_CALL_FAILED(502)를 유지하며 원래 저장 오류와 복구 오류를 함께 보존한다.
 
 ## 결과와 AI 보완 영역
 
@@ -105,13 +107,17 @@ DDL은 자동 커밋되므로 앱과 AI 호출을 중지한 유지보수 창에�
 
 ## 검증 상태
 
-- 추가한 StoryValidatorTest와 DreamStoryIntegrationTest: 23개 테스트 메서드.
+- 추가한 StoryValidatorTest(5개), DreamStoryIntegrationTest(19개), DreamStoryServiceTest(2개): 26개 테스트 메서드.
 - 검증 범위: 구조·순서·중복/여분 필드·Unicode/길이, 정상·재사용·재생성·실패 재시도,
   이전 성공 결과 유지, 외부 호출 트랜잭션 분리, 중복 요청·버전 재전송·만료·늦은 응답,
   수정·삭제 경합과 보존, DB UNIQUE/저장 롤백, 인증·소유권·Bean Validation·HTTP 202/503/no-store.
+- 서비스 회귀 검증: 저장 실패 및 실패 상태 저장의 추가 실패에서도 STORY_CALL_FAILED와 원인·suppressed 예외 보존.
 - 기존 InitialSchemaValidationTest는 dream_stories 매핑 검증을 추가하고,
   DreamPolicyTest는 삭제 서비스의 새 저장소 의존성에 맞춰 생성자를 갱신했다.
-- 이 작업 환경의 Java 21/Gradle 배포 파일 손상으로 Spring 테스트 실행·컴파일은 미확인이다.
-  Java 구문/서식, JSON 계약 파일/fixture 및 패치 검사를 수행했다.
+- Java 구문/서식, JSON 계약 파일/fixture 및 패치 검사를 수행했다.
+- 2026-10-06 리뷰 보완: Java 21 독립 하네스에서 실패 상태 저장 성공/실패 두 경로의
+  오류 코드·원인·suppressed 예외 보존을 확인했다. 의존성 대역을 사용한 서비스 예외 경로 검증이며,
+  JUnit/Spring/JPA 테스트 실행을 대체하지 않는다.
+- 새 JUnit 회귀 테스트와 전체 Spring 테스트는 이 환경의 플러그인 의존성 다운로드 네트워크 제한으로 미실행이다.
 - 실제 LINER 호출과 MySQL 변경 SQL 실행은 아직 미검증이다.
 - 적용 스크립트는 Mac에서 전체 ./gradlew test 성공 후에만 기능 커밋을 만든다.

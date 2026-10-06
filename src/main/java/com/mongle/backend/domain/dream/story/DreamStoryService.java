@@ -43,8 +43,12 @@ public class DreamStoryService {
             return transactions.finish(input, result);
         } catch (RuntimeException ex) {
             // finish 전체 롤백 후 실패 상태만 별도 트랜잭션으로 기록한다.
-            transactions.fail(input, "PERSISTENCE_FAILED");
-            throw new BusinessException(StoryErrorCode.CALL_FAILED);
+            try {
+                transactions.fail(input, "PERSISTENCE_FAILED");
+            } catch (RuntimeException recoveryFailure) {
+                ex.addSuppressed(recoveryFailure);
+            }
+            throw new BusinessException(StoryErrorCode.CALL_FAILED, ex);
         }
     }
 }
