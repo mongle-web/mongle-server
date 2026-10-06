@@ -125,6 +125,57 @@ class StructureValidatorTest {
                         "\"generatedTitle\":", "\"generatedTitle\":\"중복\",\"generatedTitle\":"));
     }
 
+    @Test
+    void rejectsHiddenFormatCharactersInTitlesAndKeywords() {
+        for (String hidden :
+                java.util.List.of("\u200B", "\uFEFF", "\u2060", "\u202E", "\u2066", "\u00AD")) {
+            for (String value : java.util.List.of(hidden, "바다" + hidden, hidden + "바다")) {
+                reject(VALID.replace("바다 위를 날다", value));
+                reject(VALID.replace("[\"바다\"]", "[\"" + value + "\"]"));
+            }
+        }
+    }
+
+    @Test
+    void rejectsInvisibleMarksAndJoinersWithoutEmojiNeighbours() {
+        for (String value :
+                java.util.List.of(
+                        "\uFE0F",
+                        "\u034F",
+                        "\u0301",
+                        "\u200D",
+                        "바\u200D다",
+                        "\u200D🌊",
+                        "🌊\u200D",
+                        "🌊\u200D\u200D🌊")) {
+            reject(VALID.replace("바다 위를 날다", value));
+            reject(VALID.replace("[\"바다\"]", "[\"" + value + "\"]"));
+        }
+    }
+
+    @Test
+    void preservesJoinedEmojiAndCountsTheirCodePoints() {
+        for (String emoji : java.util.List.of("👨‍👩‍👧‍👦", "👩🏽‍💻", "❤️‍🔥")) {
+            var result =
+                    validator.parse(
+                            VALID.replace("바다 위를 날다", emoji)
+                                    .replace("[\"바다\"]", "[\"" + emoji + "\"]"));
+            assertThat(result.generatedTitle()).isEqualTo(emoji);
+            assertThat(result.displayKeywords()).containsExactly(emoji);
+        }
+        String twenty = "👩🏽‍💻".repeat(5);
+        assertThat(twenty.codePointCount(0, twenty.length())).isEqualTo(20);
+        assertThat(validator.parse(VALID.replace("바다 위를 날다", twenty)).generatedTitle())
+                .isEqualTo(twenty);
+        assertThat(
+                        validator
+                                .parse(VALID.replace("[\"바다\"]", "[\"" + twenty + "\"]"))
+                                .displayKeywords())
+                .containsExactly(twenty);
+        reject(VALID.replace("바다 위를 날다", twenty + "🌊"));
+        reject(VALID.replace("[\"바다\"]", "[\"" + twenty + "🌊\"]"));
+    }
+
     private void reject(String output) {
         assertThatThrownBy(() -> validator.parse(output))
                 .isInstanceOfSatisfying(

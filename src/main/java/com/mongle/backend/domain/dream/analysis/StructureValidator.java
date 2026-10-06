@@ -119,11 +119,39 @@ public class StructureValidator {
         check(node != null && node.isString());
         String value = node.asString().replaceAll("^[\\p{Z}\\s]+|[\\p{Z}\\s]+$", "");
         check(!value.isEmpty() && value.codePointCount(0, value.length()) <= 20);
-        check(
-                value.codePoints()
-                        .noneMatch(c -> Character.isISOControl(c) || c == 0x2028 || c == 0x2029));
+        int[] codePoints = value.codePoints().toArray();
+        boolean visible = false;
+        for (int i = 0; i < codePoints.length; i++) {
+            int c = codePoints[i];
+            int type = Character.getType(c);
+            check(!Character.isISOControl(c) && c != 0x2028 && c != 0x2029);
+            // 숨은 형식 문자는 거절하되, 이모지를 연결하는 ZWJ는 유지한다.
+            check(type != Character.FORMAT || isEmojiJoiner(codePoints, i));
+            visible |=
+                    !Character.isWhitespace(c)
+                            && !Character.isSpaceChar(c)
+                            && type != Character.FORMAT
+                            && type != Character.NON_SPACING_MARK
+                            && type != Character.COMBINING_SPACING_MARK
+                            && type != Character.ENCLOSING_MARK;
+        }
+        check(visible);
 
         return value;
+    }
+
+    private static boolean isEmojiJoiner(int[] codePoints, int index) {
+        if (codePoints[index] != 0x200D || index + 1 >= codePoints.length) return false;
+        int previous = index - 1;
+        while (previous >= 0
+                && (codePoints[previous] == 0xFE0F
+                        || Character.isEmojiModifier(codePoints[previous]))) {
+            previous--;
+        }
+        return previous >= 0
+                && Character.isEmoji(codePoints[previous])
+                && Character.isEmoji(codePoints[index + 1])
+                && !Character.isEmojiModifier(codePoints[index + 1]);
     }
 
     public static String normalize(String name) {

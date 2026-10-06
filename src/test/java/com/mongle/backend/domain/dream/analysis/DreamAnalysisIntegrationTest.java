@@ -260,6 +260,37 @@ class DreamAnalysisIntegrationTest {
     }
 
     @Test
+    void invisibleDisplayMetadataLeavesNoPartialResultsAndAllowsRetry() {
+        for (String invalid :
+                List.of(
+                        StructureValidatorTest.VALID.replace("바다 위를 날다", "\u200B"),
+                        StructureValidatorTest.VALID.replace("[\"바다\"]", "[\"\u200B\"]"))) {
+            var dream = completed(today);
+            generator.action = i -> invalid;
+            var failed = service.analyze(user, dream.dreamId(), dream.revision());
+            assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
+            assertThat(failed.failureCode()).isEqualTo("INVALID_OUTPUT");
+            assertThat(failed.generatedTitle()).isNull();
+            assertThat(failed.displayKeywords()).isEmpty();
+            assertThat(failed.scenes()).isEmpty();
+            assertThat(failed.elements()).isEmpty();
+            var current = dreams.get(user, dream.dreamId());
+            assertThat(current.title()).isNull();
+            assertThat(current.revision()).isEqualTo(dream.revision());
+
+            generator.action = i -> StructureValidatorTest.VALID;
+            var retried = service.analyze(user, dream.dreamId(), current.revision());
+            assertThat(retried.analysisId()).isEqualTo(failed.analysisId());
+            assertThat(retried.status()).isEqualTo(GenerationStatus.COMPLETED);
+            assertThat(retried.generatedTitle()).isEqualTo("바다 위를 날다");
+            assertThat(retried.displayKeywords()).containsExactly("바다");
+            assertThat(retried.scenes()).hasSize(1);
+            assertThat(retried.elements()).hasSize(1);
+            dreams.delete(user, dream.dreamId(), dreams.get(user, dream.dreamId()).revision());
+        }
+    }
+
+    @Test
     void deletionPreservesGroupingAndAllowsAnotherDreamOnTheSameDate() {
         var d = completed(today);
         var a = service.analyze(user, d.dreamId(), d.revision());
