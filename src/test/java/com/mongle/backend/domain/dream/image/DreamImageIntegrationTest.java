@@ -14,6 +14,8 @@ import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.error.BusinessException;
 
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.*;
 import org.springframework.boot.test.context.*;
 import org.springframework.context.annotation.*;
@@ -35,7 +37,9 @@ import java.util.function.Function;
             "spring.datasource.url=jdbc:h2:mem:mongle-image;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
             "mongle.image.styles[0]=test-style",
             "mongle.image.styles[1]=other-style",
-            "mongle.image.moods[0]=test-mood"
+            "mongle.image.styles[2]=third-style",
+            "mongle.image.moods[0]=test-mood",
+            "mongle.image.moods[1]=other-mood"
         })
 @ActiveProfiles("test")
 @Import(DreamImageIntegrationTest.Config.class)
@@ -240,6 +244,156 @@ class DreamImageIntegrationTest {
                                                 failed.imageVersion()))
                                 .status())
                 .isEqualTo(GenerationStatus.COMPLETED);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = GenerationStatus.class,
+            names = {"FAILED", "PROCESSING"})
+    void preservedSuccessRejectsChangedPlainRetries(GenerationStatus status) {
+        var dream = ready();
+        var first = generate(dream);
+        String originalKey = transactions.assetKey(userId, first.imageId());
+        var prior = interruptedRegeneration(dream, first, status);
+        int calls = generator.calls.get();
+        generator.action = input -> ImagePayloadTest.png();
+
+        for (ImageRequest changed :
+                List.of(
+                        new ImageRequest(dream.revision(), "third-style", null, false, null),
+                        new ImageRequest(
+                                dream.revision(), "other-style", "other-mood", false, null),
+                        request(dream))) {
+            assertThatThrownBy(() -> service.generate(userId, dream.dreamId(), changed))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ImageErrorCode.REGENERATION_REQUIRED);
+        }
+        assertThat(transactions.get(userId, first.imageId())).isEqualTo(prior);
+        assertThat(transactions.assetKey(userId, first.imageId())).isEqualTo(originalKey);
+        assertThat(generator.calls).hasValue(calls);
+        assertThat(storage.stored).containsOnlyKeys(originalKey);
+        assertThat(storage.deleted).isEmpty();
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = GenerationStatus.class,
+            names = {"FAILED", "PROCESSING"})
+    void preservedSuccessAllowsOnlySameAttemptPlainRetry(GenerationStatus status) {
+        var dream = ready();
+        var first = generate(dream);
+        String originalKey = transactions.assetKey(userId, first.imageId());
+        var prior = interruptedRegeneration(dream, first, status);
+        int calls = generator.calls.get();
+        generator.action = input -> ImagePayloadTest.png();
+        var retry = new ImageRequest(dream.revision(), "other-style", null, false, null);
+
+        var completed = service.generate(userId, dream.dreamId(), retry);
+        assertThat(completed.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(completed.resultStyle()).isEqualTo("other-style");
+        assertThat(completed.resultMood()).isNull();
+        assertThat(completed.imageVersion()).isGreaterThan(prior.imageVersion());
+        assertThat(generator.calls).hasValue(calls + 1);
+        assertThat(storage.stored).containsKey(originalKey).hasSize(2);
+        assertThat(service.generate(userId, dream.dreamId(), retry)).isEqualTo(completed);
+        assertThat(generator.calls).hasValue(calls + 1);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = GenerationStatus.class,
+            names = {"FAILED", "PROCESSING"})
+    void preservedSuccessRequiresCurrentVersionForDifferentRegeneration(GenerationStatus status) {
+        var dream = ready();
+        var first = generate(dream);
+        var prior = interruptedRegeneration(dream, first, status);
+        int calls = generator.calls.get();
+        generator.action = input -> ImagePayloadTest.png();
+
+        for (ImageRequest stale :
+                List.of(
+                        new ImageRequest(dream.revision(), "third-style", null, true, null),
+                        new ImageRequest(
+                                dream.revision(),
+                                "third-style",
+                                null,
+                                true,
+                                first.imageVersion()))) {
+            assertThatThrownBy(() -> service.generate(userId, dream.dreamId(), stale))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ImageErrorCode.VERSION_CONFLICT);
+        }
+        assertThat(transactions.get(userId, first.imageId())).isEqualTo(prior);
+        assertThat(generator.calls).hasValue(calls);
+        var completed =
+                service.generate(
+                        userId,
+                        dream.dreamId(),
+                        new ImageRequest(
+                                dream.revision(), "third-style", null, true, prior.imageVersion()));
+        assertThat(completed.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(completed.resultStyle()).isEqualTo("third-style");
+        assertThat(generator.calls).hasValue(calls + 1);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = GenerationStatus.class,
+            names = {"FAILED", "PROCESSING"})
+    void preservedSuccessRejectsPlainRetryAfterStoryChanges(GenerationStatus status) {
+        var dream = ready();
+        var first = generate(dream);
+        var prior = interruptedRegeneration(dream, first, status);
+        int calls = generator.calls.get();
+        generator.action = input -> ImagePayloadTest.png();
+        var story = storyTransactions.latest(userId, dream.dreamId());
+        storyteller.output = STORY.replace("바다를 보았다.", "바닷가를 바라보았다.");
+        stories.generate(
+                userId,
+                dream.dreamId(),
+                new StoryRequest(dream.revision(), true, story.storyVersion()));
+
+        assertThatThrownBy(
+                        () ->
+                                service.generate(
+                                        userId,
+                                        dream.dreamId(),
+                                        new ImageRequest(
+                                                dream.revision(),
+                                                "other-style",
+                                                null,
+                                                false,
+                                                null)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ImageErrorCode.REGENERATION_REQUIRED);
+        var unchanged = transactions.get(userId, first.imageId());
+        assertThat(unchanged.imageVersion()).isEqualTo(prior.imageVersion());
+        assertThat(unchanged.status()).isEqualTo(status);
+        assertThat(unchanged.storyChanged()).isTrue();
+        assertThat(generator.calls).hasValue(calls);
+        assertThat(storage.stored).hasSize(1);
+    }
+
+    private ImageResponse interruptedRegeneration(
+            DreamResponse dream, ImageResponse first, GenerationStatus status) {
+        var regenerate =
+                new ImageRequest(dream.revision(), "other-style", null, true, first.imageVersion());
+        if (status == GenerationStatus.FAILED) {
+            generator.action =
+                    input -> {
+                        throw new IllegalStateException("provider unavailable");
+                    };
+            return service.generate(userId, dream.dreamId(), regenerate);
+        }
+        var pending = transactions.begin(userId, dream.dreamId(), regenerate, true).response();
+        jdbc.update(
+                "update dream_images set lease_until=? where id=?",
+                java.sql.Timestamp.from(Instant.EPOCH),
+                pending.imageId());
+        return transactions.get(userId, pending.imageId());
     }
 
     @Test
@@ -474,8 +628,9 @@ class DreamImageIntegrationTest {
         var dream = ready();
         var first = generate(dream);
         jdbc.execute(
-                "alter table dream_images add constraint image_test_storage check (status <>"
-                        + " 'COMPLETED' or style <> 'other-style')");
+                "alter table dream_images add constraint image_test_storage check (id <> "
+                        + first.imageId()
+                        + " or status <> 'COMPLETED' or style <> 'other-style')");
         try {
             assertThatThrownBy(
                             () ->
