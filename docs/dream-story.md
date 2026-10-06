@@ -54,14 +54,14 @@ SCENE 역시 AI가 다듬은 문장이므로 원문 인용 또는 서버가 사�
 ## 저장 모델과 상태
 
 `DreamStory` / `dream_stories`는 완료 분석에 연결한다. `analysis_id` UNIQUE로 분석당 이야기 한 개를 보장한다.
-소유자, 현재 시도의 원문 revision·프롬프트 버전·상태·시도 ID·유효시간, 성공 결과 JSON·결과 revision·프롬프트 버전,
+소유자, 현재 시도의 AI 입력 sourceRevision·프롬프트 버전·상태·시도 ID·유효시간, 성공 결과 JSON·결과 revision·프롬프트 버전,
 자체 `version`을 저장한다. 사용자 원문의 별도 스냅샷은 저장하지 않는다.
 현재 결과 하나만 유지하며 전체 재생성 이력은 이번 범위에 포함하지 않는다.
 
 `PROCESSING → COMPLETED / FAILED` 흐름을 사용한다. 재생성 시작은 이전 성공 결과를 지우지 않는다.
 `hasPreviousResult=true`이면 sections는 현재 시도 대신 이전 성공 결과이다.
 `resultRevision`, `resultPromptVersion`으로 표시 중인 성공 결과의 출처를 구분한다.
-`sourceChanged`는 표시 중인 성공 결과(없으면 현재 시도)와 살아 있는 원문의 revision 차이이다.
+`sourceChanged`는 표시 중인 성공 결과(없으면 현재 시도)와 살아 있는 꿈의 sourceRevision 차이이다.
 `sourceDeleted=true`이면 원문이 삭제되어 dreamId가 null이다.
 
 작업 유효시간은 2분이다. 만료 뒤 새 요청은 시도 ID를 바꾼다.
@@ -72,12 +72,12 @@ SCENE 역시 AI가 다듬은 문장이므로 원문 인용 또는 서버가 사�
 ## 트랜잭션과 경합
 
 `StoryTransactions.begin()`은 기존 CRUD·분석과 같은 사용자 행 잠금 순서를 사용한다.
-소유권·작성 완료·현재 revision·완료 분석 및 분석 revision을 확인한 뒤 작업을 예약한다.
+소유권·작성 완료·현재 revision·완료 분석 및 AI 입력 sourceRevision을 확인한 뒤 작업을 예약한다.
 진행 중 요청은 동일 시도를 반환하며, 완료 결과는 regenerate=false일 때 재사용한다.
 완료 후 같은 재생성 요청을 재전송하면 오래된 storyVersion으로 409가 되어 불필요한 추가 AI 호출을 막는다.
 
 `DreamStoryService.generate()`는 NOT_SUPPORTED로 실제 생성 호출·검증을 트랜잭션 밖에서 수행한다.
-`finish()`는 REQUIRES_NEW에서 사용자 잠금 후 시도·유효시간·원문 존재·revision을 다시 검사한다.
+`finish()`는 REQUIRES_NEW에서 사용자 잠금 후 시도·유효시간·원문 존재·sourceRevision을 다시 검사한다.
 실패 저장도 REQUIRES_NEW이며 성공 결과 갱신이 롤백되면 이전 결과가 유지된다.
 이야기 처리 자체는 Dream 필드를 변경하지 않으므로 Dream.revision이 증가하지 않는다.
 
@@ -85,9 +85,12 @@ SCENE 역시 AI가 다듬은 문장이므로 원문 인용 또는 서버가 사�
 완료 이야기는 분석과 함께 보존하며 원문 삭제 후 stories/{storyId}로 소유자가 조회할 수 있다.
 같은 날짜의 새 꿈은 새 분석·새 이야기로 생성되어 예전 결과와 섞이지 않는다.
 
-현재 #13은 완료 분석을 다시 생성하지 않는 정책이다. 원문·감정·제목 변경 후에는 분석이 오래된 상태이며
+현재 #13은 완료 분석을 다시 생성하지 않는 정책이다. 원문 변경 후에는 분석이 오래된 상태이며
 서사화 시작/재생성은 STORY_ANALYSIS_STALE(409)로 차단된다. 이미 저장한 이야기는 sourceChanged 표시로 조회할 수 있다.
+제목 변경·비우기는 AI 입력을 바꾸지 않으므로 기존 분석·이야기를 유지한다.
+완료 감정은 수정할 수 없다. 요청 충돌 검사는 계속 Dream.revision을 사용한다.
 수정 원문 기반 재분석과 후속 이야기 갱신 정책은 별도 작업으로 정해야 한다.
+세부 정책과 #17 DB 변경은 `dream-edit-policy.md`를 참고한다.
 
 ## Gateway 연결
 
