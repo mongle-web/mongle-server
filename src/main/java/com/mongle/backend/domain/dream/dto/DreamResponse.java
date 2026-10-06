@@ -14,6 +14,10 @@ public record DreamResponse(
         LocalDate dreamedAt,
         String originalText,
         String title,
+        @Schema(description = "분석에서 생성한 순서 있는 표시 키워드. 이미지 불필요, 기존 분석은 빈 목록")
+                List<String> displayKeywords,
+        @Schema(description = "완료 분석의 입력과 현재 원문이 다르면 true. 기존 키워드는 유지")
+                boolean analysisSourceChanged,
         List<DreamEmotion> emotions,
         DreamRecordStatus recordStatus,
         GenerationStatus analysisStatus,
@@ -23,11 +27,17 @@ public record DreamResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
     public static DreamResponse from(Dream dream) {
+        return from(dream, List.of(), false);
+    }
+
+    public static DreamResponse from(Dream dream, List<String> keywords, boolean sourceChanged) {
         return new DreamResponse(
                 dream.getId(),
                 dream.getDreamedAt(),
                 dream.getOriginalText(),
                 dream.getTitle(),
+                List.copyOf(keywords),
+                sourceChanged,
                 dream.getEmotions().stream().sorted().toList(),
                 dream.getRecordStatus(),
                 dream.getAnalysisStatus(),

@@ -65,5 +65,13 @@ class InitialSchemaValidationTest {
                 "id", "analysis_id", "user_id", "source_revision", "prompt_version", "status",
                 "attempt_id", "lease_until", "failure_code", "result_json", "result_revision",
                 "result_prompt_version", "version", "created_at", "updated_at");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'dream_analyses'
+                """, String.class)).contains("generated_title");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'dream_analysis_display_keywords'
+                """, String.class)).containsExactlyInAnyOrder("analysis_id", "keyword_order", "keyword");
     }
 }

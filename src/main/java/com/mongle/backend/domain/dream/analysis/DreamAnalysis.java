@@ -4,11 +4,17 @@ import com.mongle.backend.domain.dream.entity.Dream;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.global.common.BaseEntity;
 import com.mongle.backend.global.common.GenerationStatus;
+
 import jakarta.persistence.*;
+
 import lombok.*;
+
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+
 import java.time.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -67,6 +73,23 @@ public class DreamAnalysis extends BaseEntity {
     @Column(name = "failure_code", length = 50)
     private String failureCode;
 
+    // 기존 scene-v1 분석은 null/빈 목록으로 유지한다. 원문 삭제 후에도 분석에 보존한다.
+    // H2는 보조 평면 문자를 UTF-16 두 단위로 센다. API 제한은 20 코드포인트다.
+    @Column(name = "generated_title", length = 40)
+    private String generatedTitle;
+
+    @ElementCollection
+    @CollectionTable(
+            name = "dream_analysis_display_keywords",
+            joinColumns = @JoinColumn(name = "analysis_id"))
+    @OrderColumn(name = "keyword_order")
+    @Column(name = "keyword", nullable = false, length = 40)
+    private List<String> displayKeywords = new ArrayList<>();
+
+    public List<String> getDisplayKeywords() {
+        return List.copyOf(displayKeywords);
+    }
+
     @Version private long version;
 
     public static DreamAnalysis create(Dream dream) {
@@ -96,7 +119,10 @@ public class DreamAnalysis extends BaseEntity {
         return status == GenerationStatus.PROCESSING && leaseUntil.isAfter(now);
     }
 
-    public void finish(long revision) {
+    public void finish(long revision, StructureResult result) {
+        generatedTitle = result.generatedTitle();
+        displayKeywords.clear();
+        displayKeywords.addAll(result.displayKeywords());
         status = GenerationStatus.COMPLETED;
         observedRevision = revision;
         leaseUntil = null;
