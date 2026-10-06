@@ -25,7 +25,7 @@ public interface DreamApi {
             summary = "꿈 원문 등록",
             description =
                     "자동저장 없이 다음을 누를 때 사용합니다. 원문 최대 500자, 한국 날짜 기준 미래 불가, 날짜당 1개입니다. 제목 없이"
-                        + " EMOTION_PENDING으로 저장합니다. 이미 초안이 있으면 submit을 호출해주세요.")
+                            + " EMOTION_PENDING으로 저장합니다. 이미 초안이 있으면 submit을 호출해주세요.")
     ResponseEntity<ApiResponse<DreamResponse>> create(
             @Parameter(hidden = true) Jwt jwt, @Valid DreamCreateRequest request);
 
@@ -44,7 +44,7 @@ public interface DreamApi {
             summary = "원문 작성 완료",
             description =
                     "최신 revision을 전달합니다. 저장된 초안의 원문을 검증한 뒤 EMOTION_PENDING으로 이동합니다. 자동저장 응답을 받은 후"
-                        + " 호출해주세요.")
+                            + " 호출해주세요.")
     ResponseEntity<ApiResponse<DreamResponse>> submit(
             @Parameter(hidden = true) Jwt jwt,
             @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId,
@@ -65,7 +65,7 @@ public interface DreamApi {
             summary = "미완성 꿈 복구 목록",
             description =
                     "DRAFT와 EMOTION_PENDING을 날짜 내림차순으로 조회합니다. items의 dreamedAt·recordStatus로 안내 모달과"
-                        + " 복구할 화면을 정합니다. 기본 20개, 최대 50개이며 hasNext이면 다음 페이지를 조회합니다.")
+                            + " 복구할 화면을 정합니다. 기본 20개, 최대 50개이며 hasNext이면 다음 페이지를 조회합니다.")
     ResponseEntity<ApiResponse<DreamService.IncompleteDreams>> incomplete(
             @Parameter(hidden = true) Jwt jwt,
             @Min(value = 0, message = "페이지는 0 이상이어야 합니다.") int page,
@@ -77,7 +77,8 @@ public interface DreamApi {
             summary = "내 꿈 단건 조회",
             description =
                     "타인의 기록과 없는 기록은 모두 404입니다. 원문·감정·작성 상태·수정 표시·최신 revision과 AI 입력 버전"
-                        + " sourceRevision을 반환합니다.")
+                        + " sourceRevision, 표시 키워드 displayKeywords, 이전 분석 입력 여부"
+                        + " analysisSourceChanged를 반환합니다. 이미지가 없어도 제목·키워드를 조회할 수 있습니다.")
     ResponseEntity<ApiResponse<DreamResponse>> get(
             @Parameter(hidden = true) Jwt jwt, @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId);
 

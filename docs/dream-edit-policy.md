@@ -33,6 +33,7 @@ DB VARCHAR(100)는 보존하여 과거 제목을 잘라내지 않는다.
 
 두 버전의 수치는 같다고 가정하지 않는다. 요청에는 sourceRevision을 넣지 않는다.
 분석 상태와 감사 updatedAt은 이전 #13 수정처럼 Dream.revision을 증가시키지 않는다.
+#19 자동 제목 저장은 제목 변경이므로 revision이 증가할 수 있다. 분석 응답의 dreamRevision 또는 최신 꿈 조회 버전을 사용한다.
 제목만 수정하거나 비우면 기존 분석·서사화가 `sourceChanged:false`를 유지한다.
 생성 도중 제목을 바꾸어도 AI 입력이 그대로이면 정상 결과를 저장한다.
 원문을 바꾸면 기존 결과는 보존하며 `sourceChanged:true`로 표시한다.
