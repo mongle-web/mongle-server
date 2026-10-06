@@ -74,15 +74,29 @@ public class ImageTransactions {
             return new Reservation(response(prior.get()), null);
         }
         if (prior.isPresent()
-                && prior.get().getStatus() == GenerationStatus.COMPLETED
+                && prior.get().getResultStoryHash() != null
                 && !request.regenerate()) {
-            if (!sameOptions(prior.get(), request)
-                    || !hash.equals(prior.get().getResultStoryHash())
-                    || !Objects.equals(
-                            prior.get().getResultRevision(), dream.getSourceRevision())) {
-                throw new BusinessException(ImageErrorCode.REGENERATION_REQUIRED);
-            }
-            return new Reservation(response(prior.get()), null);
+            var previous = prior.get();
+            // 완료 결과는 재사용하고, 실패/만료 후에는 마지막 시도와 같은 입력만 재시도한다.
+            boolean completed = previous.getStatus() == GenerationStatus.COMPLETED;
+            boolean sameInput =
+                    Objects.equals(
+                                    completed ? previous.getResultStyle() : previous.getStyle(),
+                                    request.style())
+                            && Objects.equals(
+                                    completed ? previous.getResultMood() : previous.getMood(),
+                                    request.mood())
+                            && Objects.equals(
+                                    completed
+                                            ? previous.getResultRevision()
+                                            : previous.getSourceRevision(),
+                                    dream.getSourceRevision())
+                            && hash.equals(
+                                    completed
+                                            ? previous.getResultStoryHash()
+                                            : previous.getStoryHash());
+            if (!sameInput) throw new BusinessException(ImageErrorCode.REGENERATION_REQUIRED);
+            if (completed) return new Reservation(response(previous), null);
         }
         if (request.regenerate()
                 && (prior.isEmpty()
