@@ -29,6 +29,19 @@ public class DreamAnalysisRepository {
     }
 
     public void detachFromDream(Long dreamId) {
+        // FK 해제 전에 진행 중 이미지 시도를 차단한다. 완료 파일과 이전 성공 결과는 보존한다.
+        entityManager
+                .createQuery(
+                        "update DreamImage i set i.status=:failed, i.failureCode=:code,"
+                                + " i.leaseUntil=null, i.version=i.version+1 where i.analysis.id in"
+                                + " (select a.id from DreamAnalysis a where a.dream.id=:id)"
+                                + " and i.status=:processing")
+                .setParameter("id", dreamId)
+                .setParameter("failed", com.mongle.backend.global.common.GenerationStatus.FAILED)
+                .setParameter(
+                        "processing", com.mongle.backend.global.common.GenerationStatus.PROCESSING)
+                .setParameter("code", "SOURCE_DELETED")
+                .executeUpdate();
         entityManager
                 .createQuery(
                         "update DreamAnalysis a set a.dream = null, a.status = :failed,"

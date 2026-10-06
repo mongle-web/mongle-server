@@ -189,3 +189,32 @@ CREATE TABLE dream_stories (
     CONSTRAINT fk_story_user FOREIGN KEY (user_id) REFERENCES users (id)
 );
 CREATE INDEX idx_story_user_status ON dream_stories (user_id, status);
+
+CREATE TABLE dream_images (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    analysis_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    source_revision BIGINT NOT NULL,
+    story_hash VARCHAR(64) NOT NULL,
+    style VARCHAR(50) NOT NULL,
+    mood VARCHAR(50) NULL,
+    status VARCHAR(30) NOT NULL,
+    attempt_id VARCHAR(36) NOT NULL,
+    lease_until DATETIME(6) NULL,
+    failure_code VARCHAR(50) NULL,
+    storage_key VARCHAR(255) NULL,
+    content_type VARCHAR(30) NULL,
+    width INT NULL,
+    height INT NULL,
+    result_revision BIGINT NULL,
+    result_story_hash VARCHAR(64) NULL,
+    result_style VARCHAR(50) NULL,
+    result_mood VARCHAR(50) NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_image_analysis UNIQUE (analysis_id),
+    CONSTRAINT fk_image_analysis FOREIGN KEY (analysis_id) REFERENCES dream_analyses (id),
+    CONSTRAINT fk_image_user FOREIGN KEY (user_id) REFERENCES users (id)
+);
