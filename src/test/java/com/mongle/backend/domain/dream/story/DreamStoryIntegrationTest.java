@@ -41,7 +41,7 @@ import java.util.function.Function;
 class DreamStoryIntegrationTest {
     private static final String STRUCTURE =
             """
-{"elements":[],"scenes":[
+{"generatedTitle":"바다에서 숲으로","displayKeywords":["바다","숲길"],"elements":[],"scenes":[
   {"sequence":1,"content":"바다 위를 날았다","disconnectedFromPrevious":false,"elementKeys":[]},
   {"sequence":2,"content":"숲길을 걸었다","disconnectedFromPrevious":true,"elementKeys":[]}
 ]}
@@ -118,7 +118,7 @@ class DreamStoryIntegrationTest {
                     .isEqualTo(GenerationStatus.COMPLETED);
         }
 
-        return dream;
+        return dreams.get(userId, dream.dreamId());
     }
 
     private StoryRequest request(DreamResponse dream) {
@@ -289,7 +289,7 @@ class DreamStoryIntegrationTest {
                 StoryErrorCode.ANALYSIS_REQUIRED);
         structure.analyze(userId, dream.dreamId(), dream.revision());
         var edit = new DreamUpdateRequest();
-        edit.setRevision(dream.revision());
+        edit.setRevision(dreams.get(userId, dream.dreamId()).revision());
         edit.setOriginalText("수정한 원문");
         var changed = dreams.update(userId, dream.dreamId(), edit);
 

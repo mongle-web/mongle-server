@@ -1,11 +1,14 @@
 package com.mongle.backend.domain.dream.analysis;
 
+import com.mongle.backend.domain.dream.entity.DreamElementNames;
 import com.mongle.backend.domain.dream.entity.DreamEntityType;
 import com.mongle.backend.global.error.BusinessException;
+
 import org.springframework.stereotype.Component;
+
 import tools.jackson.databind.*;
 import tools.jackson.databind.json.JsonMapper;
-import com.mongle.backend.domain.dream.entity.DreamElementNames;
+
 import java.util.*;
 
 @Component
@@ -23,7 +26,19 @@ public class StructureValidator {
                     json.reader()
                             .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                             .readTree(raw);
-            fields(root, Set.of("elements", "scenes"));
+            fields(root, Set.of("generatedTitle", "displayKeywords", "elements", "scenes"));
+            String generatedTitle = displayText(root.get("generatedTitle"));
+            var keywordNodes = root.get("displayKeywords");
+            check(keywordNodes.isArray() && keywordNodes.size() >= 1 && keywordNodes.size() <= 5);
+            var displayKeywords = new ArrayList<String>();
+            var normalizedKeywords = new HashSet<String>();
+
+            for (var keywordNode : keywordNodes) {
+                String keyword = displayText(keywordNode);
+                check(normalizedKeywords.add(normalize(keyword)));
+                displayKeywords.add(keyword);
+            }
+
             var elements = root.get("elements");
             var scenes = root.get("scenes");
             check(
@@ -72,7 +87,8 @@ public class StructureValidator {
                                 sequence, content, disconnected, List.copyOf(list)));
             }
             check(used.equals(keys));
-            return new StructureResult(List.copyOf(parsedElements), List.copyOf(parsedScenes));
+            return new StructureResult(
+                    generatedTitle, displayKeywords, parsedElements, parsedScenes);
         } catch (RuntimeException ex) {
             // 파서 예외는 생성 응답 일부를 포함할 수 있다. 원문 예외를 로그/응답에 연결하지 않는다.
             throw new BusinessException(AnalysisErrorCode.INVALID_OUTPUT);
@@ -96,6 +112,17 @@ public class StructureValidator {
                                                 !Character.isWhitespace(c)
                                                         && !Character.isSpaceChar(c))
                         && value.codePointCount(0, value.length()) <= max);
+        return value;
+    }
+
+    private static String displayText(JsonNode node) {
+        check(node != null && node.isString());
+        String value = node.asString().replaceAll("^[\\p{Z}\\s]+|[\\p{Z}\\s]+$", "");
+        check(!value.isEmpty() && value.codePointCount(0, value.length()) <= 20);
+        check(
+                value.codePoints()
+                        .noneMatch(c -> Character.isISOControl(c) || c == 0x2028 || c == 0x2029));
+
         return value;
     }
 

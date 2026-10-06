@@ -1,11 +1,12 @@
 package com.mongle.backend.domain.dream.analysis;
 
 import org.springframework.core.io.ClassPathResource;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 public final class StructurePrompt {
-    public static final String VERSION = "scene-v1";
+    public static final String VERSION = "scene-v2-display";
 
     private StructurePrompt() {}
 
