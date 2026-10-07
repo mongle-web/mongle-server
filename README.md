@@ -16,8 +16,12 @@ com.mongle.backend
 │   ├── ai
 │   │   ├── entity           
 │   │   ├── repository
-│   │   ├── gateway          
-│   │   └── liner            
+│   │   ├── gateway          # AiGateway 호출 인터페이스
+│   │   ├── dto
+│   │   │   ├── request      # 호출 맥락·메시지·출력 스키마
+│   │   │   └── response     # 생성 내용·사용량·종료 사유
+│   │   ├── error            # AI 호출 오류 코드·예외
+│   │   └── liner            # LINER 연동 구현 예정
 │   └── world               
 └── global
     ├── common              # BaseCreatedEntity, BaseEntity, GenerationStatus
@@ -73,6 +77,7 @@ Driver Class는 `org.h2.Driver`, JDBC URL은
 사용자는 `sa`, 비밀번호는 비워둔다. Gradle 의존성을 새로고침하고 서버를 재시작해야 콘솔 모듈이 적용된다.
 
 초기 모델의 기준, 연관관계와 Swagger 작성 예시는 [도메인 초기 세팅 문서](docs/domain-setup.md)를 참고한다.
+LLM Gateway의 요청·응답·오류 계약과 테스트용 구현 사용법은 [Gateway 계약 문서](docs/ai-gateway-contract.md)를 참고한다.
 
 ---
 

@@ -1,7 +1,6 @@
 # 도메인 초기 세팅
 
-기준 자료는 [초기 기획 대화](https://chatgpt.com/share/6abe28f9-ba60-83ee-8f7f-f97c2b70bef2)와
-[mongleERD](https://www.erdcloud.com/d/kTau4h255aRWuyfst)다.
+기준 자료는 [mongleERD](https://www.erdcloud.com/d/kTau4h255aRWuyfst)다.
 2026-10-01 ERDCloud의 MySQL SQL 미리보기에서 필드·NULL 허용·PK·비식별 관계까지 확인했다.
 
 대화의 최종 합의에 따라 S0/S1에 필요한 엔티티 6개, 최소 Repository,
