@@ -21,6 +21,13 @@ springdoc:
 
 mongle:
   ai:
+    async:
+      # 서버 인스턴스별 초기 상한. 실제 LINER 한도와 부하 측정에 맞춰 조정한다.
+      max-concurrent-calls: ${AI_MAX_CONCURRENT_CALLS:16}
+      response-threads: ${AI_RESPONSE_THREADS:2}
+      response-queue-capacity: ${AI_RESPONSE_QUEUE_CAPACITY:64}
+      log-threads: ${AI_LOG_THREADS:2}
+      log-queue-capacity: ${AI_LOG_QUEUE_CAPACITY:64}
     pricing:
       models:
         # 대괄호는 모델명의 점(.)을 중첩 경로가 아닌 실제 Map 키로 보존한다.

@@ -20,6 +20,8 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Duration;
 import java.util.List;
 
+import static com.mongle.backend.domain.ai.support.AiGatewayTestAwait.await;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -38,7 +40,7 @@ class AiGatewayContractTest {
         StubAiGateway stub = new StubAiGateway().enqueueResult(fixture);
         AiGateway gateway = stub;
 
-        AiGenerationResult result = gateway.generate(request);
+        AiGenerationResult result = await(gateway.generate(request));
 
         // 도메인은 자신이 정의한 스키마로 응답 본문을 해석한다. Gateway는 본문을 문자열로 전달한다.
         assertThat(mapper.readTree(result.content()).get("value").asString()).isEqualTo("ok");
@@ -61,7 +63,9 @@ class AiGatewayContractTest {
                 .enqueueResult(fixtureResult("fixture-request-2"));
         AiGateway gateway = stub;
 
-        assertThatThrownBy(() -> gateway.generate(request())).isSameAs(failure);
+        var failed = gateway.generate(request());
+        assertThat(failed).isCompletedExceptionally();
+        assertThatThrownBy(() -> await(failed)).isSameAs(failure);
         assertThat(failure).isInstanceOf(BusinessException.class);
         assertThat(failure.getErrorCode()).isEqualTo(AiGatewayErrorCode.RATE_LIMITED);
         assertThat(failure.getRequestId()).isEqualTo("fixture-failed-request");
@@ -70,7 +74,7 @@ class AiGatewayContractTest {
         assertThat(stub.receivedRequests()).hasSize(1);
 
         // 두 번째 결과는 호출부가 명시적으로 다음 요청을 해야만 소비한다. 스텁은 정책을 실행하지 않는다.
-        assertThat(gateway.generate(request()).requestId()).isEqualTo("fixture-request-2");
+        assertThat(await(gateway.generate(request())).requestId()).isEqualTo("fixture-request-2");
         assertThat(stub.receivedRequests()).hasSize(2);
     }
 
@@ -120,9 +124,9 @@ class AiGatewayContractTest {
     @Test
     void stubRejectsUnpreparedCallsAndProtectsRecordedRequests() {
         StubAiGateway stub = new StubAiGateway().enqueueResult(fixtureResult("fixture-request"));
-        stub.generate(request());
+        await(stub.generate(request()));
         assertThatThrownBy(() -> stub.receivedRequests().clear()).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> stub.generate(request()))
+        assertThatThrownBy(() -> await(stub.generate(request())))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("준비된 응답이나 예외가 없습니다.");
     }
 

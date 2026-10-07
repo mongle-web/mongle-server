@@ -2,28 +2,24 @@ package com.mongle.backend.domain.ai.gateway;
 
 import com.mongle.backend.domain.ai.dto.request.AiGenerationRequest;
 import com.mongle.backend.domain.ai.dto.response.AiGenerationResult;
-import com.mongle.backend.domain.ai.error.AiGatewayException;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
- * 도메인 서비스가 제공자에 관계없이 텍스트 생성을 요청하는 동기식 Gateway.
+ * 도메인 서비스가 사용하는 비동기·비스트리밍 텍스트/JSON 생성 계약.
+ * 호출은 응답을 기다리지 않고 Future를 반환한다. 결과가 준비됐을 때 실행할 처리를 연결해 사용한다.
  *
- * <p>호출부는 프롬프트와 출력 스키마를 완성해서 전달한다. 구현체는 외부 응답을
- * {@link AiGenerationResult}로 변환하고 외부 호출 실패를 {@link AiGatewayException}으로
- * 전달한다. 정상 반환만으로 도메인 분석의 성공이 확정되지는 않으며, 결과의 역직렬화,
- * 업무 검증과 엔티티 저장은 호출부에서 수행한다.</p>
- *
- * <p>현재 계약은 비스트리밍 텍스트/JSON 생성만 다룬다. 도구 실행, 이미지 입력,
- * 스트리밍 구독은 별도 계약이 필요하다. 외부 응답을 기다리는 동안 DB 트랜잭션을
- * 열어두지 않도록 도메인 서비스의 트랜잭션 경계를 구성한다.</p>
+ * <p>정상 완료 값은 생성 원문과 메타데이터이며, 외부 실패는 Future의 예외 완료로 전달한다.
+ * 도메인 DTO 변환·업무 검증·결과 저장은 호출부의 책임이다. 해당 작업에 트랜잭션이 필요하면
+ * 완료 처리용 작업 스레드에서 새로 시작한다. 호출부에서 get()/join()으로 기다리면 다시 블로킹된다.</p>
  */
 public interface AiGateway {
-
     /**
-     * 한 번의 논리적인 생성 요청을 처리한다.
-     *
-     * @param request 도메인이 작성한 메시지와 호출 맥락. {@code null}을 허용하지 않는다.
-     * @return 생성 내용 및 메타데이터. 제공자가 생략한 값은 DTO의 누락 규칙을 따른다.
-     * @throws AiGatewayException 외부 호출 실패 또는 사용할 수 없는 제공자 응답
+     * @param request 도메인이 작성한 메시지·출력 스키마·호출 맥락. null은 내부 계약 위반이다.
+     * @return 일반 호출은 로그 저장 시도까지 끝나면 완료되는 결과. 제공자 실패·용량 초과도 예외 완료로 전달한다.
+     * 취소·서버 종료는 결과를 먼저 완료하며, 진행 중이던 시도의 로그 저장은 가능한 범위에서 시도한다.
+     * 호출부는 완료 처리 연결 또는 cancel()만 사용하고 complete()/obtrudeValue()로 결과를 덮어쓰지 않는다.
+     * 취소는 진행 중인 로컬 HTTP와 재시도를 중단하지만 제공자의 생성·과금 취소를 보장하지 않는다.
      */
-    AiGenerationResult generate(AiGenerationRequest request);
+    CompletableFuture<AiGenerationResult> generate(AiGenerationRequest request);
 }

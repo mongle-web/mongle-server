@@ -11,6 +11,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 도메인 서비스 테스트에서 사용할, 순서대로 응답을 반환하는 가짜 Gateway.
@@ -39,14 +40,18 @@ public final class StubAiGateway implements AiGateway {
     }
 
     @Override
-    public AiGenerationResult generate(AiGenerationRequest request) {
+    public CompletableFuture<AiGenerationResult> generate(AiGenerationRequest request) {
         Objects.requireNonNull(request, "생성 요청은 필수입니다.");
         Supplier<AiGenerationResult> outcome = outcomes.pollFirst();
         if (outcome == null) {
             throw new IllegalStateException("테스트용 Gateway에 준비된 응답이나 예외가 없습니다.");
         }
         receivedRequests.add(request);
-        return outcome.get();
+        try {
+            return CompletableFuture.completedFuture(outcome.get());
+        } catch (AiGatewayException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
     }
 
     /** 호출 목록도 불변 복사본으로 반환하여 테스트 단언이 스텁 내부를 바꾸지 않도록 한다. */
