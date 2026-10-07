@@ -21,7 +21,7 @@ com.mongle.backend
 │   │   │   ├── request      # 호출 맥락·메시지·출력 스키마
 │   │   │   └── response     # 생성 내용·사용량·종료 사유
 │   │   ├── error            # AI 호출 오류 코드·예외
-│   │   └── liner            # LINER 연동 구현 예정
+│   │   └── liner            # 실제 Gateway 구현·설정·HTTP 통신·JSON 변환
 │   └── world               
 └── global
     ├── common              # BaseCreatedEntity, BaseEntity, GenerationStatus
@@ -78,6 +78,9 @@ Driver Class는 `org.h2.Driver`, JDBC URL은
 
 초기 모델의 기준, 연관관계와 Swagger 작성 예시는 [도메인 초기 세팅 문서](docs/domain-setup.md)를 참고한다.
 LLM Gateway의 요청·응답·오류 계약과 테스트용 구현 사용법은 [Gateway 계약 문서](docs/ai-gateway-contract.md)를 참고한다.
+실제 LINER 구현의 환경변수, 호출 흐름, 타임아웃·재시도 정책은 [LINER 연동 문서](docs/liner-gateway.md)를 참고한다.
+`LINER_API_KEY`를 실행 환경에 설정하면 도메인 서비스에서 `AiGateway`를 주입해 사용할 수 있다.
+키가 없어도 서버는 기동하며, 공개 AI 엔드포인트와 도메인별 프롬프트는 각 기능에서 추가한다.
 
 ---
 

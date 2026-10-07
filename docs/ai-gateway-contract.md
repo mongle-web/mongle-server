@@ -3,9 +3,10 @@
 첫 번째 Gateway 이슈에서 구현한 내부 서비스 계약이다. 도메인 서비스는 메시지와 원하는
 출력 스키마를 전달하고, Gateway는 생성 내용과 호출 메타데이터를 반환한다.
 
-이번 구현은 인터페이스, DTO, 공통 오류와 테스트용 Gateway까지다. LINER HTTP 통신,
-API 키 설정, 실제 모델 선택, 재시도 실행, 호출 로그 저장 및 비용 계산은 후속 이슈에서
-구현한다. 꿈 구조화·서사화의 프롬프트, 실제 출력 스키마와 업무 검증도 각 도메인 이슈에서 작성한다.
+첫 번째 이슈는 인터페이스, DTO, 공통 오류와 테스트용 Gateway를 구현했다.
+두 번째 이슈에서 LINER HTTP 통신, API 키 설정, 모델 선택과 재시도를 구현했으며
+설정·실행 방법은 [LINER 연동 문서](liner-gateway.md)를 참고한다. 호출 로그 저장과 비용 계산은
+세 번째 이슈, 꿈 구조화·서사화의 프롬프트·실제 출력 스키마·업무 검증은 각 도메인 이슈에서 작성한다.
 
 ## 패키지 구성과 코드 읽는 순서
 
@@ -32,7 +33,7 @@ domain.ai
 │   └── AiTaskType
 ├── repository
 │   └── AiGenerationLogRepository
-└── liner                     # 실제 제공자 연결은 후속 이슈
+└── liner                     # LinerAiGateway, config, client, mapper
 ```
 
 다음 순서로 읽으면 호출 계약부터 실제 사용 예시까지 따라갈 수 있다.
@@ -67,7 +68,7 @@ DTO 제약을 더 확인하려면 `src/test/java/com/mongle/backend/domain/ai/dt
        ↓
   AiGateway.generate(request)
        ↓
-  실제 제공자 어댑터 (두 번째 이슈) / StubAiGateway (테스트)
+실제 제공자 어댑터 LinerAiGateway / StubAiGateway (테스트)
        ↓
   AiGenerationResult 또는 AiGatewayException
        ↓
@@ -175,12 +176,12 @@ LINER 공식 명세에는 `choices[].finish_reason`의 `stop`과 `tool_calls` �
 여기서 `INVALID_REQUEST`는 제공자로 보낸 서버 요청의 거절이다. 사용자의 HTTP 입력 오류는
 기존 공통 400 검증과 별개다. 제공자 API 키 오류를 사용자의 로그인 오류(401)로 내보내지
 않는다. 제공자 제한 초과도 몽글 사용자의 요청 횟수 제한과 구분하여 503으로 표현한다.
-실제 LINER HTTP 상태와 본문의 오류를 이 분류로 변환하는 코드는 두 번째 이슈에서 작성한다.
+실제 LINER HTTP 상태와 본문의 오류를 이 분류로 변환하는 코드는 두 번째 이슈의 LinerPayloadMapper에 있다.
 
 예외에는 요청 ID, 재시도 가능 여부, 선택적인 `Duration retryAfter`, 원인을 담는다.
 재시도 후보 유형이면서 실제 응답 맥락도 허용해야 `retryable=true`가 된다. 이 값은 자동
 재시도를 실행하지 않는다. 타임아웃은 제공자가 생성/과금을 이미 완료했을 가능성이 있어
-후속 어댑터도 무조건 다시 호출하지 않도록 후보에서 제외했다.
+LINER 어댑터도 무조건 다시 호출하지 않도록 후보에서 제외했다.
 
 ## 테스트에서 사용하기
 
@@ -232,12 +233,12 @@ String value = output.get("value").asString();
 `StubAiGateway`는 `src/test`에 있으며 운영 Bean으로 등록되지 않는다. 도메인 테스트에서
 직접 생성하거나 테스트 전용 설정에 등록한다. `enqueueResult`와 `enqueueFailure`로
 응답을 순서대로 준비하고 `receivedRequests()`로 전달한 요청을 확인한다.
-이번 이슈에는 운영용 Gateway Bean이 없으므로 실제 서비스에 주입하여 실행하려면
-두 번째 이슈의 제공자 구현이 필요하다. HTTP Controller와 공개 AI 엔드포인트도 추가하지 않았다.
+두 번째 이슈의 LinerAiGateway는 운영 Bean으로 등록되어 AiGateway 주입으로 사용할 수 있다.
+HTTP Controller와 공개 AI 엔드포인트는 도메인 기능에서 추가한다.
 
 계약 테스트는 키/외부 네트워크 없이 요청 목록·스키마 복사, 사용량 누락/0/부분 제공,
 종료 사유 누락/새 값, 공통 예외 및 기존 핸들러 연결을 검증한다.
-기존 H2 영속성·스키마·Swagger 테스트도 함께 실행한다. 실제 LINER 연동 검증은 후속 이슈에 해당한다.
+기존 H2 영속성·스키마·Swagger 테스트도 함께 실행한다. 모의 HTTP 통신 검증 범위는 LINER 연동 문서를 참고한다.
 
 ## 참고
 
