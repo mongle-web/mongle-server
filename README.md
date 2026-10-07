@@ -30,6 +30,7 @@ com.mongle.backend
     ├── common              # BaseCreatedEntity, BaseEntity, GenerationStatus
     ├── config              # JpaConfig, SwaggerConfig
     ├── error               # 기존 공통 예외 처리
+    ├── logging             # HTTP 요청 추적·커밋 후 성공 로그
     └── response            # 기존 ApiResponse
 ```
 
@@ -87,6 +88,7 @@ LLM Gateway의 요청·응답·오류 계약과 테스트용 구현 사용법은
 키가 없어도 서버는 기동하며, 공개 AI 엔드포인트와 도메인별 프롬프트는 각 기능에서 추가한다.
 Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는 완료 처리를 연결해 사용한다.
 [비동기 Gateway 문서](docs/ai-gateway-async.md)에 실행 흐름·환경변수·호출 제한·취소 정책을 정리했다.
+[운영 로깅 문서](docs/operational-logging.md)에 HTTP·AI·인증 로그의 추적 ID, 레벨과 조회 방법을 정리했다.
 
 ---
 
