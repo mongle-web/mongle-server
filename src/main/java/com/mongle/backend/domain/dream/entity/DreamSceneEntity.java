@@ -20,8 +20,7 @@ import java.util.Objects;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DreamSceneEntity {
 
-    @EmbeddedId
-    private DreamSceneEntityId id;
+    @EmbeddedId private DreamSceneEntityId id;
 
     @MapsId("dreamSceneId")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -35,22 +34,25 @@ public class DreamSceneEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private DreamSceneEntity(DreamScene dreamScene, DreamEntity dreamEntity) {
-        this.dreamScene = Objects.requireNonNull(dreamScene, "꿈 장면은 필수입니다.");
-        this.dreamEntity = Objects.requireNonNull(dreamEntity, "꿈 요소는 필수입니다.");
+        this.dreamScene = Objects.requireNonNull(dreamScene, "장면이 필요합니다.");
+        this.dreamEntity = Objects.requireNonNull(dreamEntity, "꿈 요소가 필요합니다.");
         Dream sceneDream = dreamScene.getDream();
         Dream entityDream = dreamEntity.getDream();
-        if (sceneDream != entityDream && (sceneDream.getId() == null
-                || !sceneDream.getId().equals(entityDream.getId()))) {
+        if (sceneDream == null
+                || entityDream == null
+                || (sceneDream != entityDream
+                        && (sceneDream.getId() == null
+                                || !sceneDream.getId().equals(entityDream.getId())))) {
             throw new IllegalArgumentException("장면과 꿈 요소는 같은 꿈에 속해야 합니다.");
         }
 
+        if (!Objects.equals(dreamScene.getAnalysis(), dreamEntity.getAnalysis())) {
+            throw new IllegalArgumentException("장면과 꿈 요소는 같은 분석에 속해야 합니다.");
+        }
         this.id = new DreamSceneEntityId(dreamScene.getId(), dreamEntity.getId());
     }
 
     public static DreamSceneEntity link(DreamScene scene, DreamEntity entity) {
-        return builder()
-                .dreamScene(scene)
-                .dreamEntity(entity)
-                .build();
+        return builder().dreamScene(scene).dreamEntity(entity).build();
     }
 }
