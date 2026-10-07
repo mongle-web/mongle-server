@@ -11,10 +11,13 @@ import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.error.BusinessException;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -81,7 +84,7 @@ public class DreamService {
     }
 
     public DreamResponse get(Long userId, Long id) {
-        return DreamResponse.from(owned(userId, id));
+        return readResponse(owned(userId, id));
     }
 
     public record IncompleteDreams(List<DreamResponse> items, boolean hasNext) {}
@@ -132,7 +135,23 @@ public class DreamService {
 
     private DreamResponse response(Dream dream) {
         dreams.flush();
-        return DreamResponse.from(dream);
+        return readResponse(dream);
+    }
+
+    private DreamResponse readResponse(Dream dream) {
+        if (dream.getId() == null || dream.getRecordStatus() != DreamRecordStatus.COMPLETED) {
+            return DreamResponse.from(dream);
+        }
+
+        return analyses.findDisplayMetadata(dream.getId(), dream.getUser().getId())
+                .filter(a -> a.getStatus() == GenerationStatus.COMPLETED)
+                .map(
+                        a ->
+                                DreamResponse.from(
+                                        dream,
+                                        a.getDisplayKeywords(),
+                                        dream.getSourceRevision() != a.getObservedRevision()))
+                .orElseGet(() -> DreamResponse.from(dream));
     }
 
     private Dream owned(Long userId, Long id) {

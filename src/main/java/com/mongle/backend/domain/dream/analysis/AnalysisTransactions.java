@@ -115,9 +115,11 @@ public class AnalysisTransactions {
             }
         }
 
+        dream.applyGeneratedTitle(result.generatedTitle(), analysis.getSourceRevision());
         dream.changeAnalysisStatus(GenerationStatus.COMPLETED);
+        analysis.finish(dream.getSourceRevision(), result);
+        // 자동 제목 저장은 revision을 바꿀 수 있지만 AI 입력 sourceRevision은 유지한다.
         em.flush();
-        analysis.finish(dream.getSourceRevision());
 
         return response(analysis);
     }
@@ -165,7 +167,7 @@ public class AnalysisTransactions {
         var sceneRows =
                 em.createQuery(
                                 "select s from DreamScene s where s.analysis.id=:id order by"
-                                    + " s.sequenceNo",
+                                        + " s.sequenceNo",
                                 DreamScene.class)
                         .setParameter("id", a.getId())
                         .getResultList();
@@ -178,7 +180,7 @@ public class AnalysisTransactions {
         var links =
                 em.createQuery(
                                 "select l from DreamSceneEntity l join fetch l.dreamScene join"
-                                    + " fetch l.dreamEntity where l.dreamScene.analysis.id=:id",
+                                        + " fetch l.dreamEntity where l.dreamScene.analysis.id=:id",
                                 DreamSceneEntity.class)
                         .setParameter("id", a.getId())
                         .getResultList();
@@ -217,6 +219,9 @@ public class AnalysisTransactions {
                 a.getFailureCode(),
                 a.getDream() == null,
                 a.getDream() != null && a.getDream().getSourceRevision() != a.getObservedRevision(),
+                a.getDream() == null ? null : a.getDream().getRevision(),
+                a.getGeneratedTitle(),
+                a.getDisplayKeywords(),
                 scenes,
                 elements);
     }

@@ -79,6 +79,7 @@ CREATE TABLE dream_analyses (
  dreamed_at DATE NOT NULL,
  source_revision BIGINT NOT NULL,
  observed_revision BIGINT NOT NULL,
+ generated_title VARCHAR(40) NULL,
  prompt_version VARCHAR(50) NOT NULL,
  status VARCHAR(30) NOT NULL,
  attempt_id VARCHAR(36) NULL,
@@ -94,6 +95,15 @@ CREATE TABLE dream_analyses (
  CONSTRAINT fk_dream_analysis_dream FOREIGN KEY (dream_id) REFERENCES dreams(id)
 );
 CREATE INDEX idx_analysis_user_status_date ON dream_analyses(user_id,status,dreamed_at);
+
+CREATE TABLE dream_analysis_display_keywords (
+    analysis_id BIGINT NOT NULL,
+    keyword_order INT NOT NULL,
+    keyword VARCHAR(40) NOT NULL,
+    PRIMARY KEY (analysis_id, keyword_order),
+    CONSTRAINT fk_analysis_display_keywords FOREIGN KEY (analysis_id)
+        REFERENCES dream_analyses(id) ON DELETE CASCADE
+);
 
 CREATE TABLE dream_scenes (
     id BIGINT NOT NULL AUTO_INCREMENT,
