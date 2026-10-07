@@ -80,6 +80,8 @@ class DomainPersistenceTest {
     void auditsUpdatesWithoutChangingCreationTime() {
         User user = createUser();
         Dream dream = dreamRepository.saveAndFlush(Dream.create(user, "첫 기록", null, null));
+        // DB가 저장한 시간 정밀도를 기준으로 생성·수정 시각을 비교한다.
+        entityManager.refresh(dream);
         LocalDateTime createdAt = dream.getCreatedAt();
         LocalDateTime updatedAt = dream.getUpdatedAt();
         // 기능별 수정 메서드는 다음 PR에서 추가하므로 dirty checking을 직접 일으킨다.

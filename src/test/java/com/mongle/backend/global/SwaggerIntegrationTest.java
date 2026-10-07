@@ -9,7 +9,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,8 +33,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@Import(SwaggerIntegrationTest.ConventionController.class)
+@Import({SwaggerIntegrationTest.ConventionController.class, SwaggerIntegrationTest.ConventionSecurity.class})
 class SwaggerIntegrationTest {
+
+    // 테스트용 API만 공개하며, 실제 업무 API의 접근 제한은 유지한다.
+    @TestConfiguration(proxyBeanMethods = false)
+    static class ConventionSecurity {
+        @Bean
+        @Order(0)
+        SecurityFilterChain conventionChain(HttpSecurity http) throws Exception {
+            return http.securityMatcher("/api/v1/setup-test")
+                    .authorizeHttpRequests(auth -> auth.anyRequest().permitAll()).build();
+        }
+    }
 
     @Value("${local.server.port}") private int port;
     @Autowired private ObjectMapper objectMapper;
