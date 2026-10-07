@@ -1,0 +1,101 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "ko-KR"
+
+tone_instructions: >
+  몽글 백엔드 팀의 코드 품질 향상을 돕는 코치처럼 명확하고 구체적으로 설명해주세요.
+  실제 버그와 운영상 영향이 있는 문제를 우선하고, 원인과 현실적인 수정 방법을 제시해주세요.
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  assess_linked_issues: true
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  auto_apply_labels: false
+  suggested_reviewers: false
+  auto_assign_reviewers: false
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    # PR 생성 시 자동 리뷰한다.
+    auto_incremental_review: true
+    # 기본 브랜치는 자동 포함된다. 몽글의 개발 PR 대상인 develop도 추가한다.
+    base_branches:
+      - "^develop$"
+
+  path_filters:
+    - "!**/build/**"
+    - "!**/.gradle/**"
+    - "!**/generated/**"
+    - "!**/gradle-wrapper.jar"
+
+  path_instructions:
+    - path: "src/main/java/**"
+      instructions: |
+        1. Java 21과 현재 프로젝트의 Spring Boot 버전 및 API를 기준으로 검토한다.
+        2. domain/{도메인} 아래 controller, service, dto, entity, repository, error로 나누는 도메인별 패키징과 각 역할의 책임을 확인한다.
+        3. Controller는 HTTP 입력 검증과 서비스 호출을 담당하고, 업무 처리와 DB 접근은 적절한 서비스와 Repository에 배치되었는지 확인한다.
+        4. 엔티티 생성은 공개 정적 팩터리를 사용하고, 엔티티의 빌더는 내부에서만 사용하는 팀 규칙을 확인한다. DTO 생성자에는 이 규칙을 강제하지 않는다.
+        5. JPA 연관관계, LAZY 로딩, N+1, 트랜잭션 경계, 소유권 검증 및 데이터 무결성을 실제 호출 흐름과 함께 확인한다.
+        6. Controller/Api 문서화 패턴, 공통 ApiResponse와 BusinessException 처리, 입력값 검증이 일관적인지 확인한다.
+        7. 직접 작성한 예외 메시지는 한글로 의미가 명확해야 한다. 주석은 책임, 선택 이유와 주의할 경계를 설명하는지 확인한다.
+        8. API 키, 비밀번호, 토큰 및 사용자 원문이 응답이나 로그에 불필요하게 노출되는지 확인한다.
+        9. 문제를 지적할 때 실제 발생 조건, 영향과 최소한의 수정 방안을 제시한다. 취향에 따른 스타일 지적이나 근거 없는 추상화 제안은 줄인다.
+        10. 연결된 이슈와 PR 범위에 맞춰 검토하고, 후속 이슈로 명시된 기능의 미구현을 현재 PR의 결함으로 지적하지 않는다.
+
+    - path: "src/main/java/com/mongle/backend/domain/ai/**"
+      instructions: |
+        1. 도메인은 프롬프트, 출력 스키마와 업무 규칙을 정의하고, Gateway는 공통 호출 계약을, liner는 외부 제공자 통신을 담당하는지 확인한다.
+        2. 사용량 미제공(null)과 실제 0을 구분하는지 확인한다. 캐시 입력과 추론 토큰은 각각 전체 입력과 출력의 부분 수량이므로 중복 합산하지 않아야 한다.
+        3. 제공자가 반환한 공개 모델명과 내부 라우팅 모델을 혼동하지 않는지, 생성 종료와 도메인 분석 성공을 구분하는지 확인한다.
+        4. 빈 응답, 잘린 응답, 종료 사유 누락과 새 값, 외부 호출 실패를 계약에 맞게 처리하는지 확인한다.
+        5. 재시도 구현이 있는 경우 횟수와 전체 대기 시간이 제한되어야 한다. 타임아웃은 이미 생성과 과금이 완료되었을 가능성을 고려한다.
+        6. 외부 호출을 기다리는 동안 불필요한 DB 트랜잭션을 유지하거나 로그 실패 때문에 생성을 다시 요청하지 않는지 확인한다.
+        7. AI 오류 코드 문자열은 AI_HTTP상태_순번 형식이며 실제 몽글 응답 상태와 일치해야 한다. 이미 사용한 순번은 다른 오류에 재사용하지 않는다.
+
+    - path: "src/test/**"
+      instructions: |
+        1. 중요한 업무 흐름과 실패 경로를 실제 기대 결과로 검증하는지 확인한다.
+        2. 단순 접근자, 문자열 변경, 패키지 이동처럼 영향이 작은 변경에 새 단위 테스트를 일률적으로 요구하지 않는다.
+        3. 구현을 그대로 복제하는 테스트와 과도한 세부 단언보다 회귀를 막는 의미 있는 검증을 우선한다.
+        4. 외부 AI 호출은 기본적으로 가짜 구현으로 검증하고, 실제 키나 외부 서비스에 의존하는 테스트는 명시적으로 구분한다.
+        5. 통과한 검증의 반복 실행은 새 변경이나 실패 등 추가 근거가 있을 때 제안한다.
+
+    # 프로젝트 설정은 .yaml을 사용한다. .yml 설정도 같은 기준으로 검토한다.
+    - path: "**/resources/**/*.yaml"
+      instructions: |
+        비밀번호, API 키와 토큰의 하드코딩을 확인한다. 운영용 값은 환경변수나 외부 설정으로 주입하는지 검토한다.
+        local/test/mysql 프로필의 설정이 섞이지 않는지 확인한다. 로컬 H2의 의도적인 빈 비밀번호를 운영 보안 문제로 해석하지 않는다.
+        H2 콘솔, Swagger 노출과 ddl-auto=create-drop이 운영 설정으로 활성화되는지 확인한다.
+
+    - path: "**/resources/**/*.yml"
+      instructions: |
+        비밀번호, API 키와 토큰의 하드코딩을 확인한다. 운영용 값은 환경변수나 외부 설정으로 주입하는지 검토한다.
+        local/test/mysql 프로필의 설정이 섞이지 않는지 확인한다. 로컬 H2의 의도적인 빈 비밀번호를 운영 보안 문제로 해석하지 않는다.
+        H2 콘솔, Swagger 노출과 ddl-auto=create-drop이 운영 설정으로 활성화되는지 확인한다.
+
+    - path: "src/main/resources/db/**/*.sql"
+      instructions: |
+        JPA 엔티티와 컬럼 타입, NULL 허용, 기본값 및 PK/FK 정의가 일치하는지 확인한다.
+        초기 스키마와 기존 운영 데이터에 적용할 변경을 구분하고, 데이터 손실 가능성이 있는 SQL은 실제 적용 맥락과 함께 검토한다.
+        H2 MySQL 모드 검증만으로 실제 MySQL 호환성이 확인되었다고 판단하지 않는다.
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  web_search:
+    enabled: true
+  learnings:
+    scope: local
+  issues:
+    scope: local
+  pull_requests:
+    scope: local
