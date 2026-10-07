@@ -20,6 +20,20 @@ springdoc:
 
 
 mongle:
+  ai:
+    liner:
+      # 키가 없어도 서버는 기동하며 실제 AI 호출만 실패한다. 비밀 값은 저장소에 넣지 않는다.
+      api-key: ${LINER_API_KEY:}
+      endpoint: ${LINER_ENDPOINT:https://platform.liner.com/api/v1/chat/completions}
+      model: ${LINER_MODEL:liner-mark-1.1}
+      max-completion-tokens: ${LINER_MAX_COMPLETION_TOKENS:4096}
+      reasoning-effort: ${LINER_REASONING_EFFORT:medium}
+      connect-timeout: ${LINER_CONNECT_TIMEOUT:3s}
+      request-timeout: ${LINER_REQUEST_TIMEOUT:45s}
+      total-timeout: ${LINER_TOTAL_TIMEOUT:60s}
+      max-retries: ${LINER_MAX_RETRIES:1}
+      retry-backoff: ${LINER_RETRY_BACKOFF:300ms}
+      max-retry-delay: ${LINER_MAX_RETRY_DELAY:5s}
   auth:
     secret: ${MONGLE_AUTH_SECRET:}
     issuer: mongle
