@@ -2,6 +2,7 @@ package com.mongle.backend.domain.dream.entity;
 
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.global.error.BusinessException;
+
 import java.util.Collection;
 import java.util.HashSet;
 
@@ -32,12 +33,24 @@ public final class DreamPolicy {
         }
     }
 
+    public static String editableTitle(String value) {
+        if (value == null
+                || value.codePoints()
+                        .allMatch(c -> Character.isWhitespace(c) || Character.isSpaceChar(c))) {
+            return null;
+        }
+
+        title(value);
+
+        return value;
+    }
+
     public static void title(String value) {
         if (value != null
                 && (value.codePoints()
                                 .allMatch(
                                         c -> Character.isWhitespace(c) || Character.isSpaceChar(c))
-                        || value.codePointCount(0, value.length()) > 100)) {
+                        || value.codePointCount(0, value.length()) > 20)) {
             throw new BusinessException(DreamErrorCode.INVALID_TITLE);
         }
     }

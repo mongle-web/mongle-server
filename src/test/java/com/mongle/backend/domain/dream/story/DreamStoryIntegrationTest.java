@@ -134,7 +134,7 @@ class DreamStoryIntegrationTest {
         assertThat(story.sections()).hasSize(3);
         assertThat(story.sourceChanged()).isFalse();
         assertThat(story.hasPreviousResult()).isFalse();
-        assertThat(story.resultRevision()).isEqualTo(dream.revision());
+        assertThat(story.resultRevision()).isEqualTo(dream.sourceRevision());
         assertThat(story.resultPromptVersion()).isEqualTo(StoryPrompt.VERSION);
         assertThat(transactions.latest(userId, dream.dreamId())).isEqualTo(story);
         assertThat(transactions.get(userId, story.storyId())).isEqualTo(story);
@@ -142,6 +142,40 @@ class DreamStoryIntegrationTest {
                 .isEqualTo(story.storyId());
         assertThat(generator.calls).hasValue(1);
         assertThat(dreams.get(userId, dream.dreamId()).revision()).isEqualTo(dream.revision());
+    }
+
+    @Test
+    void titleEditsBeforeDuringAndAfterStoryDoNotInvalidateItsSource() {
+        var dream = completed(true);
+        var before = new DreamUpdateRequest();
+        before.setRevision(dream.revision());
+        before.setTitle("내 제목");
+        var titled = dreams.update(userId, dream.dreamId(), before);
+        generator.action =
+                input -> {
+                    var during = new DreamUpdateRequest();
+                    during.setRevision(titled.revision());
+                    during.setTitle("");
+                    dreams.update(userId, dream.dreamId(), during);
+                    return StoryValidatorTest.VALID;
+                };
+        var story = service.generate(userId, dream.dreamId(), request(titled));
+        assertThat(story.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(story.sourceChanged()).isFalse();
+        var current = dreams.get(userId, dream.dreamId());
+        assertThat(current.title()).isNull();
+        assertThat(current.sourceRevision()).isEqualTo(dream.sourceRevision());
+        assertError(
+                () -> service.generate(userId, dream.dreamId(), request(titled)),
+                DreamErrorCode.VERSION_CONFLICT);
+        var after = new DreamUpdateRequest();
+        after.setRevision(current.revision());
+        after.setTitle("수정 제목");
+        current = dreams.update(userId, dream.dreamId(), after);
+        assertThat(service.generate(userId, dream.dreamId(), request(current)).storyId())
+                .isEqualTo(story.storyId());
+        assertThat(transactions.get(userId, story.storyId()).sourceChanged()).isFalse();
+        assertThat(generator.calls).hasValue(1);
     }
 
     @Test
@@ -275,7 +309,7 @@ class DreamStoryIntegrationTest {
                 input -> {
                     var edit = new DreamUpdateRequest();
                     edit.setRevision(dream.revision());
-                    edit.setTitle("수정한 제목");
+                    edit.setOriginalText("수정한 원문");
                     dreams.update(userId, dream.dreamId(), edit);
 
                     return StoryValidatorTest.VALID;
@@ -300,7 +334,7 @@ class DreamStoryIntegrationTest {
         var story = service.generate(userId, dream.dreamId(), request(dream));
         var edit = new DreamUpdateRequest();
         edit.setRevision(dream.revision());
-        edit.setEmotions(List.of(DreamEmotion.CALM));
+        edit.setOriginalText("다시 기록한 원문");
         dreams.update(userId, dream.dreamId(), edit);
 
         var kept = transactions.get(userId, story.storyId());
@@ -467,7 +501,7 @@ values (?,?,?,'story-v1','PROCESSING','duplicate',0,CURRENT_TIMESTAMP,CURRENT_TI
 """,
                                         story.analysisId(),
                                         userId,
-                                        dream.revision()))
+                                        dream.sourceRevision()))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
@@ -512,8 +546,7 @@ values (?,?,?,'story-v1','PROCESSING','duplicate',0,CURRENT_TIMESTAMP,CURRENT_TI
             var found = send(client, "/stories/" + story.storyId(), token, null);
             assertStatus(found, 200);
             assertThat(found.headers().firstValue("Cache-Control")).contains("no-store");
-            assertStatus(
-                    send(client, "/dreams/" + dream.dreamId() + "/story", token, null), 200);
+            assertStatus(send(client, "/dreams/" + dream.dreamId() + "/story", token, null), 200);
             assertStatus(
                     send(
                             client,
@@ -528,12 +561,7 @@ values (?,?,?,'story-v1','PROCESSING','duplicate',0,CURRENT_TIMESTAMP,CURRENT_TI
                             "{\"revision\":0,\"regenerate\":true}",
                             "{\"revision\":0,\"storyVersion\":-1}")) {
                 assertStatus(
-                        send(
-                                client,
-                                "/dreams/" + dream.dreamId() + "/story",
-                                token,
-                                invalid),
-                        400);
+                        send(client, "/dreams/" + dream.dreamId() + "/story", token, invalid), 400);
             }
             var valid =
                     send(

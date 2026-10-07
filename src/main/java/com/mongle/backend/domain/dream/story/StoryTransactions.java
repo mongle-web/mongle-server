@@ -55,7 +55,7 @@ public class StoryTransactions {
             throw new BusinessException(StoryErrorCode.ANALYSIS_REQUIRED);
         }
 
-        if (analysis.getObservedRevision() != dream.getRevision()) {
+        if (analysis.getObservedRevision() != dream.getSourceRevision()) {
             throw new BusinessException(StoryErrorCode.ANALYSIS_STALE);
         }
 
@@ -86,7 +86,7 @@ public class StoryTransactions {
 
         var context = analysisTransactions.response(analysis);
         var story = prior.orElseGet(() -> DreamStory.create(analysis));
-        story.start(dream.getRevision(), now, Duration.ofMinutes(2));
+        story.start(dream.getSourceRevision(), now, Duration.ofMinutes(2));
         stories.saveAndFlush(story);
 
         var input =
@@ -186,7 +186,7 @@ public class StoryTransactions {
             return "SOURCE_DELETED";
         }
 
-        if (dream.getRevision() != story.getSourceRevision()) {
+        if (dream.getSourceRevision() != story.getSourceRevision()) {
             return "SOURCE_CHANGED";
         }
 
@@ -215,7 +215,7 @@ public class StoryTransactions {
                 story.getStatus(),
                 story.getFailureCode(),
                 dream == null,
-                dream != null && dream.getRevision() != visibleRevision,
+                dream != null && dream.getSourceRevision() != visibleRevision,
                 story.getResultJson() != null && story.getStatus() != GenerationStatus.COMPLETED,
                 story.getResultRevision(),
                 story.getResultPromptVersion(),

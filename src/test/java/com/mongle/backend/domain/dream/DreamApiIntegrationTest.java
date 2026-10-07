@@ -1,12 +1,16 @@
 package com.mongle.backend.domain.dream;
 
+import static org.assertj.core.api.Assertions.*;
+
 import com.mongle.backend.domain.auth.dto.TokenResponse;
 import com.mongle.backend.domain.auth.service.TokenService;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
+
 import jakarta.persistence.EntityManager;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -22,8 +27,6 @@ import java.net.http.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
-
-import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -420,7 +423,7 @@ class DreamApiIntegrationTest {
                                                     "revision",
                                                     revision(cleared),
                                                     "title",
-                                                    "가".repeat(101)))
+                                                    "가".repeat(21)))
                                     .statusCode())
                     .isEqualTo(400);
             var nullText = new HashMap<String, Object>();
@@ -526,7 +529,8 @@ class DreamApiIntegrationTest {
                     .isNull();
             assertThat(
                             jdbc.queryForObject(
-                                    "select count(*) from dream_scene_entities where dream_scene_id = ? and dream_entity_id = ?",
+                                    "select count(*) from dream_scene_entities where dream_scene_id"
+                                        + " = ? and dream_entity_id = ?",
                                     Long.class,
                                     graph.getFirst(),
                                     graph.getLast()))
@@ -575,7 +579,8 @@ class DreamApiIntegrationTest {
                     .containsExactlyInAnyOrder(201, 409);
             assertThat(
                             jdbc.queryForObject(
-                                    "select count(*) from dreams where user_id = ? and dreamed_at = ?",
+                                    "select count(*) from dreams where user_id = ? and dreamed_at ="
+                                        + " ?",
                                     Long.class,
                                     token.user().userId(),
                                     today))
@@ -682,7 +687,61 @@ class DreamApiIntegrationTest {
             assertThat(
                             document.at("/paths/~1api~1v1~1dreams~1{dreamId}/patch/description")
                                     .asString())
-                    .contains("title:null", "최대 100자");
+                    .contains("title:null", "최대 20자");
+        }
+    }
+
+    @Test
+    void titleEditsUseHttpNullBlankAndCodePointContract() throws Exception {
+        var token = login();
+        try (var client = HttpClient.newHttpClient()) {
+            var current = complete(client, token, create(client, token));
+            long source = current.get("sourceRevision").asLong();
+            for (String blank : List.of("", "\u00a0\u2007\u202f")) {
+                current =
+                        data(
+                                send(
+                                        client,
+                                        token,
+                                        "PATCH",
+                                        path(current),
+                                        Map.of(
+                                                "revision",
+                                                revision(current),
+                                                "title",
+                                                "🌙".repeat(20))),
+                                200);
+                current =
+                        data(
+                                send(
+                                        client,
+                                        token,
+                                        "PATCH",
+                                        path(current),
+                                        Map.of("revision", revision(current), "title", blank)),
+                                200);
+                assertThat(current.get("title").isNull()).isTrue();
+                assertThat(current.get("sourceRevision").asLong()).isEqualTo(source);
+            }
+            var rejected =
+                    send(
+                            client,
+                            token,
+                            "PATCH",
+                            path(current),
+                            Map.of(
+                                    "revision",
+                                    revision(current),
+                                    "originalText",
+                                    "변경 원문",
+                                    "emotions",
+                                    List.of("SAD")));
+            assertThat(rejected.statusCode()).isEqualTo(400);
+            assertThat(rejected.body()).contains("DREAM_EMOTIONS_IMMUTABLE");
+            var after = data(send(client, token, "GET", path(current), null), 200);
+            assertThat(after.get("originalText").asString()).isEqualTo("원문");
+            assertThat(revision(after)).isEqualTo(revision(current));
+            assertThat(after.get("sourceRevision").asLong()).isEqualTo(source);
         }
     }
 

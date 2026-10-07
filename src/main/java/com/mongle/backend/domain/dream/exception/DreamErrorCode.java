@@ -1,8 +1,10 @@
 package com.mongle.backend.domain.dream.exception;
 
 import com.mongle.backend.global.error.ErrorCode;
+
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.HttpStatus;
 
 @Getter
@@ -16,8 +18,10 @@ public enum DreamErrorCode implements ErrorCode {
     INVALID_TEXT(
             HttpStatus.BAD_REQUEST, "DREAM_INVALID_TEXT", "꿈 원문은 공백을 제외한 내용이 있어야 하며 최대 500자입니다."),
     INVALID_EMOTIONS(HttpStatus.BAD_REQUEST, "DREAM_INVALID_EMOTIONS", "감정은 중복 없이 1~3개 선택해주세요."),
+    EMOTIONS_IMMUTABLE(
+            HttpStatus.BAD_REQUEST, "DREAM_EMOTIONS_IMMUTABLE", "완성한 꿈의 감정은 수정할 수 없습니다."),
     INVALID_TITLE(
-            HttpStatus.BAD_REQUEST, "DREAM_INVALID_TITLE", "제목은 공백을 제외한 내용이 있어야 하며 최대 100자입니다."),
+            HttpStatus.BAD_REQUEST, "DREAM_INVALID_TITLE", "제목은 공백을 제외한 내용이 있어야 하며 최대 20자입니다."),
     INVALID_STATE(HttpStatus.CONFLICT, "DREAM_INVALID_STATE", "현재 작성 단계에서는 이 작업을 할 수 없습니다."),
     VERSION_CONFLICT(
             HttpStatus.CONFLICT,

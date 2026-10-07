@@ -5,14 +5,18 @@ import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.global.common.BaseEntity;
 import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.error.BusinessException;
+
 import jakarta.persistence.*;
+
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.OptimisticLock;
 import org.hibernate.type.SqlTypes;
+
 import java.time.LocalDate;
 import java.util.*;
 
@@ -71,6 +75,11 @@ public class Dream extends BaseEntity {
     @ColumnDefault("0")
     private long revision;
 
+    // 수정 요청 충돌을 막는 revision과 AI 입력의 출처 버전을 분리한다.
+    @Column(name = "source_revision", nullable = false)
+    @ColumnDefault("0")
+    private long sourceRevision;
+
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @ColumnDefault("'PENDING'")
@@ -95,20 +104,27 @@ public class Dream extends BaseEntity {
     }
 
     public void checkRevision(Long expected) {
-        if (expected == null || expected != revision)
+        if (expected == null || expected != revision) {
             throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
+        }
     }
 
     public void saveDraft(String text) {
-        if (recordStatus == DreamRecordStatus.COMPLETED)
+        if (recordStatus == DreamRecordStatus.COMPLETED) {
             throw new BusinessException(DreamErrorCode.INVALID_STATE);
+        }
         DreamPolicy.text(text, recordStatus == DreamRecordStatus.DRAFT);
-        originalText = text;
+        if (!Objects.equals(originalText, text)) {
+            originalText = text;
+            sourceRevision++;
+        }
     }
 
     public void submit() {
         // 같은 요청을 재시도해도 완료 단계를 되돌리지 않는다.
-        if (recordStatus == DreamRecordStatus.EMOTION_PENDING) return;
+        if (recordStatus == DreamRecordStatus.EMOTION_PENDING) {
+            return;
+        }
         requireState(DreamRecordStatus.DRAFT);
         DreamPolicy.text(originalText, false);
         recordStatus = DreamRecordStatus.EMOTION_PENDING;
@@ -119,6 +135,7 @@ public class Dream extends BaseEntity {
         DreamPolicy.emotions(values);
         emotions.clear();
         emotions.addAll(values);
+        sourceRevision++;
         recordStatus = DreamRecordStatus.COMPLETED;
     }
 
@@ -130,27 +147,50 @@ public class Dream extends BaseEntity {
             boolean titleProvided,
             String nextTitle) {
         requireState(DreamRecordStatus.COMPLETED);
-        if (textProvided) DreamPolicy.text(text, false);
-        if (emotionsProvided) DreamPolicy.emotions(values);
-        if (titleProvided) DreamPolicy.title(nextTitle);
-        boolean changed =
-                (textProvided && !Objects.equals(originalText, text))
-                        || (emotionsProvided && !emotions.equals(new HashSet<>(values)))
-                        || (titleProvided && !Objects.equals(title, nextTitle));
-        if (textProvided) originalText = text;
-        if (emotionsProvided) {
-            emotions.clear();
-            emotions.addAll(values);
+
+        if (textProvided) {
+            DreamPolicy.text(text, false);
         }
-        if (titleProvided) title = nextTitle;
-        // 분석 상태·분석 결과는 그대로 두고 실제로 바뀐 완성 기록만 수정 표시를 남긴다.
-        if (changed) edited = true;
+
+        if (emotionsProvided) {
+            DreamPolicy.emotions(values);
+
+            if (!emotions.equals(new HashSet<>(values))) {
+                throw new BusinessException(DreamErrorCode.EMOTIONS_IMMUTABLE);
+            }
+        }
+
+        String normalizedTitle = title;
+
+        if (titleProvided && !Objects.equals(title, nextTitle)) {
+            // 기존 20자 초과 제목을 그대로 재전달한 경우에는 데이터 변경 없이 유지한다.
+            normalizedTitle = DreamPolicy.editableTitle(nextTitle);
+        }
+
+        boolean textChanged = textProvided && !Objects.equals(originalText, text);
+        boolean titleChanged = titleProvided && !Objects.equals(title, normalizedTitle);
+
+        // 모든 입력을 검증한 뒤 변경한다. 감정은 완성 시 선택한 값을 유지한다.
+        if (textChanged) {
+            originalText = text;
+            sourceRevision++;
+        }
+
+        if (titleChanged) {
+            title = normalizedTitle;
+        }
+
+        if (textChanged || titleChanged || (titleProvided && normalizedTitle == null)) {
+            edited = true;
+        }
     }
 
     public void applyGeneratedTitle(String generatedTitle, long sourceRevision) {
         DreamPolicy.title(generatedTitle);
         // 생성 중 사용자가 수정했거나 제목을 직접 정한 경우에는 덮어쓰지 않는다.
-        if (revision == sourceRevision && title == null && !edited) title = generatedTitle;
+        if (this.sourceRevision == sourceRevision && title == null && !edited) {
+            title = generatedTitle;
+        }
     }
 
     public void changeAnalysisStatus(GenerationStatus status) {
@@ -158,6 +198,8 @@ public class Dream extends BaseEntity {
     }
 
     private void requireState(DreamRecordStatus expected) {
-        if (recordStatus != expected) throw new BusinessException(DreamErrorCode.INVALID_STATE);
+        if (recordStatus != expected) {
+            throw new BusinessException(DreamErrorCode.INVALID_STATE);
+        }
     }
 }
