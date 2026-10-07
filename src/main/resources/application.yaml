@@ -17,3 +17,15 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+
+mongle:
+  auth:
+    secret: ${MONGLE_AUTH_SECRET:}
+    issuer: mongle
+    audience: mongle-api
+    access-ttl: 15m
+    refresh-ttl: 14d
+    cookie-secure: true
+    cookie-same-site: ${MONGLE_AUTH_COOKIE_SAME_SITE:Lax}
+    allowed-origins: ${MONGLE_AUTH_ALLOWED_ORIGINS:}
