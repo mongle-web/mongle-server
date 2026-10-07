@@ -46,6 +46,9 @@ public class DreamSceneEntity {
             throw new IllegalArgumentException("장면과 꿈 요소는 같은 꿈에 속해야 합니다.");
         }
 
+        if (!Objects.equals(dreamScene.getAnalysis(), dreamEntity.getAnalysis())) {
+            throw new IllegalArgumentException("장면과 꿈 요소는 같은 분석에 속해야 합니다.");
+        }
         this.id = new DreamSceneEntityId(dreamScene.getId(), dreamEntity.getId());
     }
 

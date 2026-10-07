@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.OptimisticLock;
 import org.hibernate.type.SqlTypes;
 import java.time.LocalDate;
 import java.util.*;
@@ -74,6 +75,7 @@ public class Dream extends BaseEntity {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @ColumnDefault("'PENDING'")
     @Column(name = "analysis_status", nullable = false, length = 30)
+    @OptimisticLock(excluded = true)
     private GenerationStatus analysisStatus = GenerationStatus.PENDING;
 
     private Dream(User user, String text, LocalDate date, DreamRecordStatus status) {
@@ -149,6 +151,10 @@ public class Dream extends BaseEntity {
         DreamPolicy.title(generatedTitle);
         // 생성 중 사용자가 수정했거나 제목을 직접 정한 경우에는 덮어쓰지 않는다.
         if (revision == sourceRevision && title == null && !edited) title = generatedTitle;
+    }
+
+    public void changeAnalysisStatus(GenerationStatus status) {
+        analysisStatus = Objects.requireNonNull(status);
     }
 
     private void requireState(DreamRecordStatus expected) {

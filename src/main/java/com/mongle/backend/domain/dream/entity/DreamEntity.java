@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.dream.entity;
 
 import com.mongle.backend.global.common.BaseEntity;
+import com.mongle.backend.domain.dream.analysis.DreamAnalysis;
 import com.mongle.backend.domain.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -24,9 +25,18 @@ import java.util.Objects;
 
 @Getter
 @Entity
-@Table(name = "dream_entities")
+@Table(
+        name = "dream_entities",
+        uniqueConstraints =
+                @jakarta.persistence.UniqueConstraint(
+                        name = "uk_analysis_entity_name",
+                        columnNames = {"analysis_id", "entity_type", "normalized_name"}))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DreamEntity extends BaseEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "analysis_id")
+    private DreamAnalysis analysis;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -50,6 +60,9 @@ public class DreamEntity extends BaseEntity {
     @Column(nullable = false, length = 255)
     private String name;
 
+    @Column(name = "normalized_name", length = 255)
+    private String normalizedName;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -59,6 +72,7 @@ public class DreamEntity extends BaseEntity {
         this.user = dream.getUser();
         this.entityType = Objects.requireNonNull(entityType, "꿈 요소 유형이 필요합니다.");
         this.name = Objects.requireNonNull(name, "꿈 요소 이름이 필요합니다.");
+        this.normalizedName = DreamElementNames.normalize(name);
         this.description = description;
     }
 
@@ -70,5 +84,13 @@ public class DreamEntity extends BaseEntity {
                 .name(name)
                 .description(description)
                 .build();
+    }
+
+    public static DreamEntity create(
+            DreamAnalysis analysis, DreamEntityType type, String name, String description) {
+        DreamEntity entity =
+                create(Objects.requireNonNull(analysis.getDream()), type, name, description);
+        entity.analysis = analysis;
+        return entity;
     }
 }

@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.dream.entity;
 
 import com.mongle.backend.global.common.BaseEntity;
+import com.mongle.backend.domain.dream.analysis.DreamAnalysis;
 import com.mongle.backend.domain.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -21,9 +22,18 @@ import java.util.Objects;
 
 @Getter
 @Entity
-@Table(name = "dream_scenes")
+@Table(
+        name = "dream_scenes",
+        uniqueConstraints =
+                @jakarta.persistence.UniqueConstraint(
+                        name = "uk_analysis_scene_sequence",
+                        columnNames = {"analysis_id", "sequence_no"}))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DreamScene extends BaseEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "analysis_id")
+    private DreamAnalysis analysis;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -67,5 +77,17 @@ public class DreamScene extends BaseEntity {
                 .content(content)
                 .disconnectedFromPrevious(disconnectedFromPrevious)
                 .build();
+    }
+
+    public static DreamScene create(
+            DreamAnalysis analysis, int sequence, String content, boolean disconnected) {
+        DreamScene scene =
+                create(
+                        Objects.requireNonNull(analysis.getDream()),
+                        sequence,
+                        content,
+                        disconnected);
+        scene.analysis = analysis;
+        return scene;
     }
 }

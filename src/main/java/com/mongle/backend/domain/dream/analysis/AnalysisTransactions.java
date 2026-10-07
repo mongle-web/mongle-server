@@ -1,0 +1,217 @@
+package com.mongle.backend.domain.dream.analysis;
+
+import com.mongle.backend.domain.dream.entity.*;
+import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.repository.DreamRepository;
+import com.mongle.backend.domain.user.repository.UserRepository;
+import com.mongle.backend.domain.user.exception.UserErrorCode;
+import com.mongle.backend.global.common.GenerationStatus;
+import com.mongle.backend.global.error.BusinessException;
+import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.*;
+import java.time.*;
+import java.util.*;
+
+@Service
+@RequiredArgsConstructor
+public class AnalysisTransactions {
+    private final UserRepository users;
+    private final DreamRepository dreams;
+    private final StoredAnalysisRepository analyses;
+    private final EntityManager em;
+    private final Clock authClock;
+
+    public record Reservation(AnalysisResponse response, StructureGenerator.Input input) {}
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Reservation begin(Long userId, Long dreamId, Long revision, boolean available) {
+        lock(userId);
+
+        var dream =
+                dreams.findByIdAndUserId(dreamId, userId)
+                        .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        var prior = analyses.findBySourceDreamIdAndUserId(dreamId, userId);
+        var now = authClock.instant();
+
+        if (prior.isPresent()
+                && (prior.get().getStatus() == GenerationStatus.COMPLETED
+                        || prior.get().active(now))) {
+            return new Reservation(response(prior.get()), null);
+        }
+
+        if (dream.getRecordStatus() != DreamRecordStatus.COMPLETED) {
+            throw new BusinessException(DreamErrorCode.INVALID_STATE);
+        }
+
+        dream.checkRevision(revision);
+
+        if (!available) {
+            throw new BusinessException(AnalysisErrorCode.UNAVAILABLE);
+        }
+
+        var analysis = prior.orElseGet(() -> DreamAnalysis.create(dream));
+        analysis.start(revision, now, Duration.ofMinutes(2));
+        dream.changeAnalysisStatus(GenerationStatus.PROCESSING);
+        analyses.save(analysis);
+        em.flush();
+
+        var input =
+                new StructureGenerator.Input(
+                        userId,
+                        analysis.getId(),
+                        analysis.getAttemptId(),
+                        dream.getOriginalText(),
+                        dream.getEmotions());
+
+        return new Reservation(response(analysis), input);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public AnalysisResponse finish(StructureGenerator.Input input, StructureResult result) {
+        lock(input.userId());
+
+        var analysis = owned(input.userId(), input.analysisId());
+
+        if (!analysis.accepts(input.attemptId())) {
+            return response(analysis);
+        }
+
+        var dream = analysis.getDream();
+
+        if (dream == null) {
+            analysis.fail("SOURCE_DELETED");
+            return response(analysis);
+        }
+
+        if (dream.getRevision() != analysis.getObservedRevision()) {
+            analysis.fail("SOURCE_CHANGED");
+            dream.changeAnalysisStatus(GenerationStatus.FAILED);
+            em.flush();
+            return response(analysis);
+        }
+
+        Map<String, DreamEntity> elements = new HashMap<>();
+
+        for (var e : result.elements()) {
+            var entity = DreamEntity.create(analysis, e.type(), e.name(), e.description());
+            em.persist(entity);
+            elements.put(e.key(), entity);
+        }
+
+        for (var s : result.scenes()) {
+            var scene =
+                    DreamScene.create(
+                            analysis, s.sequence(), s.content(), s.disconnectedFromPrevious());
+            em.persist(scene);
+
+            for (var key : s.elementKeys()) {
+                em.persist(DreamSceneEntity.link(scene, elements.get(key)));
+            }
+        }
+
+        dream.changeAnalysisStatus(GenerationStatus.COMPLETED);
+        em.flush();
+        analysis.finish(dream.getRevision());
+
+        return response(analysis);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public AnalysisResponse fail(StructureGenerator.Input input, String code) {
+        lock(input.userId());
+
+        var analysis = owned(input.userId(), input.analysisId());
+
+        if (!analysis.accepts(input.attemptId())) {
+            return response(analysis);
+        }
+
+        analysis.fail(code);
+
+        if (analysis.getDream() != null) {
+            analysis.getDream().changeAnalysisStatus(GenerationStatus.FAILED);
+        }
+
+        em.flush();
+
+        return response(analysis);
+    }
+
+    @Transactional(readOnly = true)
+    public AnalysisResponse get(Long userId, Long analysisId) {
+        return response(owned(userId, analysisId));
+    }
+
+    private DreamAnalysis owned(Long userId, Long id) {
+        return analyses.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new BusinessException(AnalysisErrorCode.NOT_FOUND));
+    }
+
+    private void lock(Long id) {
+        var u =
+                users.findByIdForUpdate(id)
+                        .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        if (!u.isOnboardingCompleted())
+            throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+    }
+
+    public AnalysisResponse response(DreamAnalysis a) {
+        var sceneRows =
+                em.createQuery(
+                                "select s from DreamScene s where s.analysis.id=:id order by s.sequenceNo",
+                                DreamScene.class)
+                        .setParameter("id", a.getId())
+                        .getResultList();
+        var entityRows =
+                em.createQuery(
+                                "select e from DreamEntity e where e.analysis.id=:id order by e.id",
+                                DreamEntity.class)
+                        .setParameter("id", a.getId())
+                        .getResultList();
+        var links =
+                em.createQuery(
+                                "select l from DreamSceneEntity l join fetch l.dreamScene join fetch l.dreamEntity where l.dreamScene.analysis.id=:id",
+                                DreamSceneEntity.class)
+                        .setParameter("id", a.getId())
+                        .getResultList();
+        var refs = new HashMap<Long, List<String>>();
+        for (var l : links)
+            refs.computeIfAbsent(l.getDreamScene().getId(), k -> new ArrayList<>())
+                    .add("e" + l.getDreamEntity().getId());
+        var scenes =
+                sceneRows.stream()
+                        .map(
+                                s ->
+                                        new StructureResult.Scene(
+                                                s.getSequenceNo(),
+                                                s.getContent(),
+                                                s.isDisconnectedFromPrevious(),
+                                                refs.getOrDefault(s.getId(), List.of()).stream()
+                                                        .sorted()
+                                                        .toList()))
+                        .toList();
+        var elements =
+                entityRows.stream()
+                        .map(
+                                e ->
+                                        new StructureResult.Element(
+                                                "e" + e.getId(),
+                                                e.getEntityType(),
+                                                e.getName(),
+                                                e.getDescription()))
+                        .toList();
+        return new AnalysisResponse(
+                a.getId(),
+                a.getDream() == null ? null : a.getDream().getId(),
+                a.getDreamedAt(),
+                a.getSourceRevision(),
+                a.getStatus(),
+                a.getFailureCode(),
+                a.getDream() == null,
+                a.getDream() != null && a.getDream().getRevision() != a.getObservedRevision(),
+                scenes,
+                elements);
+    }
+}
