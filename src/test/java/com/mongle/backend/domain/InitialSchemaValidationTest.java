@@ -20,6 +20,25 @@ class InitialSchemaValidationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
+    void createsImageTableFromMigrationAndAllowsRerunInH2MysqlMode() {
+        jdbcTemplate.execute("drop table dream_images");
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var migration = new org.springframework.core.io.ClassPathResource("db/migrations/20261006-dream-image.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            return null;
+        });
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'dream_images'
+                """, String.class)).containsExactlyInAnyOrder(
+                "id", "analysis_id", "user_id", "source_revision", "story_hash", "style", "mood",
+                "status", "attempt_id", "lease_until", "failure_code", "storage_key", "content_type",
+                "width", "height", "result_revision", "result_story_hash", "result_style", "result_mood",
+                "version", "created_at", "updated_at");
+    }
+
+    @Test
     void validatesJpaMappingsAgainstErdBasedSqlInsteadOfGeneratedTables() {
         assertThat(jdbcTemplate.queryForList("""
                 select column_name from information_schema.columns
@@ -73,5 +92,10 @@ class InitialSchemaValidationTest {
                 select column_name from information_schema.columns
                 where table_schema = 'public' and table_name = 'dream_analysis_display_keywords'
                 """, String.class)).containsExactlyInAnyOrder("analysis_id", "keyword_order", "keyword");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'dream_images'
+                """, String.class)).contains("analysis_id", "user_id", "story_hash", "storage_key",
+                "result_revision", "result_story_hash", "result_style", "result_mood", "version");
     }
 }
