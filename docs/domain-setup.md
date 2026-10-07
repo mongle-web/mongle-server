@@ -23,7 +23,9 @@ JPA Auditing, 공통 Enum, Swagger 인프라와 Controller/Api 작성 규칙을 
 `AiGenerationLog`는 ERD에 `updated_at`이 없으므로 `BaseCreatedEntity`만 상속한다.
 Auditing 시각은 UTC `LocalDateTime`으로 저장하고, `dreamed_at`은 사용자가 입력하는 `LocalDate`로 둔다.
 상태·유형은 `EnumType.STRING` 및 VARCHAR로 저장한다(MySQL 네이티브 ENUM을 사용하지 않는다).
-비용은 ERD의 `DECIMAL(12,8)`에 맞춘 `BigDecimal`이다.
+비용은 `BigDecimal`이다. 이후 호출 로그 이슈에서 추정 비용을 nullable `DECIMAL(20,8)`로
+확장하고, 비교 비용은 기존 `DECIMAL(12,8)`을 유지했다. 새 로그의 미확정 비용/수량은 null로 저장한다.
+시도 추적·단가 스냅샷·기존 DB 마이그레이션은 [로그와 비용 문서](ai-generation-logging.md)를 참고한다.
 
 ERD에는 꿈 제목·음성 파일 URL·비밀번호가 없어 추가하지 않았다.
 `dreamed_at`의 NULL 허용과 나머지 VARCHAR 길이, 기본값도 설계에 맞췄다.

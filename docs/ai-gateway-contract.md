@@ -6,7 +6,8 @@
 첫 번째 이슈는 인터페이스, DTO, 공통 오류와 테스트용 Gateway를 구현했다.
 두 번째 이슈에서 LINER HTTP 통신, API 키 설정, 모델 선택과 재시도를 구현했으며
 설정·실행 방법은 [LINER 연동 문서](liner-gateway.md)를 참고한다. 호출 로그 저장과 비용 계산은
-세 번째 이슈, 꿈 구조화·서사화의 프롬프트·실제 출력 스키마·업무 검증은 각 도메인 이슈에서 작성한다.
+세 번째 이슈에서 구현했다([로그와 비용 문서](ai-generation-logging.md)).
+꿈 구조화·서사화의 프롬프트·실제 출력 스키마·업무 검증은 각 도메인 이슈에서 작성한다.
 
 ## 패키지 구성과 코드 읽는 순서
 
@@ -33,6 +34,8 @@ domain.ai
 │   └── AiTaskType
 ├── repository
 │   └── AiGenerationLogRepository
+├── config                    # 가격표, 비동기 실행 자원·한도
+├── service                   # 비용 계산, 로그 저장
 └── liner                     # LinerAiGateway, config, client, mapper
 ```
 
@@ -56,7 +59,7 @@ domain.ai
    요청 생성 → 인터페이스 호출 → 응답 사용의 실행 예시를 확인한다.
 
 DTO 제약을 더 확인하려면 `src/test/java/com/mongle/backend/domain/ai/dto/AiGatewayDtoTest.java`를 읽는다.
-로그 엔티티는 초기 세팅에 존재하지만 이번 호출 계약과 아직 연결되지 않았다.
+LINER 구현체는 호출 시도마다 로그 저장 서비스를 통해 로그 엔티티와 연결한다.
 
 ## 호출 흐름과 책임
 
@@ -70,17 +73,20 @@ DTO 제약을 더 확인하려면 `src/test/java/com/mongle/backend/domain/ai/dt
        ↓
 실제 제공자 어댑터 LinerAiGateway / StubAiGateway (테스트)
        ↓
-  AiGenerationResult 또는 AiGatewayException
+  CompletableFuture<AiGenerationResult> 정상 완료 또는 AiGatewayException 예외 완료
        ↓
 도메인 서비스
   4. 생성 본문을 도메인 DTO로 해석하고 업무 규칙 검증
   5. 엔티티 정적 팩터리로 생성한 뒤 저장
 ```
 
-`AiGateway`는 동기식 비스트리밍 텍스트/JSON 생성 계약이다. 이 인터페이스를 구현한
+`AiGateway`는 비동기·비스트리밍 텍스트/JSON 생성 계약이다.
+`CompletableFuture<AiGenerationResult>`를 즉시 반환하며, 정상 결과 또는 실패로 나중에 완료된다. 이 인터페이스를 구현한
 제공자 어댑터를 나중에 교체해도 도메인 서비스의 호출 형식은 유지할 수 있다.
 공통 DTO는 HTTP API나 LINER 원본 응답에 그대로 노출할 형식이 아니다.
 외부 호출을 기다리는 동안 DB 트랜잭션을 유지하지 않도록 도메인 서비스에서 경계를 나눈다.
+호출부는 `get()`/`join()`으로 기다리지 않고 완료 처리를 연결한다. 실행 경계·오류·취소는
+[비동기 Gateway 문서](ai-gateway-async.md)를 참고한다.
 
 ## 요청
 
@@ -132,9 +138,8 @@ usage 전체가 없으면 `AiTokenUsage.unknown()`을 사용한다. 부분 제�
 알려졌다면 추론 토큰이 이를 넘을 수 없다. 입력·출력·합계가 모두 알려졌을 때는 합계가
 일치해야 한다. 캐시와 추론 토큰은 부분 수량이므로 전체 토큰 수에 다시 더하지 않는다.
 
-현재 `AiGenerationLog` 엔티티는 일부 토큰 수와 비용이 필수다. 이번 계약을 기존 엔티티에
-직접 저장하지 않는다. 세 번째 이슈에서 미제공 사용량·비용을 보존하는 로그 모델과
-개별 외부 호출 시도 추적 방식을 정해야 한다.
+`AiGenerationLog`는 세 번째 이슈에서 사용량·비용의 null을 보존하도록 확장했다.
+LINER 구현체는 개별 호출 시도마다 메타데이터를 기록하고, 미확정 비용을 0으로 바꾸지 않는다.
 
 ### 종료 사유
 
@@ -169,6 +174,8 @@ LINER 공식 명세에는 `choices[].finish_reason`의 `stop`과 `tool_calls` �
 | `INSUFFICIENT_CREDIT` | `AI_503_1` | 503 | 아니오 |
 | `RATE_LIMITED` | `AI_503_2` | 503 | 예 |
 | `PROVIDER_UNAVAILABLE` | `AI_503_3` | 503 | 예 |
+| `CAPACITY_EXCEEDED` | `AI_503_4` | 503 | 아니오 |
+| `CANCELLED` (취소 로그) | `AI_503_5` | 503 | 아니오 |
 | `TIMEOUT` | `AI_504_1` | 504 | 아니오 |
 | `INVALID_RESPONSE` | `AI_502_3` | 502 | 아니오 |
 | `INCOMPLETE_RESPONSE` | `AI_502_4` | 502 | 아니오 |
@@ -177,6 +184,10 @@ LINER 공식 명세에는 `choices[].finish_reason`의 `stop`과 `tool_calls` �
 기존 공통 400 검증과 별개다. 제공자 API 키 오류를 사용자의 로그인 오류(401)로 내보내지
 않는다. 제공자 제한 초과도 몽글 사용자의 요청 횟수 제한과 구분하여 503으로 표현한다.
 실제 LINER HTTP 상태와 본문의 오류를 이 분류로 변환하는 코드는 두 번째 이슈의 LinerPayloadMapper에 있다.
+
+외부 호출 실패는 메서드 호출 순간 throw되지 않고 반환 Future가 예외 완료되는 방식으로 전달한다.
+`get()`/`join()`은 각각 ExecutionException/CompletionException으로 원인을 감싸므로 호출부의
+실패 콜백에서 원인인 AiGatewayException을 확인한다.
 
 예외에는 요청 ID, 재시도 가능 여부, 선택적인 `Duration retryAfter`, 원인을 담는다.
 재시도 후보 유형이면서 실제 응답 맥락도 허용해야 `retryable=true`가 된다. 이 값은 자동
@@ -201,6 +212,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 JsonMapper mapper = JsonMapper.builder().build();
 AiJsonSchema schema = new AiJsonSchema("example_output", mapper.readTree("""
@@ -223,11 +235,13 @@ AiGenerationResult fixture = new AiGenerationResult(
 
 StubAiGateway stub = new StubAiGateway().enqueueResult(fixture);
 AiGateway gateway = stub;
-AiGenerationResult result = gateway.generate(request);
+CompletableFuture<AiGenerationResult> pending = gateway.generate(request);
 
-// 호출부가 내용 해석과 업무 검증을 맡는다. 모델명/사용량은 본문과 분리되어 있다.
-JsonNode output = mapper.readTree(result.content());
-String value = output.get("value").asString();
+// 아래는 본문 읽기만 하는 테스트용 예시다. 도메인 DB 저장은 자신의 작업 실행기에서 수행한다.
+pending.thenAccept(result -> {
+    JsonNode output = mapper.readTree(result.content());
+    String value = output.get("value").asString();
+});
 ```
 
 `StubAiGateway`는 `src/test`에 있으며 운영 Bean으로 등록되지 않는다. 도메인 테스트에서
