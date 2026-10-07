@@ -16,6 +16,10 @@ import com.mongle.backend.domain.ai.liner.config.LinerProperties;
 import com.mongle.backend.domain.ai.liner.mapper.LinerPayloadMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.mongle.backend.domain.ai.service.AiGenerationLogService;
+import com.mongle.backend.domain.ai.dto.logging.AiGenerationAttempt;
+import com.mongle.backend.global.logging.HttpRequestLoggingFilter;
+import com.mongle.backend.global.logging.support.LogCapture;
+import org.slf4j.MDC;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -99,6 +103,39 @@ class LinerAiGatewayIntegrationTest {
         if (client != null) client.shutdownNow();
         if (server != null) server.stop(0);
         if (executor != null) executor.shutdownNow();
+    }
+
+    @Test
+    void logsCorrelatedRetryAndCompletionWithoutPromptsKeysOrGeneratedContent() {
+        replies.add(new Reply(429, "{\"error\":{\"message\":\"provider-error-secret\"}}", Map.of(), Duration.ZERO));
+        var provider = (tools.jackson.databind.node.ObjectNode) json.readTree(success("response-secret", "stop"));
+        provider.put("model", "reported\nmodel");
+        provider.putObject("usage").put("prompt_tokens", 10).put("completion_tokens", 20).put("total_tokens", 30);
+        replies.add(new Reply(200, json.writeValueAsString(provider), Map.of("x-request-id", "provider-trace"), Duration.ZERO));
+        var logger = org.mockito.Mockito.mock(AiGenerationLogService.class);
+        var gateway = gateway(properties("api-key-secret", Duration.ofSeconds(2), Duration.ofSeconds(3)), logger);
+        var request = new AiGenerationRequest(7L, AiTaskType.DREAM_STRUCTURE, "test-v1",
+                List.of(new AiMessage(AiMessage.Role.USER, "prompt-secret")), null);
+        try (var capture = new LogCapture(LinerAiGateway.class)) {
+            CompletableFuture<?> pending;
+            MDC.put(HttpRequestLoggingFilter.REQUEST_ID, "http-trace");
+            try {
+                pending = gateway.generate(request);
+            } finally {
+                // 실제 HTTP 필터처럼 호출 스레드의 MDC를 즉시 제거해도 비동기 로그가 연결돼야 한다.
+                MDC.remove(HttpRequestLoggingFilter.REQUEST_ID);
+            }
+            await(pending);
+            var rows = org.mockito.ArgumentCaptor.forClass(AiGenerationAttempt.class);
+            org.mockito.Mockito.verify(logger, org.mockito.Mockito.times(2)).record(rows.capture());
+            String callId = rows.getValue().callId();
+            assertThat(capture.messages()).allSatisfy(message -> assertThat(message).contains("requestId=http-trace", "callId=" + callId));
+            assertThat(capture.messages()).anyMatch(m -> m.contains("AI 재시도 예약") && m.contains("attemptNo=2"));
+            assertThat(capture.messages().stream().filter(m -> m.contains("AI 호출 완료"))).hasSize(1);
+            String text = String.join("\n", capture.messages());
+            assertThat(text).contains("outcome=success", "model=reported_model", "inputTokens=10", "outputTokens=20")
+                    .doesNotContain("prompt-secret", "response-secret", "api-key-secret", "provider-error-secret", "reported\nmodel");
+        }
     }
 
     @Test

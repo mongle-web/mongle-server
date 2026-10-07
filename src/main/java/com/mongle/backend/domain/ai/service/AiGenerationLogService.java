@@ -46,6 +46,9 @@ public class AiGenerationLogService {
                 // flush로 SQL 오류를 확인한다. 커밋은 executeWithoutResult가 돌아오기 전에 완료한다.
                 logs.saveAndFlush(AiGenerationLog.create(user, attempt, cost));
             });
+            // 콜백 내부가 아닌 커밋 완료 뒤에 기록한다. 콘솔 로그와 DB 행을 callId로 대조할 수 있다.
+            log.debug("AI 호출 로그 저장 완료: callId={}, attemptNo={}, costStatus={}, estimatedCostUsd={}",
+                    attempt.callId(), attempt.attemptNo(), cost.status(), cost.amountUsd());
         } catch (RuntimeException exception) {
             // catch를 트랜잭션 바깥에 둬 flush뿐 아니라 커밋 오류도 흡수한다. 안쪽 트랜잭션만 롤백된다.
             // 예외 메시지·스택에는 SQL 값이나 사용자 원문이 섞일 수 있어 안전한 식별자와 오류 종류만 남긴다.
