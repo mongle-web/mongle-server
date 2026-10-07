@@ -21,6 +21,15 @@ springdoc:
 
 mongle:
   ai:
+    pricing:
+      models:
+        # 대괄호는 모델명의 점(.)을 중첩 경로가 아닌 실제 Map 키로 보존한다.
+        "[liner-mark-1.1]":
+          # USD / 100만 토큰. 공식 가격표 확인: 2026-10-08. 변경 시 버전도 함께 갱신한다.
+          version: ${LINER_PRICING_VERSION:2026-10-08}
+          input-usd-per-million: ${LINER_INPUT_USD_PER_MILLION:1.00}
+          output-usd-per-million: ${LINER_OUTPUT_USD_PER_MILLION:5.00}
+          cached-input-usd-per-million: ${LINER_CACHED_INPUT_USD_PER_MILLION:0.10}
     liner:
       # 키가 없어도 서버는 기동하며 실제 AI 호출만 실패한다. 비밀 값은 저장소에 넣지 않는다.
       api-key: ${LINER_API_KEY:}
