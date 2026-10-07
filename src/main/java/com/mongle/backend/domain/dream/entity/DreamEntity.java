@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.dream.entity;
 
 import com.mongle.backend.global.common.BaseEntity;
+import com.mongle.backend.domain.user.entity.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -31,9 +32,15 @@ public class DreamEntity extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "dream_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    // 원문 삭제 후에도 분석 결과는 남기므로 꿈 연결은 해제할 수 있다.
+    @JoinColumn(name = "dream_id")
     private Dream dream;
+
+    // 꿈이 삭제된 뒤에도 분석 결과의 소유자를 확인할 수 있어야 한다.
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
@@ -48,13 +55,15 @@ public class DreamEntity extends BaseEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private DreamEntity(Dream dream, DreamEntityType entityType, String name, String description) {
-        this.dream = Objects.requireNonNull(dream, "dream must not be null");
-        this.entityType = Objects.requireNonNull(entityType, "entityType must not be null");
-        this.name = Objects.requireNonNull(name, "name must not be null");
+        this.dream = Objects.requireNonNull(dream, "꿈 기록이 필요합니다.");
+        this.user = dream.getUser();
+        this.entityType = Objects.requireNonNull(entityType, "꿈 요소 유형이 필요합니다.");
+        this.name = Objects.requireNonNull(name, "꿈 요소 이름이 필요합니다.");
         this.description = description;
     }
 
-    public static DreamEntity create(Dream dream, DreamEntityType entityType, String name, String description) {
+    public static DreamEntity create(
+            Dream dream, DreamEntityType entityType, String name, String description) {
         return builder()
                 .dream(dream)
                 .entityType(entityType)

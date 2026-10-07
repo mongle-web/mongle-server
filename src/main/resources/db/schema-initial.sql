@@ -50,36 +50,51 @@ CREATE TABLE dreams (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
     original_text TEXT NOT NULL,
-    dreamed_at DATE NULL,
-    representative_emotion VARCHAR(50) NULL,
+    dreamed_at DATE NOT NULL,
+    title VARCHAR(100) NULL,
+    record_status VARCHAR(30) NOT NULL DEFAULT 'EMOTION_PENDING',
+    is_edited BOOLEAN NOT NULL DEFAULT FALSE,
+    revision BIGINT NOT NULL DEFAULT 0,
     analysis_status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT uk_dreams_user_date UNIQUE (user_id, dreamed_at),
     CONSTRAINT fk_dreams_user FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+CREATE TABLE dream_emotions (
+    dream_id BIGINT NOT NULL,
+    emotion VARCHAR(20) NOT NULL,
+    CONSTRAINT uk_dream_emotions UNIQUE (dream_id, emotion),
+    CONSTRAINT fk_dream_emotions_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
 );
 
 CREATE TABLE dream_scenes (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    dream_id BIGINT NOT NULL,
+    dream_id BIGINT NULL,
+    user_id BIGINT NOT NULL,
     sequence_no INT NOT NULL,
     content TEXT NOT NULL,
     is_disconnected_from_previous BOOLEAN NOT NULL DEFAULT FALSE,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT fk_dream_scenes_user FOREIGN KEY (user_id) REFERENCES users (id),
     CONSTRAINT fk_dream_scenes_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
 );
 
 CREATE TABLE dream_entities (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    dream_id BIGINT NOT NULL,
+    dream_id BIGINT NULL,
+    user_id BIGINT NOT NULL,
     entity_type VARCHAR(30) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT fk_dream_entities_user FOREIGN KEY (user_id) REFERENCES users (id),
     CONSTRAINT fk_dream_entities_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
 );
 
