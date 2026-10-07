@@ -56,8 +56,8 @@ public class Dream extends BaseEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private Dream(User user, String originalText, LocalDate dreamedAt, String representativeEmotion) {
-        this.user = Objects.requireNonNull(user, "user must not be null");
-        this.originalText = Objects.requireNonNull(originalText, "originalText must not be null");
+        this.user = Objects.requireNonNull(user, "사용자는 필수입니다.");
+        this.originalText = Objects.requireNonNull(originalText, "꿈 원문은 필수입니다.");
         this.dreamedAt = dreamedAt;
         this.representativeEmotion = representativeEmotion;
     }

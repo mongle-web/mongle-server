@@ -48,9 +48,9 @@ public class DreamEntity extends BaseEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private DreamEntity(Dream dream, DreamEntityType entityType, String name, String description) {
-        this.dream = Objects.requireNonNull(dream, "dream must not be null");
-        this.entityType = Objects.requireNonNull(entityType, "entityType must not be null");
-        this.name = Objects.requireNonNull(name, "name must not be null");
+        this.dream = Objects.requireNonNull(dream, "꿈은 필수입니다.");
+        this.entityType = Objects.requireNonNull(entityType, "꿈 요소 유형은 필수입니다.");
+        this.name = Objects.requireNonNull(name, "이름은 필수입니다.");
         this.description = description;
     }
 
