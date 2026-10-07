@@ -58,5 +58,12 @@ class InitialSchemaValidationTest {
                 select column_name from information_schema.columns
                 where table_schema = 'public' and table_name = 'refresh_session_tokens'
                 """, String.class)).containsExactlyInAnyOrder("session_id", "token_hash");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'dream_stories'
+                """, String.class)).containsExactlyInAnyOrder(
+                "id", "analysis_id", "user_id", "source_revision", "prompt_version", "status",
+                "attempt_id", "lease_until", "failure_code", "result_json", "result_revision",
+                "result_prompt_version", "version", "created_at", "updated_at");
     }
 }

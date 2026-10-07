@@ -5,9 +5,11 @@ import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.domain.dream.repository.DreamAnalysisRepository;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
+import com.mongle.backend.domain.dream.story.DreamStoryRepository;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
+import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.error.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -26,6 +28,7 @@ public class DreamService {
     private final DreamRepository dreams;
     private final UserRepository users;
     private final DreamAnalysisRepository analyses;
+    private final DreamStoryRepository stories;
     private final Clock authClock;
 
     @Transactional
@@ -116,7 +119,12 @@ public class DreamService {
         lockUser(userId);
         var dream = owned(userId, id);
         dream.checkRevision(revision);
+
+        // 분석 FK를 해제하기 전에 생성 중 이야기를 실패 처리한다. 완료 결과는 보존한다.
+        stories.failProcessingForDeletedDream(
+                id, GenerationStatus.PROCESSING, GenerationStatus.FAILED);
         analyses.detachFromDream(id);
+
         // 소프트 삭제나 원문 스냅샷을 남기지 않는다. 감정 컬렉션도 함께 삭제된다.
         dreams.delete(dream);
         dreams.flush();
