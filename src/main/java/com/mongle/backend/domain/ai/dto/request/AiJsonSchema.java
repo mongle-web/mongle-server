@@ -18,13 +18,13 @@ import java.util.Objects;
 public record AiJsonSchema(String name, JsonNode schema, boolean strict) {
 
     public AiJsonSchema {
-        Objects.requireNonNull(name, "name must not be null");
-        Objects.requireNonNull(schema, "schema must not be null");
+        Objects.requireNonNull(name, "이름은 필수입니다.");
+        Objects.requireNonNull(schema, "출력 스키마는 필수입니다.");
         if (name.isBlank()) {
-            throw new IllegalArgumentException("name must not be blank");
+            throw new IllegalArgumentException("이름은 비어 있을 수 없습니다.");
         }
         if (!schema.isObject()) {
-            throw new IllegalArgumentException("schema must be a JSON object");
+            throw new IllegalArgumentException("출력 스키마는 JSON 객체여야 합니다.");
         }
         // JsonNode는 내부 객체/배열이 가변이다. 생성 이후 원본을 수정해도 요청이 바뀌지 않게 복사한다.
         schema = schema.deepCopy();

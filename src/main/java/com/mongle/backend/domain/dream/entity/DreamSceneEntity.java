@@ -35,8 +35,8 @@ public class DreamSceneEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private DreamSceneEntity(DreamScene dreamScene, DreamEntity dreamEntity) {
-        this.dreamScene = Objects.requireNonNull(dreamScene, "scene must not be null");
-        this.dreamEntity = Objects.requireNonNull(dreamEntity, "entity must not be null");
+        this.dreamScene = Objects.requireNonNull(dreamScene, "꿈 장면은 필수입니다.");
+        this.dreamEntity = Objects.requireNonNull(dreamEntity, "꿈 요소는 필수입니다.");
         Dream sceneDream = dreamScene.getDream();
         Dream entityDream = dreamEntity.getDream();
         if (sceneDream != entityDream && (sceneDream.getId() == null

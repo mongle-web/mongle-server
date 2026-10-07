@@ -63,29 +63,29 @@ class AiGatewayDtoTest {
     void rejectsMissingCallContextBeforeAnyExternalCallCanBeMade() {
         List<AiMessage> messages = List.of(new AiMessage(AiMessage.Role.USER, "입력"));
         assertThatThrownBy(() -> new AiGenerationRequest(0, AiTaskType.DREAM_STRUCTURE, "v1", messages, null))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("userId");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("사용자 ID");
         assertThatThrownBy(() -> new AiGenerationRequest(1, null, "v1", messages, null))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("taskType");
+                .isInstanceOf(NullPointerException.class).hasMessageContaining("작업 종류");
         assertThatThrownBy(() -> new AiGenerationRequest(1, AiTaskType.DREAM_STRUCTURE, " ", messages, null))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("promptVersion");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("프롬프트 버전");
         assertThatThrownBy(() -> new AiGenerationRequest(1, AiTaskType.DREAM_STRUCTURE, "v1", List.of(), null))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("messages");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("메시지 목록");
         List<AiMessage> withNull = new ArrayList<>(messages);
         withNull.add(null);
         assertThatThrownBy(() -> new AiGenerationRequest(1, AiTaskType.DREAM_STRUCTURE, "v1", withNull, null))
                 .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new AiMessage(AiMessage.Role.USER, "\n "))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("content");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("내용");
         assertThatThrownBy(() -> new AiMessage(null, "입력"))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("role");
+                .isInstanceOf(NullPointerException.class).hasMessageContaining("메시지 역할");
     }
 
     @Test
     void rejectsOutputOptionsThatAreNotNamedJsonObjects() {
         assertThatThrownBy(() -> new AiJsonSchema(" ", mapper.createObjectNode(), true))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("name");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("이름");
         assertThatThrownBy(() -> new AiJsonSchema("fixture", mapper.readTree("[]"), true))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("JSON object");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("JSON 객체");
     }
 
     @Test
@@ -173,17 +173,17 @@ class AiGatewayDtoTest {
     @Test
     void rejectsEmptyContentAndInvalidResponseMetadata() {
         assertThatThrownBy(() -> result(" ", "fixture-model", "fixture-id", 1))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("content");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("내용");
         assertThatThrownBy(() -> result("ok", " ", "fixture-id", 1))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("modelName");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("모델명");
         assertThatThrownBy(() -> result("ok", "fixture-model", " ", 1))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("requestId");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("외부 요청 ID");
         assertThatThrownBy(() -> result("ok", "fixture-model", "fixture-id", -1))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("latencyMs");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("소요 시간");
         assertThatThrownBy(() -> new AiGenerationResult("ok", null, null, AiFinishReason.unknown(), null, 0))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("usage");
+                .isInstanceOf(NullPointerException.class).hasMessageContaining("토큰 사용량");
         assertThatThrownBy(() -> new AiGenerationResult("ok", null, AiTokenUsage.unknown(), null, null, 0))
-                .isInstanceOf(NullPointerException.class).hasMessageContaining("finishReason");
+                .isInstanceOf(NullPointerException.class).hasMessageContaining("종료 사유");
     }
 
     private AiGenerationResult result(String content, String model, String requestId, long latencyMs) {

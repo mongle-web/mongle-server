@@ -29,16 +29,16 @@ public record AiGenerationRequest(
 
     public AiGenerationRequest {
         if (userId <= 0) {
-            throw new IllegalArgumentException("userId must be positive");
+            throw new IllegalArgumentException("사용자 ID는 양수여야 합니다.");
         }
-        Objects.requireNonNull(taskType, "taskType must not be null");
-        Objects.requireNonNull(promptVersion, "promptVersion must not be null");
-        Objects.requireNonNull(messages, "messages must not be null");
+        Objects.requireNonNull(taskType, "작업 종류는 필수입니다.");
+        Objects.requireNonNull(promptVersion, "프롬프트 버전은 필수입니다.");
+        Objects.requireNonNull(messages, "메시지 목록은 필수입니다.");
         if (promptVersion.isBlank()) {
-            throw new IllegalArgumentException("promptVersion must not be blank");
+            throw new IllegalArgumentException("프롬프트 버전은 비어 있을 수 없습니다.");
         }
         if (messages.isEmpty()) {
-            throw new IllegalArgumentException("messages must not be empty");
+            throw new IllegalArgumentException("메시지 목록은 비어 있을 수 없습니다.");
         }
         // null 원소도 거절한다. 호출 후 외부 목록을 수정해도 메시지 순서와 내용이 바뀌지 않는다.
         messages = List.copyOf(messages);

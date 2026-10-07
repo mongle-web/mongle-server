@@ -44,9 +44,9 @@ public class DreamScene extends BaseEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private DreamScene(Dream dream, int sequenceNo, String content, boolean disconnectedFromPrevious) {
-        this.dream = Objects.requireNonNull(dream, "dream must not be null");
+        this.dream = Objects.requireNonNull(dream, "꿈은 필수입니다.");
         this.sequenceNo = sequenceNo;
-        this.content = Objects.requireNonNull(content, "content must not be null");
+        this.content = Objects.requireNonNull(content, "내용은 필수입니다.");
         this.disconnectedFromPrevious = disconnectedFromPrevious;
     }
 

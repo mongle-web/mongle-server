@@ -158,16 +158,19 @@ LINER 공식 명세에는 `choices[].finish_reason`의 `stop`과 `tool_calls` �
 따라서 기존 `GlobalExceptionHandler`가 오류 코드에 정한 HTTP 상태와 공통 `ApiResponse`를
 사용한다. 제공자 원본 상태/본문을 사용자에게 그대로 전달하지 않는다.
 
-| 오류 | 몽글의 HTTP 상태 | 재시도 후보 |
-| --- | --- | --- |
-| `INVALID_REQUEST` | 502 | 아니오 |
-| `AUTHENTICATION_FAILED` | 502 | 아니오 |
-| `INSUFFICIENT_CREDIT` | 503 | 아니오 |
-| `RATE_LIMITED` | 503 | 예 |
-| `PROVIDER_UNAVAILABLE` | 503 | 예 |
-| `TIMEOUT` | 504 | 아니오 |
-| `INVALID_RESPONSE` | 502 | 아니오 |
-| `INCOMPLETE_RESPONSE` | 502 | 아니오 |
+오류 코드 형식은 `AI_HTTP상태_순번`이다. 같은 HTTP 상태 안에서 순번을 부여하고,
+이미 공개한 번호는 재정렬하거나 다른 오류에 재사용하지 않는다.
+
+| 오류 | 응답 코드 | 몽글의 HTTP 상태 | 재시도 후보 |
+| --- | --- | --- | --- |
+| `INVALID_REQUEST` | `AI_502_1` | 502 | 아니오 |
+| `AUTHENTICATION_FAILED` | `AI_502_2` | 502 | 아니오 |
+| `INSUFFICIENT_CREDIT` | `AI_503_1` | 503 | 아니오 |
+| `RATE_LIMITED` | `AI_503_2` | 503 | 예 |
+| `PROVIDER_UNAVAILABLE` | `AI_503_3` | 503 | 예 |
+| `TIMEOUT` | `AI_504_1` | 504 | 아니오 |
+| `INVALID_RESPONSE` | `AI_502_3` | 502 | 아니오 |
+| `INCOMPLETE_RESPONSE` | `AI_502_4` | 502 | 아니오 |
 
 여기서 `INVALID_REQUEST`는 제공자로 보낸 서버 요청의 거절이다. 사용자의 HTTP 입력 오류는
 기존 공통 400 검증과 별개다. 제공자 API 키 오류를 사용자의 로그인 오류(401)로 내보내지

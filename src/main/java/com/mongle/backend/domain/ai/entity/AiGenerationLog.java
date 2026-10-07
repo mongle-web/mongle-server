@@ -78,16 +78,16 @@ public class AiGenerationLog extends BaseCreatedEntity {
     private AiGenerationLog(User user, AiTaskType taskType, String modelName, String promptVersion,
                             int inputTokens, int outputTokens, int cachedInputTokens, BigDecimal actualCost,
                             String baselineModel, BigDecimal baselineCost, Long latencyMs, boolean success) {
-        this.user = Objects.requireNonNull(user, "user must not be null");
-        this.taskType = Objects.requireNonNull(taskType, "taskType must not be null");
-        this.modelName = Objects.requireNonNull(modelName, "modelName must not be null");
+        this.user = Objects.requireNonNull(user, "사용자는 필수입니다.");
+        this.taskType = Objects.requireNonNull(taskType, "작업 종류는 필수입니다.");
+        this.modelName = Objects.requireNonNull(modelName, "모델명은 필수입니다.");
         this.promptVersion = promptVersion;
         this.inputTokens = inputTokens;
         this.outputTokens = outputTokens;
         this.cachedInputTokens = cachedInputTokens;
-        this.actualCost = Objects.requireNonNull(actualCost, "actualCost must not be null");
-        this.baselineModel = Objects.requireNonNull(baselineModel, "baselineModel must not be null");
-        this.baselineCost = Objects.requireNonNull(baselineCost, "baselineCost must not be null");
+        this.actualCost = Objects.requireNonNull(actualCost, "실제 비용은 필수입니다.");
+        this.baselineModel = Objects.requireNonNull(baselineModel, "비교 기준 모델명은 필수입니다.");
+        this.baselineCost = Objects.requireNonNull(baselineCost, "비교 기준 비용은 필수입니다.");
         this.latencyMs = latencyMs;
         this.success = success;
     }

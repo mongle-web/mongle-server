@@ -29,20 +29,20 @@ public record AiGenerationResult(
 ) {
 
     public AiGenerationResult {
-        Objects.requireNonNull(content, "content must not be null");
-        Objects.requireNonNull(usage, "usage must not be null");
-        Objects.requireNonNull(finishReason, "finishReason must not be null");
+        Objects.requireNonNull(content, "내용은 필수입니다.");
+        Objects.requireNonNull(usage, "토큰 사용량 정보는 필수입니다.");
+        Objects.requireNonNull(finishReason, "종료 사유 정보는 필수입니다.");
         if (content.isBlank()) {
-            throw new IllegalArgumentException("content must not be blank");
+            throw new IllegalArgumentException("내용은 비어 있을 수 없습니다.");
         }
         if (modelName != null && modelName.isBlank()) {
-            throw new IllegalArgumentException("modelName must not be blank when present");
+            throw new IllegalArgumentException("모델명은 제공된 경우 비어 있을 수 없습니다.");
         }
         if (requestId != null && requestId.isBlank()) {
-            throw new IllegalArgumentException("requestId must not be blank when present");
+            throw new IllegalArgumentException("외부 요청 ID는 제공된 경우 비어 있을 수 없습니다.");
         }
         if (latencyMs < 0) {
-            throw new IllegalArgumentException("latencyMs must not be negative");
+            throw new IllegalArgumentException("소요 시간은 음수일 수 없습니다.");
         }
     }
 }

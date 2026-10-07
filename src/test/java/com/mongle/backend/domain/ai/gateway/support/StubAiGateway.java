@@ -25,13 +25,13 @@ public final class StubAiGateway implements AiGateway {
     private final List<AiGenerationRequest> receivedRequests = new ArrayList<>();
 
     public StubAiGateway enqueueResult(AiGenerationResult result) {
-        Objects.requireNonNull(result, "result must not be null");
+        Objects.requireNonNull(result, "테스트 응답은 필수입니다.");
         outcomes.addLast(() -> result);
         return this;
     }
 
     public StubAiGateway enqueueFailure(AiGatewayException failure) {
-        Objects.requireNonNull(failure, "failure must not be null");
+        Objects.requireNonNull(failure, "테스트 예외는 필수입니다.");
         outcomes.addLast(() -> {
             throw failure;
         });
@@ -40,10 +40,10 @@ public final class StubAiGateway implements AiGateway {
 
     @Override
     public AiGenerationResult generate(AiGenerationRequest request) {
-        Objects.requireNonNull(request, "request must not be null");
+        Objects.requireNonNull(request, "생성 요청은 필수입니다.");
         Supplier<AiGenerationResult> outcome = outcomes.pollFirst();
         if (outcome == null) {
-            throw new IllegalStateException("StubAiGateway has no prepared outcome");
+            throw new IllegalStateException("테스트용 Gateway에 준비된 응답이나 예외가 없습니다.");
         }
         receivedRequests.add(request);
         return outcome.get();

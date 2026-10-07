@@ -40,12 +40,12 @@ public final class AiGatewayException extends BusinessException {
             @Nullable Duration retryAfter,
             @Nullable Throwable cause
     ) {
-        super(Objects.requireNonNull(errorCode, "errorCode must not be null"), cause);
+        super(Objects.requireNonNull(errorCode, "오류 코드는 필수입니다."), cause);
         if (requestId != null && requestId.isBlank()) {
-            throw new IllegalArgumentException("requestId must not be blank when present");
+            throw new IllegalArgumentException("외부 요청 ID는 제공된 경우 비어 있을 수 없습니다.");
         }
         if (retryAfter != null && retryAfter.isNegative()) {
-            throw new IllegalArgumentException("retryAfter must not be negative");
+            throw new IllegalArgumentException("재시도 대기 시간은 음수일 수 없습니다.");
         }
         this.requestId = requestId;
         this.retryable = errorCode.isRetryCandidate() && retryable;

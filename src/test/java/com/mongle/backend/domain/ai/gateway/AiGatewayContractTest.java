@@ -97,7 +97,7 @@ class AiGatewayContractTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
         assertThat(response.getBody().success()).isFalse();
-        assertThat(response.getBody().code()).isEqualTo("AI_AUTHENTICATION_FAILED");
+        assertThat(response.getBody().code()).isEqualTo("AI_502_2");
         assertThat(response.getBody().message()).isEqualTo(AiGatewayErrorCode.AUTHENTICATION_FAILED.getMessage());
         assertThat(response.getBody().data()).isNull();
         assertThat(response.getBody().errors()).isEmpty();
@@ -111,10 +111,10 @@ class AiGatewayContractTest {
         assertThat(failure.getRetryAfter()).isNull();
         assertThatThrownBy(() -> new AiGatewayException(
                 AiGatewayErrorCode.RATE_LIMITED, " ", true, null, null))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("requestId");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("외부 요청 ID");
         assertThatThrownBy(() -> new AiGatewayException(
                 AiGatewayErrorCode.RATE_LIMITED, null, true, Duration.ofMillis(-1), null))
-                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("retryAfter");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("재시도 대기 시간");
     }
 
     @Test
@@ -123,7 +123,7 @@ class AiGatewayContractTest {
         stub.generate(request());
         assertThatThrownBy(() -> stub.receivedRequests().clear()).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> stub.generate(request()))
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("no prepared outcome");
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("준비된 응답이나 예외가 없습니다.");
     }
 
     private AiGenerationRequest request() {

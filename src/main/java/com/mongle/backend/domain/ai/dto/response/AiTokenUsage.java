@@ -24,20 +24,20 @@ public record AiTokenUsage(
 ) {
 
     public AiTokenUsage {
-        requireNonNegative(inputTokens, "inputTokens");
-        requireNonNegative(outputTokens, "outputTokens");
-        requireNonNegative(totalTokens, "totalTokens");
-        requireNonNegative(cachedInputTokens, "cachedInputTokens");
-        requireNonNegative(reasoningTokens, "reasoningTokens");
+        requireNonNegative(inputTokens, "입력 토큰 수");
+        requireNonNegative(outputTokens, "출력 토큰 수");
+        requireNonNegative(totalTokens, "전체 토큰 수");
+        requireNonNegative(cachedInputTokens, "캐시 입력 토큰 수");
+        requireNonNegative(reasoningTokens, "추론 토큰 수");
         if (inputTokens != null && cachedInputTokens != null && cachedInputTokens > inputTokens) {
-            throw new IllegalArgumentException("cachedInputTokens must not exceed inputTokens");
+            throw new IllegalArgumentException("캐시 입력 토큰 수는 전체 입력 토큰 수를 초과할 수 없습니다.");
         }
         if (outputTokens != null && reasoningTokens != null && reasoningTokens > outputTokens) {
-            throw new IllegalArgumentException("reasoningTokens must not exceed outputTokens");
+            throw new IllegalArgumentException("추론 토큰 수는 전체 출력 토큰 수를 초과할 수 없습니다.");
         }
         if (inputTokens != null && outputTokens != null && totalTokens != null
                 && (long) inputTokens + outputTokens != totalTokens) {
-            throw new IllegalArgumentException("totalTokens must equal inputTokens plus outputTokens");
+            throw new IllegalArgumentException("전체 토큰 수는 입력 토큰 수와 출력 토큰 수의 합과 같아야 합니다.");
         }
     }
 
@@ -48,7 +48,7 @@ public record AiTokenUsage(
 
     private static void requireNonNegative(@Nullable Integer value, String field) {
         if (value != null && value < 0) {
-            throw new IllegalArgumentException(field + " must not be negative");
+            throw new IllegalArgumentException(field + "는 음수일 수 없습니다.");
         }
     }
 }

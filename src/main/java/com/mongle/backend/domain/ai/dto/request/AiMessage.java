@@ -11,10 +11,10 @@ import java.util.Objects;
 public record AiMessage(Role role, String content) {
 
     public AiMessage {
-        Objects.requireNonNull(role, "role must not be null");
-        Objects.requireNonNull(content, "content must not be null");
+        Objects.requireNonNull(role, "메시지 역할은 필수입니다.");
+        Objects.requireNonNull(content, "내용은 필수입니다.");
         if (content.isBlank()) {
-            throw new IllegalArgumentException("content must not be blank");
+            throw new IllegalArgumentException("내용은 비어 있을 수 없습니다.");
         }
     }
 

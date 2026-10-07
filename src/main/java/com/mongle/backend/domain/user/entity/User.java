@@ -32,8 +32,8 @@ public class User extends BaseEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private User(String email, String nickname) {
-        this.email = Objects.requireNonNull(email, "email must not be null");
-        this.nickname = Objects.requireNonNull(nickname, "nickname must not be null");
+        this.email = Objects.requireNonNull(email, "이메일은 필수입니다.");
+        this.nickname = Objects.requireNonNull(nickname, "닉네임은 필수입니다.");
     }
 
     public static User create(String email, String nickname) {

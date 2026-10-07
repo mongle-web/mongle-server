@@ -15,7 +15,7 @@ public record AiFinishReason(@Nullable String providerValue) {
 
     public AiFinishReason {
         if (providerValue != null && providerValue.isBlank()) {
-            throw new IllegalArgumentException("providerValue must not be blank when present");
+            throw new IllegalArgumentException("종료 사유 원본 값은 제공된 경우 비어 있을 수 없습니다.");
         }
     }
 
