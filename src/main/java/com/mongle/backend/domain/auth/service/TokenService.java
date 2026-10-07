@@ -9,7 +9,9 @@ import com.mongle.backend.domain.auth.repository.RefreshSessionRepository;
 import com.mongle.backend.domain.user.dto.UserResponse;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.error.BusinessException;
+import com.mongle.backend.global.logging.CommittedLog;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class TokenService {
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -49,7 +52,11 @@ public class TokenService {
         String refresh = randomToken();
         var session = sessions.saveAndFlush(RefreshSession.create(user, hash(refresh),
                 LocalDateTime.ofInstant(now.plus(properties.refreshTtl()), ZoneOffset.UTC)));
-        return issue(session, refresh, now);
+        var issued = issue(session, refresh, now);
+        Long sessionId = session.getId();
+        // 토큰 생성과 세션 커밋이 모두 성공한 뒤 기록한다. 원문·해시·JWT는 로그에 담지 않는다.
+        CommittedLog.afterCommit(() -> log.info("인증 세션 발급 완료: userId={}, sessionId={}", userId, sessionId));
+        return issued;
     }
 
     @Transactional(noRollbackFor = RefreshTokenReuseException.class)
@@ -65,14 +72,22 @@ public class TokenService {
             throw new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN);
         }
         if (!session.getTokenHash().equals(presentedHash)) {
+            Long sessionId = session.getId();
+            Long userId = session.getUser().getId();
+            // 재사용 탐지 사실은 즉시 기록하고 세션 폐기 성공은 실제 커밋 뒤에 별도로 확인한다.
+            log.warn("리프레시 토큰 재사용 탐지: userId={}, sessionId={}", userId, sessionId);
             sessions.delete(session);
             sessions.flush();
+            CommittedLog.afterCommit(() -> log.warn("재사용 세션 폐기 완료: userId={}, sessionId={}", userId, sessionId));
             throw new RefreshTokenReuseException();
         }
         String replacement = randomToken();
         session.rotate(hash(replacement));
         sessions.flush();
-        return issue(session, replacement, now);
+        var issued = issue(session, replacement, now);
+        Long sessionId = session.getId();
+        CommittedLog.afterCommit(() -> log.debug("인증 토큰 갱신 완료: sessionId={}", sessionId));
+        return issued;
     }
 
     @Transactional
@@ -82,7 +97,12 @@ public class TokenService {
             return;
         }
         sessions.findSessionIdByTokenHash(hash(refreshToken))
-                .flatMap(sessions::findByIdForUpdate).ifPresent(sessions::delete);
+                .flatMap(sessions::findByIdForUpdate).ifPresent(session -> {
+                    Long sessionId = session.getId();
+                    Long userId = session.getUser().getId();
+                    sessions.delete(session);
+                    CommittedLog.afterCommit(() -> log.info("로그아웃 세션 폐기 완료: userId={}, sessionId={}", userId, sessionId));
+                });
     }
 
     private IssuedTokens issue(RefreshSession session, String refresh, Instant now) {
