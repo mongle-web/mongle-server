@@ -34,7 +34,7 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpResponse;
 import java.io.IOException;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.web.context.NullSecurityContextRepository;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.security.web.savedrequest.NullRequestCache;
 
 @Configuration
@@ -85,7 +85,9 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .requestCache(cache -> cache.requestCache(new NullRequestCache()))
-                .securityContext(context -> context.securityContextRepository(new NullSecurityContextRepository()))
+                // 같은 HTTP 요청의 ASYNC/ERROR 디스패치에서 JWT 인증을 다시 읽는다.
+                // 세션에는 저장하지 않으므로 다음 HTTP 요청은 여전히 Bearer 토큰 인증이 필요하다.
+                .securityContext(context -> context.securityContextRepository(new RequestAttributeSecurityContextRepository()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) ->
