@@ -50,36 +50,93 @@ CREATE TABLE dreams (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
     original_text TEXT NOT NULL,
-    dreamed_at DATE NULL,
-    representative_emotion VARCHAR(50) NULL,
+    dreamed_at DATE NOT NULL,
+    title VARCHAR(100) NULL,
+    record_status VARCHAR(30) NOT NULL DEFAULT 'EMOTION_PENDING',
+    is_edited BOOLEAN NOT NULL DEFAULT FALSE,
+    revision BIGINT NOT NULL DEFAULT 0,
+    source_revision BIGINT NOT NULL DEFAULT 0,
     analysis_status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT uk_dreams_user_date UNIQUE (user_id, dreamed_at),
     CONSTRAINT fk_dreams_user FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+CREATE TABLE dream_emotions (
+    dream_id BIGINT NOT NULL,
+    emotion VARCHAR(20) NOT NULL,
+    CONSTRAINT uk_dream_emotions UNIQUE (dream_id, emotion),
+    CONSTRAINT fk_dream_emotions_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
+);
+
+CREATE TABLE dream_analyses (
+ id BIGINT NOT NULL AUTO_INCREMENT,
+ dream_id BIGINT NULL,
+ user_id BIGINT NOT NULL,
+ source_dream_id BIGINT NOT NULL,
+ dreamed_at DATE NOT NULL,
+ source_revision BIGINT NOT NULL,
+ observed_revision BIGINT NOT NULL,
+ generated_title VARCHAR(40) NULL,
+ prompt_version VARCHAR(50) NOT NULL,
+ status VARCHAR(30) NOT NULL,
+ attempt_id VARCHAR(36) NULL,
+ lease_until DATETIME(6) NULL,
+ failure_code VARCHAR(50) NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ updated_at DATETIME NOT NULL,
+ PRIMARY KEY (id),
+ CONSTRAINT uk_dream_analysis_dream UNIQUE (dream_id),
+ CONSTRAINT uk_dream_analysis_source UNIQUE (source_dream_id),
+ CONSTRAINT fk_dream_analysis_user FOREIGN KEY (user_id) REFERENCES users(id),
+ CONSTRAINT fk_dream_analysis_dream FOREIGN KEY (dream_id) REFERENCES dreams(id)
+);
+CREATE INDEX idx_analysis_user_status_date ON dream_analyses(user_id,status,dreamed_at);
+
+CREATE TABLE dream_analysis_display_keywords (
+    analysis_id BIGINT NOT NULL,
+    keyword_order INT NOT NULL,
+    keyword VARCHAR(40) NOT NULL,
+    PRIMARY KEY (analysis_id, keyword_order),
+    CONSTRAINT fk_analysis_display_keywords FOREIGN KEY (analysis_id)
+        REFERENCES dream_analyses(id) ON DELETE CASCADE
 );
 
 CREATE TABLE dream_scenes (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    dream_id BIGINT NOT NULL,
+    dream_id BIGINT NULL,
+    analysis_id BIGINT NULL,
+    user_id BIGINT NOT NULL,
     sequence_no INT NOT NULL,
     content TEXT NOT NULL,
     is_disconnected_from_previous BOOLEAN NOT NULL DEFAULT FALSE,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT uk_analysis_scene_sequence UNIQUE (analysis_id, sequence_no),
+    CONSTRAINT fk_dream_scenes_analysis FOREIGN KEY (analysis_id) REFERENCES dream_analyses(id),
+    CONSTRAINT fk_dream_scenes_user FOREIGN KEY (user_id) REFERENCES users (id),
     CONSTRAINT fk_dream_scenes_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
 );
 
 CREATE TABLE dream_entities (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    dream_id BIGINT NOT NULL,
+    dream_id BIGINT NULL,
+    analysis_id BIGINT NULL,
+    user_id BIGINT NOT NULL,
     entity_type VARCHAR(30) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    normalized_name VARCHAR(255) NULL,
     description TEXT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT uk_analysis_entity_name UNIQUE (analysis_id, entity_type, normalized_name),
+    CONSTRAINT fk_dream_entities_analysis FOREIGN KEY (analysis_id) REFERENCES dream_analyses(id),
+    CONSTRAINT fk_dream_entities_user FOREIGN KEY (user_id) REFERENCES users (id),
     CONSTRAINT fk_dream_entities_dream FOREIGN KEY (dream_id) REFERENCES dreams (id)
 );
 
@@ -108,4 +165,56 @@ CREATE TABLE ai_generation_logs (
     created_at DATETIME NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT fk_ai_generation_logs_user FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+CREATE TABLE dream_stories (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    analysis_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    source_revision BIGINT NOT NULL,
+    prompt_version VARCHAR(50) NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    attempt_id VARCHAR(36) NOT NULL,
+    lease_until DATETIME(6) NULL,
+    failure_code VARCHAR(50) NULL,
+    result_json TEXT NULL,
+    result_revision BIGINT NULL,
+    result_prompt_version VARCHAR(50) NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_story_analysis UNIQUE (analysis_id),
+    CONSTRAINT fk_story_analysis FOREIGN KEY (analysis_id) REFERENCES dream_analyses (id),
+    CONSTRAINT fk_story_user FOREIGN KEY (user_id) REFERENCES users (id)
+);
+CREATE INDEX idx_story_user_status ON dream_stories (user_id, status);
+
+CREATE TABLE dream_images (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    analysis_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    source_revision BIGINT NOT NULL,
+    story_hash VARCHAR(64) NOT NULL,
+    style VARCHAR(50) NOT NULL,
+    mood VARCHAR(50) NULL,
+    status VARCHAR(30) NOT NULL,
+    attempt_id VARCHAR(36) NOT NULL,
+    lease_until DATETIME(6) NULL,
+    failure_code VARCHAR(50) NULL,
+    storage_key VARCHAR(255) NULL,
+    content_type VARCHAR(30) NULL,
+    width INT NULL,
+    height INT NULL,
+    result_revision BIGINT NULL,
+    result_story_hash VARCHAR(64) NULL,
+    result_style VARCHAR(50) NULL,
+    result_mood VARCHAR(50) NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_image_analysis UNIQUE (analysis_id),
+    CONSTRAINT fk_image_analysis FOREIGN KEY (analysis_id) REFERENCES dream_analyses (id),
+    CONSTRAINT fk_image_user FOREIGN KEY (user_id) REFERENCES users (id)
 );
