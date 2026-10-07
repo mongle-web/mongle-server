@@ -27,20 +27,20 @@ class SocialIdentityMapperTest {
     void rejectsMissingFalseAndStringEmailVerification() {
         for (Object flag : new Object[]{false, "true", 1}) {
             assertCode(() -> mapper.google(Map.of("sub", "id", "email", "user@example.com",
-                    "email_verified", flag)), "AUTH_EMAIL_NOT_VERIFIED");
+                    "email_verified", flag)), "AUTH_401_3");
         }
         assertCode(() -> mapper.google(Map.of("sub", "id", "email", "user@example.com")),
-                "AUTH_EMAIL_NOT_VERIFIED");
+                "AUTH_401_3");
     }
 
     @Test
     void distinguishesMissingEmailFromMalformedIdentity() {
         assertCode(() -> mapper.google(Map.of("sub", "id", "email_verified", true)),
-                "AUTH_EMAIL_REQUIRED");
+                "AUTH_401_2");
         assertCode(() -> mapper.google(Map.of("sub", "id", "email", "invalid", "email_verified", true)),
-                "AUTH_INVALID_PROVIDER_RESPONSE");
+                "AUTH_401_1");
         assertCode(() -> mapper.google(Map.of("sub", " bad id", "email", "user@example.com",
-                "email_verified", true)), "AUTH_INVALID_PROVIDER_RESPONSE");
+                "email_verified", true)), "AUTH_401_1");
     }
 
     @Test
@@ -53,14 +53,14 @@ class SocialIdentityMapperTest {
                 .isEqualTo("1234567890123");
         account.remove("is_email_valid");
         assertCode(() -> mapper.kakao(Map.of("id", 123L, "kakao_account", account)),
-                "AUTH_EMAIL_NOT_VERIFIED");
+                "AUTH_401_3");
         account.put("is_email_valid", true);
         account.put("is_email_verified", false);
         assertCode(() -> mapper.kakao(Map.of("id", 123L, "kakao_account", account)),
-                "AUTH_EMAIL_NOT_VERIFIED");
+                "AUTH_401_3");
         for (Object id : new Object[]{-1L, 0, 1.5, "123"}) {
             assertCode(() -> mapper.kakao(Map.of("id", id, "kakao_account", account)),
-                    "AUTH_INVALID_PROVIDER_RESPONSE");
+                    "AUTH_401_1");
         }
     }
 

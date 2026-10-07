@@ -49,7 +49,7 @@ class OAuthRedirectIntegrationTest {
             }
             var failure = get(client, "/login/oauth2/code/kakao?code=fake&state=unknown");
             assertThat(failure.statusCode()).isEqualTo(401);
-            assertThat(failure.body()).contains("AUTH_LOGIN_FAILED").doesNotContain("fake", "unknown");
+            assertThat(failure.body()).contains("AUTH_401_6").doesNotContain("fake", "unknown");
         }
     }
 

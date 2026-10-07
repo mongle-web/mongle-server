@@ -737,7 +737,7 @@ class DreamApiIntegrationTest {
                                     "emotions",
                                     List.of("SAD")));
             assertThat(rejected.statusCode()).isEqualTo(400);
-            assertThat(rejected.body()).contains("DREAM_EMOTIONS_IMMUTABLE");
+            assertThat(rejected.body()).contains("DREAM_400_5");
             var after = data(send(client, token, "GET", path(current), null), 200);
             assertThat(after.get("originalText").asString()).isEqualTo("원문");
             assertThat(revision(after)).isEqualTo(revision(current));

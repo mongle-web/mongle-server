@@ -53,7 +53,7 @@ class TokenApiIntegrationTest {
             assertThat(json.readTree(me.body()).at("/data/onboardingCompleted").asBoolean()).isFalse();
             var blocked = send(client, "GET", "/api/v1/auth-test", issued.response(), null);
             assertThat(blocked.statusCode()).isEqualTo(403);
-            assertThat(code(blocked)).isEqualTo("USER_ONBOARDING_REQUIRED");
+            assertThat(code(blocked)).isEqualTo("USER_403_1");
             assertThat(send(client, "POST", "/api/v1/users/me/onboarding", issued.response(),
                     "{\"nickname\":\"a!\"}").statusCode()).isEqualTo(400);
             assertThat(send(client, "POST", "/api/v1/users/me/onboarding", issued.response(),
@@ -83,7 +83,7 @@ class TokenApiIntegrationTest {
             cookieManager.getCookieStore().add(uri("/"), cookie);
             var withoutCsrf = send(client, "POST", "/api/v1/auth/refresh", null, "");
             assertThat(withoutCsrf.statusCode()).isEqualTo(403);
-            assertThat(code(withoutCsrf)).isEqualTo("COMMON_FORBIDDEN");
+            assertThat(code(withoutCsrf)).isEqualTo("COMMON_403_1");
             var refreshed = postWithCsrf(client, "/api/v1/auth/refresh", csrf);
             assertThat(refreshed.statusCode()).isEqualTo(200);
             assertThat(cookieManager.getCookieStore().getCookies().stream()
@@ -217,7 +217,7 @@ class TokenApiIntegrationTest {
             var denied = client.send(HttpRequest.newBuilder(uri("/api/v1/auth/csrf"))
                     .header("Origin", "https://unknown.example.com").GET().build(), HttpResponse.BodyHandlers.ofString());
             assertThat(denied.statusCode()).isEqualTo(403);
-            assertThat(code(denied)).isEqualTo("COMMON_FORBIDDEN");
+            assertThat(code(denied)).isEqualTo("COMMON_403_1");
             var document = json.readTree(send(client, "GET", "/v3/api-docs", null, null).body());
             assertThat(document.at("/paths/~1api~1v1~1users~1me/get/summary").asString()).isEqualTo("내 정보 조회");
             assertThat(document.at("/paths/~1api~1v1~1auth~1refresh/post/summary").asString()).isEqualTo("인증 토큰 재발급");

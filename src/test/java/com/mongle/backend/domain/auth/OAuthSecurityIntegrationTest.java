@@ -25,7 +25,7 @@ class OAuthSecurityIntegrationTest {
             var protectedResponse = get(client, "/api/v1/users/me");
             assertThat(protectedResponse.statusCode()).isEqualTo(401);
             var json = JsonMapper.builder().build().readTree(protectedResponse.body());
-            assertThat(json.get("code").asString()).isEqualTo("COMMON_UNAUTHORIZED");
+            assertThat(json.get("code").asString()).isEqualTo("COMMON_401_1");
             assertThat(json.get("success").asBoolean()).isFalse();
             assertThat(protectedResponse.headers().firstValue("Cache-Control")).contains("no-store");
             assertThat(get(client, "/swagger-ui/index.html").statusCode()).isEqualTo(200);

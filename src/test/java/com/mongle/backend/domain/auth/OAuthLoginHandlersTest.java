@@ -58,7 +58,7 @@ class OAuthLoginHandlersTest {
 
         handlers.failure().onAuthenticationFailure(request, response, exception);
         assertThat(response.getStatus()).isEqualTo(401);
-        assertThat(json.readTree(response.getContentAsString()).get("code").asString()).isEqualTo("AUTH_LOGIN_FAILED");
+        assertThat(json.readTree(response.getContentAsString()).get("code").asString()).isEqualTo("AUTH_401_6");
         assertThat(response.getContentAsString()).doesNotContain("민감한");
         assertThat(request.getSession(false)).isNull();
     }
