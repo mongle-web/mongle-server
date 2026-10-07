@@ -69,7 +69,8 @@ DreamScene scene = DreamScene.create(dream, 1, "도서관에 들어갔다.", fal
 팩터리에서 다른 꿈의 장면과 요소를 연결하는 것도 차단한다.
 DB의 두 FK 자체는 같은 꿈 여부를 검증하지 않으므로 이후 API 역시 이 팩터리와 소유권 검증을 사용해야 한다.
 
-S1 서사화에서 `DreamNarrative`, S2 이미지 생성에서 `DreamArtwork`,
+S1 서사화는 `DreamStory` (`dream_stories`)로 구현하며 상세 계약은 [꿈 서사화](dream-story.md)를 따른다.
+S2 이미지 생성에서 `DreamArtwork`,
 S3 세계관에서 `DreamWorld`, `DreamWorldDream`, `WorldEntity`, `WorldEntityMapping`,
 `DreamConnection`, `BridgeNarrative`를 추가한다.
 
