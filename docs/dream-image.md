@@ -96,5 +96,12 @@ git diff --check
 ```
 
 <!-- issue38-verification-start -->
-전체 테스트: 적용 후 Java 21에서 검증 필요. 실제 이미지 API·운영 저장소 호출은 검증하지 않았다.
+검증 시각: 2026-10-09 03:31:34 +0900
+
+테스트 기준 커밋: `560633e265172ea681cea4677c39bb7f30d93c5e`
+
+실행 Java: openjdk version "21.0.12.1" 2026-08-18 LTS
+
+`./gradlew test --rerun-tasks`: 전체 339개, 실패 0, 오류 0, 건너뜀 0.
+`git diff --check` 통과. 실제 이미지 API·운영 저장소 호출은 사용하지 않았다.
 <!-- issue38-verification-end -->
