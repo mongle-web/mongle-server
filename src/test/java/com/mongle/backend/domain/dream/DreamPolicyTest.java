@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.mongle.backend.domain.dream.dto.DreamCreateRequest;
+import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.domain.dream.repository.*;
@@ -92,7 +93,8 @@ class DreamPolicyTest {
                         users,
                         mock(DreamAnalysisRepository.class),
                         mock(DreamStoryRepository.class),
-                        Clock.fixed(Instant.parse("2026-10-01T15:00:00Z"), ZoneOffset.UTC));
+                        Clock.fixed(Instant.parse("2026-10-01T15:00:00Z"), ZoneOffset.UTC),
+                        mock(DreamGenerationJobRepository.class));
         assertThat(
                         service.create(
                                         1L,
@@ -112,7 +114,8 @@ class DreamPolicyTest {
                         users,
                         mock(DreamAnalysisRepository.class),
                         mock(DreamStoryRepository.class),
-                        Clock.fixed(Instant.parse("2026-10-01T14:59:59Z"), ZoneOffset.UTC));
+                        Clock.fixed(Instant.parse("2026-10-01T14:59:59Z"), ZoneOffset.UTC),
+                        mock(DreamGenerationJobRepository.class));
         assertThatThrownBy(
                         () ->
                                 service.create(

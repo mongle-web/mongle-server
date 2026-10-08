@@ -3,6 +3,8 @@ package com.mongle.backend.domain.dream.service;
 import com.mongle.backend.domain.dream.dto.*;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.generation.DreamGenerationJob;
+import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
 import com.mongle.backend.domain.dream.repository.DreamAnalysisRepository;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.dream.story.DreamStoryRepository;
@@ -33,6 +35,7 @@ public class DreamService {
     private final DreamAnalysisRepository analyses;
     private final DreamStoryRepository stories;
     private final Clock authClock;
+    private final DreamGenerationJobRepository generationJobs;
 
     @Transactional
     public DreamResponse create(Long userId, DreamCreateRequest request) {
@@ -80,6 +83,8 @@ public class DreamService {
         var dream = owned(userId, id);
         dream.checkRevision(request.revision());
         dream.complete(request.emotions());
+        // 꿈 저장과 예약을 함께 커밋한다. 워커는 커밋된 작업만 조회한다.
+        generationJobs.save(DreamGenerationJob.create(dream, authClock.instant()));
         return response(dream);
     }
 
@@ -127,6 +132,8 @@ public class DreamService {
         stories.failProcessingForDeletedDream(
                 id, GenerationStatus.PROCESSING, GenerationStatus.FAILED);
         analyses.detachFromDream(id);
+
+        generationJobs.deleteByDreamIdAndUserId(id, userId);
 
         // 소프트 삭제나 원문 스냅샷을 남기지 않는다. 감정 컬렉션도 함께 삭제된다.
         dreams.delete(dream);
