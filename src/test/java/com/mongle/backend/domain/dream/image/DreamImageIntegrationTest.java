@@ -177,10 +177,14 @@ class DreamImageIntegrationTest {
     }
 
     DreamResponse ready() {
+        return ready(LocalDate.now(ZoneId.of("Asia/Seoul")));
+    }
+
+    DreamResponse ready(LocalDate date) {
         var dream =
                 dreams.create(
                         userId,
-                        new DreamCreateRequest(LocalDate.now(ZoneId.of("Asia/Seoul")), "바다를 보았다"));
+                        new DreamCreateRequest(date, "바다를 보았다"));
         dream =
                 dreams.complete(
                         userId,
@@ -606,9 +610,10 @@ class DreamImageIntegrationTest {
 
     @Test
     void fullCapacityAllowsReuseAndRejectsNewReservationWithoutMutatingIt() {
-        var first = ready();
-        var second = ready();
-        var third = ready();
+        var today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        var first = ready(today);
+        var second = ready(today.minusDays(1));
+        var third = ready(today.minusDays(2));
         var response = new CompletableFuture<byte[]>();
         generator.pending = response;
         var runningFirst = service.generate(userId, first.dreamId(), request(first));
