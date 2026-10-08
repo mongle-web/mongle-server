@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.archive.repository;
 
 import com.mongle.backend.domain.archive.dto.request.ArchiveSearch;
+import com.mongle.backend.domain.archive.dto.request.ArchiveSort;
 import com.mongle.backend.domain.dream.analysis.DreamAnalysis;
 import com.mongle.backend.domain.dream.entity.Dream;
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
@@ -22,13 +23,18 @@ import java.util.Optional;
 public class ArchiveQueryRepository {
     private final EntityManager em;
 
-    /** offset 대신 마지막 날짜·ID보다 작은 행을 조회해 앞쪽 추가·삭제로 페이지가 밀리지 않게 한다. */
+    /** 마지막 날짜·ID를 경계로 삼는다. 오래된순은 큰 값, 최신순은 작은 값부터 이어서 조회한다. */
     public List<Dream> findDreams(Long userId, ArchiveSearch search) {
+        // 검증한 enum으로 고정된 연산자와 정렬 방향을 고른다. 사용자 문자열을 JPQL에 삽입하지 않는다.
+        boolean oldest = search.sort() == ArchiveSort.OLDEST;
+        String comparison = oldest ? ">" : "<";
+        String direction = oldest ? " asc" : " desc";
         String jpql = "select d from Dream d where d.user.id=:user and d.recordStatus=:completed";
         if (search.from() != null) jpql += " and d.dreamedAt between :from and :to";
         if (search.position() != null)
-            jpql += " and (d.dreamedAt<:lastDate or (d.dreamedAt=:lastDate and d.id<:lastId))";
-        var query = em.createQuery(jpql + " order by d.dreamedAt desc, d.id desc", Dream.class)
+            jpql += " and (d.dreamedAt" + comparison + ":lastDate or (d.dreamedAt=:lastDate and d.id"
+                    + comparison + ":lastId))";
+        var query = em.createQuery(jpql + " order by d.dreamedAt" + direction + ", d.id" + direction, Dream.class)
                 .setParameter("user", userId).setParameter("completed", DreamRecordStatus.COMPLETED);
         if (search.from() != null) query.setParameter("from", search.from()).setParameter("to", search.to());
         if (search.position() != null)

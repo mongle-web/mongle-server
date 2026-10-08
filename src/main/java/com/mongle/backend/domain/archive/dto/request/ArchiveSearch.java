@@ -14,14 +14,15 @@ import java.util.Base64;
  * 커서는 마지막 정렬 위치이며 권한 토큰이 아니다. 실제 소유자는 인증된 사용자로만 제한한다.
  */
 public record ArchiveSearch(@Nullable LocalDate from, @Nullable LocalDate to, String scope,
-                            int size, @Nullable Position position) {
-    /** 날짜 내림차순, 같은 날짜의 ID 내림차순 정렬에서 다음 페이지의 시작 경계다. */
+                            ArchiveSort sort, int size, @Nullable Position position) {
+    /** 선택한 날짜·ID 정렬에서 다음 페이지의 시작 경계다. 삭제된 기록도 위치 값으로 사용할 수 있다. */
     public record Position(LocalDate dreamedAt, long dreamId) {}
 
     /** 월·일 조건은 서로 배타적이다. 둘 다 생략하면 내 완성 기록 전체를 조회한다. */
     public static ArchiveSearch parse(@Nullable String month, @Nullable String date,
-                                      @Nullable String cursor, int size) {
+                                      @Nullable String sortValue, @Nullable String cursor, int size) {
         if (size < 1 || size > 50) throw new BusinessException(ArchiveErrorCode.INVALID_SIZE);
+        ArchiveSort sort = ArchiveSort.parse(sortValue);
         LocalDate from = null;
         LocalDate to = null;
         String scope = "all";
@@ -42,18 +43,19 @@ public record ArchiveSearch(@Nullable LocalDate from, @Nullable LocalDate to, St
         } catch (RuntimeException exception) {
             throw new BusinessException(ArchiveErrorCode.INVALID_FILTER);
         }
-        // 다른 월·날짜의 커서를 재사용하면 누락처럼 보일 수 있어 원래 필터와 같은지 검사한다.
-        Position position = cursor == null ? null : decode(cursor, scope, from, to);
-        return new ArchiveSearch(from, to, scope, size, position);
+        // 월·날짜·정렬이 달라지면 경계의 의미도 바뀐다. 같은 조건의 커서만 이어서 조회한다.
+        Position position = cursor == null ? null : decode(cursor, scope, sort, from, to);
+        return new ArchiveSearch(from, to, scope, sort, size, position);
     }
 
     /** 응답에 포함한 마지막 카드만 경계로 사용한다. size+1로 읽은 확인용 행은 경계에 넣지 않는다. */
     public String cursorAfter(LocalDate date, long id) {
-        String raw = "v1|" + scope + "|" + date + "|" + id;
+        String raw = "v2|" + scope + "|" + sort.name() + "|" + date + "|" + id;
         return Base64.getUrlEncoder().withoutPadding().encodeToString(raw.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static Position decode(String cursor, String scope, @Nullable LocalDate from, @Nullable LocalDate to) {
+    private static Position decode(String cursor, String scope, ArchiveSort sort,
+                                   @Nullable LocalDate from, @Nullable LocalDate to) {
         try {
             // 클라이언트 입력을 무제한 디코딩하지 않는다. 커서는 서버가 발급한 URL-safe 형식만 허용한다.
             if (cursor.isEmpty() || cursor.length() > 128) throw new IllegalArgumentException();
@@ -61,10 +63,17 @@ public record ArchiveSearch(@Nullable LocalDate from, @Nullable LocalDate to, St
             if (!Base64.getUrlEncoder().withoutPadding().encodeToString(decoded).equals(cursor))
                 throw new IllegalArgumentException();
             String[] fields = new String(decoded, StandardCharsets.UTF_8).split("\\|", -1);
-            if (fields.length != 4 || !fields[0].equals("v1") || !fields[1].equals(scope))
+            // 기존 v1 커서는 최신순으로만 발급됐으므로 LATEST에서만 호환한다.
+            // 새 v2 커서는 정렬을 명시해 최신순과 오래된순 사이의 잘못된 재사용을 차단한다.
+            boolean legacy = fields.length == 4 && fields[0].equals("v1");
+            if (legacy) {
+                if (sort != ArchiveSort.LATEST || !fields[1].equals(scope)) throw new IllegalArgumentException();
+            } else if (fields.length != 5 || !fields[0].equals("v2") || !fields[1].equals(scope)
+                    || !fields[2].equals(sort.name())) {
                 throw new IllegalArgumentException();
-            LocalDate date = parseDate(fields[2]);
-            long id = Long.parseLong(fields[3]);
+            }
+            LocalDate date = parseDate(fields[legacy ? 2 : 3]);
+            long id = Long.parseLong(fields[legacy ? 3 : 4]);
             if (id < 1 || (from != null && (date.isBefore(from) || date.isAfter(to))))
                 throw new IllegalArgumentException();
             return new Position(date, id);

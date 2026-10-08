@@ -5,6 +5,7 @@ import com.mongle.backend.domain.archive.dto.response.ArchivePage;
 import com.mongle.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Positive;
@@ -15,11 +16,15 @@ import org.springframework.security.oauth2.jwt.Jwt;
 @Tag(name = "Archive", description = "내 완성한 꿈 기록 탐색")
 @SecurityRequirement(name = "bearerAuth")
 public interface ArchiveApi {
-    @Operation(summary = "Archive 목록 조회", description = "감정 선택을 완료한 내 꿈을 꿈 날짜·ID 내림차순으로 조회합니다. "
+    @Operation(summary = "Archive 목록 조회", description = "감정 선택을 완료한 내 꿈을 꿈 날짜·ID 순서로 조회합니다. "
+            + "sort=LATEST(기본 최신순) 또는 OLDEST(오래된순)를 지정합니다. "
             + "month(YYYY-MM) 또는 date(YYYY-MM-DD) 중 하나를 사용하고 생략하면 전체를 조회합니다. "
-            + "기본 size=20, 최대 50입니다. hasNext이면 같은 필터와 nextCursor로 이어서 조회합니다. "
+            + "기본 size=20, 최대 50입니다. hasNext이면 같은 필터·정렬과 nextCursor로 이어서 조회합니다. 정렬을 바꾸면 커서를 초기화합니다. "
             + "초안·삭제한 기록은 제외하며 분석·이미지가 없는 기록도 포함합니다. 수정·삭제에는 각 카드의 revision을 사용합니다.")
-    ResponseEntity<ApiResponse<ArchivePage>> list(@Parameter(hidden = true) Jwt jwt, String month, String date, String cursor, int size);
+    ResponseEntity<ApiResponse<ArchivePage>> list(@Parameter(hidden = true) Jwt jwt, String month, String date,
+            @Parameter(description = "꿈 날짜 기준 정렬. 생략하면 LATEST",
+                    schema = @Schema(allowableValues = {"LATEST", "OLDEST"}, defaultValue = "LATEST")) String sort,
+            String cursor, int size);
 
     @Operation(summary = "Archive 상세 조회", description = "dream에 카드 정보·수정 표시·최신 revision·분석/서사/이미지 상태와 ID를, "
             + "originalText에 사용자의 원문을 반환합니다. 감정은 기존 7종이며 키워드는 AI 생성값입니다. "

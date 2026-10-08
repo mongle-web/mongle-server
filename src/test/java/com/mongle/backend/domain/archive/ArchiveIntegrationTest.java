@@ -141,8 +141,40 @@ class ArchiveIntegrationTest {
     }
 
     @Test
+    void paginatesOldestFirstAfterDeletedAnchorAndAppliesDateFilters() throws Exception {
+        var oldest = completed(date.minusDays(2));
+        var middle = completed(date.minusDays(1));
+        var newest = completed(date);
+        var previousMonth = completed(LocalDate.of(2026, 8, 31));
+
+        var first = data(get("/api/v1/archives?month=2026-09&sort=OLDEST&size=1"), 200);
+        assertThat(first.at("/items/0/dreamId").asLong()).isEqualTo(oldest.dreamId());
+        assertThat(first.get("hasNext").asBoolean()).isTrue();
+        String cursor = first.get("nextCursor").asString();
+        // ASC 조회에서도 실제 마지막 행을 다시 찾지 않고 경계보다 뒤의 기록부터 이어서 읽는다.
+        dreams.delete(userId, oldest.dreamId(), oldest.revision());
+        var second = data(get("/api/v1/archives?month=2026-09&sort=OLDEST&size=1&cursor=" + cursor), 200);
+        assertThat(second.at("/items/0/dreamId").asLong()).isEqualTo(middle.dreamId());
+        assertThat(second.get("hasNext").asBoolean()).isTrue();
+        var last = data(get("/api/v1/archives?month=2026-09&sort=OLDEST&size=1&cursor="
+                + second.get("nextCursor").asString()), 200);
+        assertThat(last.at("/items/0/dreamId").asLong()).isEqualTo(newest.dreamId());
+        assertThat(last.get("hasNext").asBoolean()).isFalse();
+        assertThat(last.get("nextCursor").isNull()).isTrue();
+
+        var all = data(get("/api/v1/archives?sort=OLDEST"), 200);
+        assertThat(all.get("items").size()).isEqualTo(3);
+        assertThat(all.at("/items/0/dreamId").asLong()).isEqualTo(previousMonth.dreamId());
+        assertThat(data(get("/api/v1/archives?sort=LATEST"), 200).at("/items/0/dreamId").asLong())
+                .isEqualTo(newest.dreamId());
+        var day = data(get("/api/v1/archives?date=2026-09-16&sort=OLDEST"), 200);
+        assertThat(day.get("items").size()).isEqualTo(1);
+        assertThat(day.at("/items/0/dreamId").asLong()).isEqualTo(newest.dreamId());
+    }
+
+    @Test
     void rejectsInvalidFiltersAndCursorsIncludingChangedScope() throws Exception {
-        completed(date);
+        var newest = completed(date);
         completed(date.minusDays(1));
         for (String query : List.of("month=2026-13", "month=2026-9", "date=2026-02-30", "month=2026-09&date=2026-09-16")) {
             var response = get("/api/v1/archives?" + query);
@@ -150,12 +182,28 @@ class ArchiveIntegrationTest {
             assertThat(response.body()).contains("ARCHIVE_400_1");
         }
         String cursor = data(get("/api/v1/archives?month=2026-09&size=1"), 200).get("nextCursor").asString();
-        for (String query : List.of("cursor=invalid", "month=2026-08&cursor=" + cursor, "cursor=")) {
+        String oldestCursor = data(get("/api/v1/archives?month=2026-09&sort=OLDEST&size=1"), 200)
+                .get("nextCursor").asString();
+        for (String query : List.of("cursor=invalid", "month=2026-08&cursor=" + cursor, "cursor=",
+                "month=2026-09&sort=OLDEST&cursor=" + cursor, "month=2026-09&cursor=" + oldestCursor)) {
             var response = get("/api/v1/archives?" + query);
             assertThat(response.statusCode()).isEqualTo(400);
             assertThat(response.body()).contains("ARCHIVE_400_2");
         }
         assertThat(get("/api/v1/archives?size=51").statusCode()).isEqualTo(400);
+        for (String sort : List.of("", "latest", "UNKNOWN")) {
+            var response = get("/api/v1/archives?sort=" + sort);
+            assertThat(response.statusCode()).isEqualTo(400);
+            assertThat(response.body()).contains("ARCHIVE_400_4");
+        }
+        // 배포 전에 발급된 v1 최신순 커서는 계속 사용 가능하지만 오래된순에는 사용하지 못한다.
+        String legacy = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                ("v1|month:2026-09|2026-09-16|" + newest.dreamId()).getBytes(StandardCharsets.UTF_8));
+        assertThat(data(get("/api/v1/archives?month=2026-09&cursor=" + legacy), 200).get("items").size())
+                .isEqualTo(1);
+        var incompatible = get("/api/v1/archives?month=2026-09&sort=OLDEST&cursor=" + legacy);
+        assertThat(incompatible.statusCode()).isEqualTo(400);
+        assertThat(incompatible.body()).contains("ARCHIVE_400_2");
     }
 
     @Test
@@ -237,10 +285,10 @@ class ArchiveIntegrationTest {
         for (int i = 0; i < 3; i++) generations(completed(date.minusDays(i)));
         var stats = emf.unwrap(SessionFactory.class).getStatistics();
         stats.clear();
-        archives.list(userId, "2026-09", null, null, 1);
+        archives.list(userId, "2026-09", null, null, null, 1);
         long single = stats.getPrepareStatementCount();
         stats.clear();
-        var page = archives.list(userId, "2026-09", null, null, 20);
+        var page = archives.list(userId, "2026-09", null, null, null, 20);
         assertThat(page.items()).hasSize(3);
         assertThat(stats.getPrepareStatementCount()).isEqualTo(single).isLessThanOrEqualTo(4);
     }
@@ -250,6 +298,17 @@ class ArchiveIntegrationTest {
         var document = json.readTree(get("/v3/api-docs").body());
         assertThat(document.at("/paths/~1api~1v1~1archives/get/summary").asString()).isEqualTo("Archive 목록 조회");
         assertThat(document.at("/paths/~1api~1v1~1archives~1{dreamId}/get/summary").asString()).isEqualTo("Archive 상세 조회");
+        var parameters = document.at("/paths/~1api~1v1~1archives/get/parameters");
+        boolean found = false;
+        for (int i = 0; i < parameters.size(); i++) {
+            var parameter = parameters.get(i);
+            if (!parameter.get("name").asString().equals("sort")) continue;
+            found = true;
+            assertThat(parameter.at("/schema/default").asString()).isEqualTo("LATEST");
+            assertThat(parameter.at("/schema/enum/0").asString()).isEqualTo("LATEST");
+            assertThat(parameter.at("/schema/enum/1").asString()).isEqualTo("OLDEST");
+        }
+        assertThat(found).isTrue();
     }
 
     /** 생성기를 호출하지 않고 이미 생성·저장된 결과를 준비한다. 실제 LINER·이미지 Provider는 사용하지 않는다. */

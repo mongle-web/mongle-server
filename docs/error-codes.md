@@ -57,6 +57,7 @@ HTTP 상태와 메시지, 예외 처리 흐름은 코드 형식 변경과 무관
 | Archive | INVALID_FILTER | `ARCHIVE_400_1` | 400 |
 | Archive | INVALID_CURSOR | `ARCHIVE_400_2` | 400 |
 | Archive | INVALID_SIZE | `ARCHIVE_400_3` | 400 |
+| Archive | INVALID_SORT | `ARCHIVE_400_4` | 400 |
 | Archive | NOT_FOUND | `ARCHIVE_404_1` | 404 |
 | 분석 | NOT_FOUND | `ANALYSIS_404_1` | 404 |
 | 분석 | INVALID_OUTPUT | `ANALYSIS_502_1` | 502 |

@@ -34,8 +34,8 @@ public class ArchiveService {
 
     /** 크기가 제한된 페이지를 조회하고 실제 반환하는 마지막 카드로 다음 커서를 발급한다. */
     public ArchivePage list(Long userId, @Nullable String month, @Nullable String date,
-                            @Nullable String cursor, int size) {
-        var search = ArchiveSearch.parse(month, date, cursor, size);
+                            @Nullable String sort, @Nullable String cursor, int size) {
+        var search = ArchiveSearch.parse(month, date, sort, cursor, size);
         var rows = queries.findDreams(userId, search);
         boolean hasNext = rows.size() > size;
         var selected = hasNext ? rows.subList(0, size) : rows;

@@ -14,6 +14,7 @@ JWT의 subject에서 결정한다. 성공 응답은 기존 `ApiResponse`의 `dat
 | 화면/행동 | API | 사용 정보 |
 | --- | --- | --- |
 | 전체 Archive | `GET /api/v1/archives` | `data.items`의 카드 정보 |
+| 꿈 연결 화면의 오래된순 목록 | `GET /api/v1/archives?sort=OLDEST` | 오래된 꿈부터 커서로 이어서 조회 |
 | 특정 월 목록 | `GET /api/v1/archives?month=2026-09` | 꿈을 꾼 날짜 기준으로 해당 월 조회 |
 | 선택한 날짜의 카드 | `GET /api/v1/archives?date=2026-09-16` | 해당 날짜의 완성 기록 |
 | 기록 상세 | `GET /api/v1/archives/{dreamId}` | 공통 정보 `dream`, 원문 `originalText`, 감정 `emotions` |
@@ -29,15 +30,30 @@ Archive 조회는 AI나 외부 이미지 저장소를 호출하지 않는다. �
 
 - `month`는 `YYYY-MM`, `date`는 `YYYY-MM-DD` 형식이다. 둘을 함께 전달하면 400이다.
 - 둘 다 생략하면 내 완성 기록 전체를 조회한다. 날짜 기준은 `createdAt`이 아닌 `dreamedAt`이다.
-- 정렬은 `dreamedAt DESC, dreamId DESC`다. 날짜당 하나라는 기존 저장 정책을 유지한다.
+- `sort=LATEST`는 최신순(`dreamedAt DESC, dreamId DESC`), `sort=OLDEST`는
+  오래된순(`dreamedAt ASC, dreamId ASC`)이다. 생략하면 `LATEST`이며 그 외의 값은 400이다.
+  날짜당 하나라는 기존 저장 정책을 유지한다.
 - `size` 기본값은 20, 허용 범위는 1~50이다.
-- 첫 요청에는 `cursor`를 생략한다. `hasNext=true`이면 받은 `nextCursor`와 **같은 월/날짜 필터**를
-  사용해 다음 페이지를 조회한다. 필터를 바꾸면 커서를 버리고 첫 페이지부터 조회한다.
+- 첫 요청에는 `cursor`를 생략한다. `hasNext=true`이면 받은 `nextCursor`와 **같은 월/날짜 필터·정렬**을
+  사용해 다음 페이지를 조회한다. 필터 또는 정렬을 바꾸면 커서를 버리고 첫 페이지부터 조회한다.
 - 커서는 클라이언트가 해석하거나 만들어낼 필요가 없는 위치 값이다. 권한 토큰은 아니며,
-  모든 조회에 인증된 소유자 조건을 적용한다. 다른 필터의 커서·잘못된 커서는 400이다.
+  모든 조회에 인증된 소유자 조건을 적용한다. 다른 필터/정렬의 커서·잘못된 커서는 400이다.
+  기존 v1 최신순 커서는 `LATEST`에서 계속 사용할 수 있으며 새 커서는 정렬을 포함한 v2로 발급한다.
 - 마지막 페이지는 `hasNext=false`, `nextCursor=null`이다. 빈 결과도 200과 빈 `items`를 반환한다.
 - 앞쪽 기록이 추가되거나 이전 페이지의 마지막 기록이 삭제되어도 다음 페이지 경계가 밀리지 않는다.
   조회 도중 상태가 변경될 수 있으므로 여러 페이지가 하나의 고정된 스냅샷을 보장하지는 않는다.
+
+꿈 연결 화면에서 오래된순으로 스크롤하는 요청 예시는 아래와 같다.
+
+```http
+GET /api/v1/archives?sort=OLDEST&size=20
+GET /api/v1/archives?sort=OLDEST&size=20&cursor={nextCursor}
+```
+
+최신순으로 전환하면 `GET /api/v1/archives?sort=LATEST&size=20`으로 다시 시작한다.
+월 목록을 한 번에 읽으려면 날짜당 한 기록이라는 정책에 따라 `month=2026-09&size=31`을 사용할 수 있다.
+후속 꿈 연결 기능에서 체크 상태는 연결 상세의 선택 ID와 화면의 선택 집합으로 관리할 예정이며,
+이번 Archive 응답에는 추가하지 않는다.
 
 아래는 **응답 형식을 설명하기 위한 예시**이며 실제 사용자 데이터가 아니다. 생성 결과가 없어도 카드가 존재한다.
 
@@ -137,7 +153,7 @@ Archive 조회는 AI나 외부 이미지 저장소를 호출하지 않는다. �
 ## 구현을 읽는 순서
 
 1. `domain/archive/controller/ArchiveController.java`: GET 경로, 인증 사용자, 공통 응답.
-2. `domain/archive/dto/request/ArchiveSearch.java`: 날짜·크기·커서 검증과 페이지 경계.
+2. `domain/archive/dto/request/ArchiveSearch.java`, `ArchiveSort.java`: 날짜·정렬·크기·커서 검증과 페이지 경계.
 3. `domain/archive/service/ArchiveService.java`: 읽기 트랜잭션, 배치 결과 조립, 수정·출처 표시.
 4. `domain/archive/repository/ArchiveQueryRepository.java`: 소유권과 완성 상태를 제한하는 실제 JPQL.
 5. `domain/archive/dto/response/`: 목록·상세·생성 상태의 응답 구조.
@@ -155,6 +171,7 @@ Archive 조회는 AI나 외부 이미지 저장소를 호출하지 않는다. �
 이 스크립트는 같은 이름의 인덱스가 이미 있으면 생성하지 않는다. 자동 마이그레이션이나 외부 DB 적용은 수행하지 않았다.
 
 `ArchiveIntegrationTest`는 실제 HTTP 인증과 H2/JPA를 사용해 완성 기록 필터, 월·날짜와 윤년,
-커서 경계 기록 삭제, 권한, 수정·삭제 연결, 보존 결과의 출처 표시, Swagger, 조회 쿼리 수를 확인한다.
+양방향 정렬과 커서 경계 기록 삭제, 필터/정렬이 다른 커서 거부, 기존 최신순 커서 호환,
+권한, 수정·삭제 연결, 보존 결과의 출처 표시, Swagger, 조회 쿼리 수를 확인한다.
 이미지 URL은 테스트용 저장소 구현으로 검증하며 실제 LINER·이미지 Provider·외부 저장소를 호출하지 않는다.
 H2에서 초기 스키마를 검증했으며 MySQL 마이그레이션을 실제 운영 DB에서 실행한 검증은 포함하지 않는다.
