@@ -31,11 +31,25 @@ public class AnalysisTransactions {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Reservation begin(Long userId, Long dreamId, Long revision, boolean available) {
+        return reserve(userId, dreamId, revision, null, available);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Reservation beginForSource(
+            Long userId, Long dreamId, long sourceRevision, boolean available) {
+        return reserve(userId, dreamId, null, sourceRevision, available);
+    }
+
+    private Reservation reserve(
+            Long userId, Long dreamId, Long revision, Long expectedSource, boolean available) {
         lock(userId);
 
         var dream =
                 dreams.findByIdAndUserId(dreamId, userId)
                         .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        if (expectedSource != null && dream.getSourceRevision() != expectedSource) {
+            throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
+        }
         var prior = analyses.findBySourceDreamIdAndUserId(dreamId, userId);
         var now = authClock.instant();
 
@@ -49,7 +63,9 @@ public class AnalysisTransactions {
             throw new BusinessException(DreamErrorCode.INVALID_STATE);
         }
 
-        dream.checkRevision(revision);
+        if (expectedSource == null) {
+            dream.checkRevision(revision);
+        }
 
         if (!available) {
             throw new BusinessException(AnalysisErrorCode.UNAVAILABLE);

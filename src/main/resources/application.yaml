@@ -37,6 +37,9 @@ logging:
 
 mongle:
   dream:
+    generation:
+      enabled: ${MONGLE_DREAM_GENERATION_ENABLED:true}
+      poll-interval: ${MONGLE_DREAM_GENERATION_POLL_INTERVAL:2s}
     ai:
       max-concurrent-calls: ${MONGLE_DREAM_AI_MAX_CONCURRENT_CALLS:4}
   ai:

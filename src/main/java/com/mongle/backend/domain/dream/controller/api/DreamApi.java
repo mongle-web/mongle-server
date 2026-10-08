@@ -55,7 +55,8 @@ public interface DreamApi {
             description =
                     "HAPPY(행복), CALM(편안함), EXCITED(설렘), SAD(슬픔), ANXIOUS(불안), ANGRY(화남),"
                         + " CONFUSED(당황) 중 중복 없이 1~3개를 선택합니다. 대표 감정과 순위는 없습니다. EMOTION_PENDING에서"
-                        + " COMPLETED로 이동합니다. AI 호출은 별도 단계입니다.")
+                        + " COMPLETED로 저장하고 자동 분석·서사화 작업을 예약합니다. AI 완료를 기다리지 않고 응답하며,"
+                        + " 생성 실패도 기록 완성을 되돌리지 않습니다.")
     ResponseEntity<ApiResponse<DreamResponse>> complete(
             @Parameter(hidden = true) Jwt jwt,
             @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId,
