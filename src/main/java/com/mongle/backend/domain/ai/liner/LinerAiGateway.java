@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 @Component
 public class LinerAiGateway implements AiGateway {
+    private static final Duration LOG_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
     private final LinerProperties properties;
     private final LinerClient client;
     private final LinerPayloadMapper mapper;
@@ -112,8 +113,10 @@ public class LinerAiGateway implements AiGateway {
             @Override
             public boolean cancel(boolean mayInterruptIfRunning) {
                 // 파생 Future 취소만으로 원본 HTTP가 취소되지는 않는다. 여기서 통신과 재시도를 직접 정리한다.
-                if (!terminal.compareAndSet(false, true)) return isCancelled();
-                cleanup(failure(AiGatewayErrorCode.CANCELLED));
+                synchronized (Call.this) {
+                    if (!terminal.compareAndSet(false, true)) return isCancelled();
+                    cleanup(failure(AiGatewayErrorCode.CANCELLED));
+                }
                 logCompletion(null, failure(AiGatewayErrorCode.CANCELLED));
                 return super.cancel(mayInterruptIfRunning);
             }
@@ -145,8 +148,9 @@ public class LinerAiGateway implements AiGateway {
                 if (terminal.get()) return;
                 current = attempt;
                 attempt.observed.set(true);
+                // 종료가 관측 표시와 로그 제출 사이에 끼어들어 저장 풀을 먼저 닫지 못하게 한다.
+                recordOutcome(attempt, null, null, error);
             }
-            recordOutcome(attempt, null, null, error);
         }
 
         private void startAttempt(int number) {
@@ -174,7 +178,8 @@ public class LinerAiGateway implements AiGateway {
                     () -> observe(attempt, response, failure(AiGatewayErrorCode.CAPACITY_EXCEEDED))));
         }
 
-        private void observe(Attempt attempt, @Nullable HttpResponse<String> response, @Nullable Throwable error) {
+        private synchronized void observe(Attempt attempt, @Nullable HttpResponse<String> response, @Nullable Throwable error) {
+            // cleanup()과 같은 모니터로 응답 관측부터 로그 제출까지 보호한다. 여기서 DB 저장을 기다리지는 않는다.
             // 취소와 HTTP 완료가 겹쳐도 같은 시도를 두 번 기록하거나 취소 후 재시도하지 않는다.
             if (terminal.get() || !attempt.observed.compareAndSet(false, true)) return;
             AiGenerationResult generated = null;
@@ -247,9 +252,12 @@ public class LinerAiGateway implements AiGateway {
         }
 
         private void finish(@Nullable AiGenerationResult value, @Nullable AiGatewayException error) {
-            if (!terminal.compareAndSet(false, true)) return;
-            // 호출부의 완료 함수가 실행되기 전에 자원을 반납한다. 호출부가 느려도 슬롯이 붙잡히지 않는다.
-            cleanup(error);
+            synchronized (this) {
+                if (!terminal.compareAndSet(false, true)) return;
+                // 종료 표시와 마지막 로그 제출을 함께 보호한다. 서버 종료가 표시만 보고 저장 풀을 닫지 못하게 한다.
+                // 호출부의 완료 함수가 실행되기 전에 자원을 반납한다. 호출부가 느려도 슬롯이 붙잡히지 않는다.
+                cleanup(error);
+            }
             logCompletion(value, error);
             if (error == null) result.complete(value);
             else result.completeExceptionally(error);
@@ -340,11 +348,20 @@ public class LinerAiGateway implements AiGateway {
         return error.getRetryAfter() != null && error.getRetryAfter().compareTo(delay) > 0 ? error.getRetryAfter() : delay;
     }
 
+    /** 새 호출과 진행 중 통신을 정리한 뒤, DB가 살아 있는 동안 제출된 로그 저장을 최대 5초 기다린다. */
     @PreDestroy
     public void close() {
         if (!closing.compareAndSet(false, true)) return;
         log.info("AI Gateway 종료 시작: activeCalls={}", active.size());
         // 결과를 먼저 실패로 확정하고 HTTP·예약 작업을 취소한다. 작업 풀이 종료돼도 미완료 Future가 남지 않는다.
-        active.forEach(call -> call.finish(null, failure(AiGatewayErrorCode.PROVIDER_UNAVAILABLE)));
+        active.forEach(call -> {
+            // 다른 스레드가 이미 취소·완료를 시작했더라도 마지막 로그 제출까지 마친 뒤 저장 풀을 닫는다.
+            synchronized (call) {
+                call.finish(null, failure(AiGatewayErrorCode.PROVIDER_UNAVAILABLE));
+            }
+        });
+        // 이 Bean은 로그 서비스·Repository·트랜잭션 매니저보다 먼저 파괴된다.
+        // DB가 아직 살아 있을 때 마지막 시도 행을 배출하며, 일반 요청 처리에서는 이 대기를 하지 않는다.
+        resources.drainLogs(LOG_SHUTDOWN_TIMEOUT);
     }
 }
