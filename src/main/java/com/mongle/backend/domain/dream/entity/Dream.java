@@ -24,6 +24,7 @@ import java.util.*;
 @Entity
 @Table(
         name = "dreams",
+        indexes = @Index(name = "idx_dreams_user_status_date_id", columnList = "user_id,record_status,dreamed_at,id"),
         uniqueConstraints =
                 @UniqueConstraint(
                         name = "uk_dreams_user_date",
