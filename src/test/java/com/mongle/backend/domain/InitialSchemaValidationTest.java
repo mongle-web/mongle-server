@@ -49,6 +49,11 @@ class InitialSchemaValidationTest {
                 where table_schema = 'public' and table_name = 'ai_generation_logs'
                 """, String.class)).contains("created_at").doesNotContain("updated_at");
 
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'ai_generation_logs' and is_nullable = 'YES'
+                """, String.class)).contains("model_name", "input_tokens", "output_tokens", "cached_input_tokens", "actual_cost");
+
         assertThat(jdbcTemplate.queryForObject("""
                 select is_nullable from information_schema.columns
                 where table_schema = 'public' and table_name = 'users' and column_name = 'nickname'

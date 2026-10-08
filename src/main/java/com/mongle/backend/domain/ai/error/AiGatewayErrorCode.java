@@ -24,6 +24,10 @@ public enum AiGatewayErrorCode implements ErrorCode {
     INSUFFICIENT_CREDIT(HttpStatus.SERVICE_UNAVAILABLE, "AI_503_1", "AI 서비스를 일시적으로 사용할 수 없습니다.", false),
     RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE, "AI_503_2", "AI 서비스가 혼잡합니다. 잠시 후 다시 시도해주세요.", true),
     PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI_503_3", "AI 서비스를 일시적으로 사용할 수 없습니다.", true),
+    // 제공자 제한과 구분되는, 이 서버 인스턴스의 작업 용량 초과다. Gateway에서 자동 재시도하지 않는다.
+    CAPACITY_EXCEEDED(HttpStatus.SERVICE_UNAVAILABLE, "AI_503_4", "AI 처리 요청이 많습니다. 잠시 후 다시 시도해주세요.", false),
+    // 취소한 호출의 시도 로그에 사용한다. 반환 Future 자체는 CancellationException으로 완료된다.
+    CANCELLED(HttpStatus.SERVICE_UNAVAILABLE, "AI_503_5", "AI 요청 처리가 취소되었습니다.", false),
     TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "AI_504_1", "AI 서비스의 응답 시간이 초과되었습니다.", false),
     INVALID_RESPONSE(HttpStatus.BAD_GATEWAY, "AI_502_3", "AI 서비스의 응답을 처리할 수 없습니다.", false),
     INCOMPLETE_RESPONSE(HttpStatus.BAD_GATEWAY, "AI_502_4", "AI 서비스의 응답이 완성되지 않았습니다.", false);

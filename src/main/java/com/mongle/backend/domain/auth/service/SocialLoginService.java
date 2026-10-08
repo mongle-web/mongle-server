@@ -6,6 +6,8 @@ import com.mongle.backend.domain.auth.repository.SocialAccountRepository;
 import com.mongle.backend.domain.user.dto.UserResponse;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
+import com.mongle.backend.global.logging.CommittedLog;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -15,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.Optional;
 
 @Service
+@Slf4j
 public class SocialLoginService {
     private final SocialAccountRepository accounts;
     private final UserRepository users;
@@ -48,6 +51,9 @@ public class SocialLoginService {
                 }
                 User user = users.save(User.register(identity.email()));
                 accounts.saveAndFlush(SocialAccount.link(user, identity.provider(), identity.providerUserId()));
+                Long userId = user.getId();
+                // 이메일·소셜 제공자 사용자 ID 대신 내부 PK와 제공사만 남긴다.
+                CommittedLog.afterCommit(() -> log.info("소셜 회원 가입 완료: userId={}, provider={}", userId, identity.provider()));
                 return UserResponse.from(user);
             });
         } catch (DataIntegrityViolationException duplicate) {

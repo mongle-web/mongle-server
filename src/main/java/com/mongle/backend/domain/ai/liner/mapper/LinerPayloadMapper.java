@@ -7,6 +7,7 @@ import com.mongle.backend.domain.ai.dto.response.AiTokenUsage;
 import com.mongle.backend.domain.ai.error.AiGatewayErrorCode;
 import com.mongle.backend.domain.ai.error.AiGatewayException;
 import com.mongle.backend.domain.ai.liner.config.LinerProperties;
+import com.mongle.backend.domain.ai.liner.dto.LinerResponseMetadata;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
@@ -175,6 +176,37 @@ public class LinerPayloadMapper {
         // 위에서 시작한 코드 블록의 범위를 끝낸다.
         }
     // 위에서 시작한 코드 블록의 범위를 끝낸다.
+    }
+
+    /**
+     * 생성 결과 검증과 별도로 관측 정보를 읽는다. 잘린 출력·잘못된 content도 과금될 수 있다.
+     * 각 필드를 독립적으로 검사해 잘못된 사용량 때문에 유효한 모델명까지 버리지 않는다.
+     * 생성 성공 여부는 result()가 판단하며, 이 함수는 그 판단을 완화하지 않는다.
+     */
+    public LinerResponseMetadata metadata(HttpResponse<String> response) {
+        String requestId = requestId(response);
+        JsonNode root;
+        try {
+            root = strictJson.readTree(response.body());
+            if (root == null || !root.isObject()) {
+                return new LinerResponseMetadata(null, AiTokenUsage.unknown(), null, requestId);
+            }
+        } catch (RuntimeException ignored) {
+            // JSON 본문을 읽지 못해도 수신한 추적 헤더는 보존한다. 예외 본문을 로그로 전파하지 않는다.
+            return new LinerResponseMetadata(null, AiTokenUsage.unknown(), null, requestId);
+        }
+        String model = null;
+        String finish = null;
+        AiTokenUsage tokens = AiTokenUsage.unknown();
+        try { model = text(root, "model"); } catch (RuntimeException ignored) { /* 잘못된 모델 필드는 미확정이다. */ }
+        try { tokens = usage(root.get("usage")); } catch (RuntimeException ignored) { /* 모순된 수량으로 비용을 계산하지 않는다. */ }
+        try {
+            var choices = root.path("choices");
+            if (choices.isArray() && choices.size() == 1 && choices.get(0).isObject()) {
+                finish = text(choices.get(0), "finish_reason");
+            }
+        } catch (RuntimeException ignored) { /* 잘못된 종료 사유만 미확정으로 남긴다. */ }
+        return new LinerResponseMetadata(model, tokens, finish, requestId);
     }
 
     // 응답의 usage 객체를 프로젝트의 토큰 사용량 DTO로 바꾸는 함수다.

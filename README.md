@@ -19,7 +19,10 @@ com.mongle.backend
 │   │   ├── gateway          # AiGateway 호출 인터페이스
 │   │   ├── dto
 │   │   │   ├── request      # 호출 맥락·메시지·출력 스키마
-│   │   │   └── response     # 생성 내용·사용량·종료 사유
+│   │   │   ├── response     # 생성 내용·사용량·종료 사유
+│   │   │   └── logging      # 시도 메타데이터·비용 계산 결과
+│   │   ├── config           # 모델별 가격표·비동기 실행 자원·한도
+│   │   ├── service          # 비용 계산·독립 트랜잭션 로그 저장
 │   │   ├── error            # AI 호출 오류 코드·예외
 │   │   └── liner            # 실제 Gateway 구현·설정·HTTP 통신·JSON 변환
 │   └── world               
@@ -27,6 +30,7 @@ com.mongle.backend
     ├── common              # BaseCreatedEntity, BaseEntity, GenerationStatus
     ├── config              # JpaConfig, SwaggerConfig
     ├── error               # 기존 공통 예외 처리
+    ├── logging             # HTTP 요청 추적·커밋 후 성공 로그
     └── response            # 기존 ApiResponse
 ```
 
@@ -78,9 +82,13 @@ Driver Class는 `org.h2.Driver`, JDBC URL은
 
 초기 모델의 기준, 연관관계와 Swagger 작성 예시는 [도메인 초기 세팅 문서](docs/domain-setup.md)를 참고한다.
 LLM Gateway의 요청·응답·오류 계약과 테스트용 구현 사용법은 [Gateway 계약 문서](docs/ai-gateway-contract.md)를 참고한다.
+시도별 로그·토큰 사용량·비용 계산과 기존 MySQL DB 변경 방법은 [로그와 비용 문서](docs/ai-generation-logging.md)를 참고한다.
 실제 LINER 구현의 환경변수, 호출 흐름, 타임아웃·재시도 정책은 [LINER 연동 문서](docs/liner-gateway.md)를 참고한다.
 `LINER_API_KEY`를 실행 환경에 설정하면 도메인 서비스에서 `AiGateway`를 주입해 사용할 수 있다.
 키가 없어도 서버는 기동하며, 공개 AI 엔드포인트와 도메인별 프롬프트는 각 기능에서 추가한다.
+Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는 완료 처리를 연결해 사용한다.
+[비동기 Gateway 문서](docs/ai-gateway-async.md)에 실행 흐름·환경변수·호출 제한·취소 정책을 정리했다.
+[운영 로깅 문서](docs/operational-logging.md)에 HTTP·AI·인증 로그의 추적 ID, 레벨과 조회 방법을 정리했다.
 
 ---
 
