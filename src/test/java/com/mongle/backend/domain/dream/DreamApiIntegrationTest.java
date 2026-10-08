@@ -723,7 +723,7 @@ class DreamApiIntegrationTest {
                 assertThat(current.get("title").isNull()).isTrue();
                 assertThat(current.get("sourceRevision").asLong()).isEqualTo(source);
             }
-            var rejected =
+            var changed =
                     send(
                             client,
                             token,
@@ -736,12 +736,19 @@ class DreamApiIntegrationTest {
                                     "변경 원문",
                                     "emotions",
                                     List.of("SAD")));
-            assertThat(rejected.statusCode()).isEqualTo(400);
-            assertThat(rejected.body()).contains("DREAM_400_5");
+            assertThat(changed.statusCode()).isEqualTo(200);
             var after = data(send(client, token, "GET", path(current), null), 200);
-            assertThat(after.get("originalText").asString()).isEqualTo("원문");
-            assertThat(revision(after)).isEqualTo(revision(current));
-            assertThat(after.get("sourceRevision").asLong()).isEqualTo(source);
+            assertThat(after.get("originalText").asString()).isEqualTo("변경 원문");
+            assertThat(after.at("/emotions/0").asString()).isEqualTo("SAD");
+            assertThat(after.get("edited").asBoolean()).isTrue();
+            assertThat(revision(after)).isGreaterThan(revision(current));
+            assertThat(after.get("sourceRevision").asLong()).isEqualTo(source + 1);
+            var noOp = data(send(client, token, "PATCH", path(after),
+                    Map.of("revision", revision(after), "originalText", "변경 원문", "emotions", List.of("SAD"))), 200);
+            assertThat(revision(noOp)).isEqualTo(revision(after));
+            // 오래된 수정 요청은 새 감정과 원문을 덮어쓰지 못한다.
+            assertThat(send(client, token, "PATCH", path(after),
+                    Map.of("revision", revision(current), "emotions", List.of("HAPPY"))).statusCode()).isEqualTo(409);
         }
     }
 

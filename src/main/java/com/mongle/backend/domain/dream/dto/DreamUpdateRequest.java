@@ -23,7 +23,7 @@ public class DreamUpdateRequest {
     @Schema(description = "수정할 원문. 미전달 시 유지, null·공백만 있는 값은 불가, 최대 500자")
     private String originalText;
 
-    @Schema(description = "완성 시 감정은 변경 불가. 기존 값과 같은 집합은 무변경으로 허용하며 null·중복은 불가")
+    @Schema(description = "수정할 감정. 기존 7종 중 중복 없이 1~3개, 미전달 시 유지. 순서만 바꾸면 무변경")
     private List<DreamEmotion> emotions;
 
     @Schema(description = "최대 20자. 미전달 시 유지, null·빈 문자열·공백만 있는 값은 제목 제거")

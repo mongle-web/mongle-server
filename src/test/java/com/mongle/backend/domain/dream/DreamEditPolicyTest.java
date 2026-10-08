@@ -37,7 +37,7 @@ class DreamEditPolicyTest {
     }
 
     @Test
-    void rejectsEmotionChangesBeforeMutatingAnyFields() {
+    void validatesEmotionsBeforeMutationAndTreatsEqualSetsAsNoOp() {
         var dream = completed();
         long source = dream.getSourceRevision();
         assertThatThrownBy(
@@ -46,14 +46,14 @@ class DreamEditPolicyTest {
                                         true,
                                         "바뀐 원문",
                                         true,
-                                        List.of(DreamEmotion.SAD),
+                                        List.of(DreamEmotion.SAD, DreamEmotion.SAD),
                                         true,
                                         "바뀐 제목"))
                 .isInstanceOfSatisfying(
                         BusinessException.class,
                         e ->
                                 assertThat(e.getErrorCode())
-                                        .isEqualTo(DreamErrorCode.EMOTIONS_IMMUTABLE));
+                                        .isEqualTo(DreamErrorCode.INVALID_EMOTIONS));
         assertThat(dream.getOriginalText()).isEqualTo("원문");
         assertThat(dream.getTitle()).isNull();
         assertThat(dream.getSourceRevision()).isEqualTo(source);
@@ -62,6 +62,10 @@ class DreamEditPolicyTest {
                 false, null, true, List.of(DreamEmotion.CALM, DreamEmotion.HAPPY), false, null);
         assertThat(dream.isEdited()).isFalse();
         assertThat(dream.getSourceRevision()).isEqualTo(source);
+        dream.update(true, "바뀐 원문", true, List.of(DreamEmotion.SAD), true, "바뀐 제목");
+        assertThat(dream.getEmotions()).containsExactly(DreamEmotion.SAD);
+        assertThat(dream.getSourceRevision()).isEqualTo(source + 1);
+        assertThat(dream.isEdited()).isTrue();
     }
 
     @Test
@@ -89,8 +93,11 @@ class DreamEditPolicyTest {
     }
 
     @Test
-    void explicitlyClearedMissingTitleCannotBeOverwrittenByGenerator() {
+    void actualTitleRemovalBlocksGeneratorButClearingMissingTitleIsNoOp() {
         var dream = completed();
+        dream.update(false, null, false, null, true, "");
+        assertThat(dream.isEdited()).isFalse();
+        dream.update(false, null, false, null, true, "내 제목");
         dream.update(false, null, false, null, true, "");
         dream.applyGeneratedTitle("자동 제목", dream.getSourceRevision());
         assertThat(dream.getTitle()).isNull();

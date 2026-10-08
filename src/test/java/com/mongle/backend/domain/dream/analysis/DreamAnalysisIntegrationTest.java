@@ -136,6 +136,35 @@ class DreamAnalysisIntegrationTest {
     }
 
     @Test
+    void emotionOnlyEditPreservesCompletedAnalysisAndRejectsLateResult() {
+        var first = completed(today.minusDays(1));
+        var stored = service.analyze(user, first.dreamId(), first.revision());
+        var current = dreams.get(user, first.dreamId());
+        var edit = new DreamUpdateRequest();
+        edit.setRevision(current.revision());
+        edit.setEmotions(List.of(DreamEmotion.SAD));
+        var updated = dreams.update(user, first.dreamId(), edit);
+        assertThat(updated.analysisSourceChanged()).isTrue();
+        var preserved = transactions.get(user, stored.analysisId());
+        assertThat(preserved.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(preserved.elements()).isEqualTo(stored.elements());
+        assertThat(preserved.sourceChanged()).isTrue();
+
+        var second = completed(today);
+        generator.action = input -> {
+            var request = new DreamUpdateRequest();
+            request.setRevision(dreams.get(user, second.dreamId()).revision());
+            request.setEmotions(List.of(DreamEmotion.ANXIOUS));
+            dreams.update(user, second.dreamId(), request);
+            return StructureValidatorTest.VALID;
+        };
+        var late = service.analyze(user, second.dreamId(), second.revision());
+        assertThat(late.status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(late.failureCode()).isEqualTo("SOURCE_CHANGED");
+        assertThat(late.elements()).isEmpty();
+    }
+
+    @Test
     void failedAnalysisCanRetryWithOriginalRevision() {
         var dream = completed(today);
         generator.action =
@@ -558,7 +587,7 @@ class DreamAnalysisIntegrationTest {
     }
 
     @Test
-    void clearingAnAlreadyEmptyTitleDuringGenerationPreventsAutomaticTitle() {
+    void clearingAnAlreadyEmptyTitleIsNoOpAndKeepsAutomaticTitleEligible() {
         var dream = completed(today);
         generator.action =
                 input -> {
@@ -572,7 +601,7 @@ class DreamAnalysisIntegrationTest {
         assertThat(result.status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(result.displayKeywords()).containsExactly("바다");
         assertThat(result.sourceChanged()).isFalse();
-        assertThat(dreams.get(user, dream.dreamId()).title()).isNull();
+        assertThat(dreams.get(user, dream.dreamId()).title()).isEqualTo("바다 위를 날다");
     }
 
     @Test
