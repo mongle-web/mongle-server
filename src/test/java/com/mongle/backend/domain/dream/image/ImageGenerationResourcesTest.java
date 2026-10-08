@@ -40,9 +40,11 @@ class ImageGenerationResourcesTest {
                     () -> CompletableFuture.completedFuture(new byte[] {1}),
                     (bytes, failure) -> { throw new IllegalStateException("storage"); });
             assertThatThrownBy(() -> await(result)).hasMessage("storage");
-            assertThat(await(resources.reserve().execute(
+            CompletableFuture<Byte> next = resources.reserve().execute(
                     () -> CompletableFuture.completedFuture(new byte[] {2}),
-                    (bytes, failure) -> bytes[0]))).isEqualTo((byte) 2);
+                    (bytes, failure) -> bytes[0]);
+            byte value = await(next);
+            assertThat(value).isEqualTo((byte) 2);
         }
     }
 
