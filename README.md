@@ -89,6 +89,7 @@ LLM Gateway의 요청·응답·오류 계약과 테스트용 구현 사용법은
 Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는 완료 처리를 연결해 사용한다.
 [비동기 Gateway 문서](docs/ai-gateway-async.md)에 실행 흐름·환경변수·호출 제한·취소 정책을 정리했다.
 [운영 로깅 문서](docs/operational-logging.md)에 HTTP·AI·인증 로그의 추적 ID, 레벨과 조회 방법을 정리했다.
+[Archive 조회 문서](docs/archive.md)에 목록·상세 API, 수정 표시, 생성 결과 상태와 기존 이미지 URL API 연결을 정리했다.
 
 ---
 
