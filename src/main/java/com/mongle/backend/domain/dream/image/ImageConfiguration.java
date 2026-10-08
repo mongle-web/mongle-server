@@ -8,8 +8,13 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 @Configuration
-@EnableConfigurationProperties(ImageOptions.class)
+@EnableConfigurationProperties({ImageOptions.class, ImageExecutionProperties.class})
 public class ImageConfiguration {
+    @Bean(destroyMethod = "close")
+    ImageGenerationResources imageGenerationResources(ImageExecutionProperties properties) {
+        return new ImageGenerationResources(properties.maxConcurrentCalls());
+    }
+
     @Bean
     @ConditionalOnMissingBean(ImageGenerator.class)
     ImageGenerator unavailableImageGenerator() {

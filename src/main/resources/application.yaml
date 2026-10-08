@@ -36,6 +36,9 @@ logging:
 
 
 mongle:
+  image:
+    execution:
+      max-concurrent-calls: ${MONGLE_IMAGE_MAX_CONCURRENT_CALLS:2}
   dream:
     generation:
       enabled: ${MONGLE_DREAM_GENERATION_ENABLED:true}
