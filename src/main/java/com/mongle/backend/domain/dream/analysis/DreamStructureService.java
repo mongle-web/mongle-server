@@ -22,7 +22,17 @@ public class DreamStructureService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public CompletableFuture<AnalysisResponse> analyze(Long userId, Long dreamId, Long revision) {
-        var reserved = transactions.begin(userId, dreamId, revision, generator.available());
+        return launch(transactions.begin(userId, dreamId, revision, generator.available()));
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public CompletableFuture<AnalysisResponse> analyzeSource(
+            Long userId, Long dreamId, long sourceRevision) {
+        return launch(
+                transactions.beginForSource(userId, dreamId, sourceRevision, generator.available()));
+    }
+
+    private CompletableFuture<AnalysisResponse> launch(AnalysisTransactions.Reservation reserved) {
         if (reserved.input() == null) return CompletableFuture.completedFuture(reserved.response());
         try {
             return resources.execute(

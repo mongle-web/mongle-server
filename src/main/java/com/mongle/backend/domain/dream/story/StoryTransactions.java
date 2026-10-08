@@ -36,11 +36,28 @@ public class StoryTransactions {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Reservation begin(Long userId, Long dreamId, StoryRequest request, boolean available) {
+        return reserve(userId, dreamId, request, null, available);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Reservation beginForSource(
+            Long userId, Long dreamId, long sourceRevision, boolean available) {
+        return reserve(userId, dreamId, null, sourceRevision, available);
+    }
+
+    private Reservation reserve(
+            Long userId, Long dreamId, StoryRequest request, Long expectedSource, boolean available) {
         lock(userId);
 
         var dream =
                 dreams.findByIdAndUserId(dreamId, userId)
                         .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        if (expectedSource != null) {
+            if (dream.getSourceRevision() != expectedSource) {
+                throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
+            }
+            request = new StoryRequest(dream.getRevision(), false, null);
+        }
         dream.checkRevision(request.revision());
 
         if (dream.getRecordStatus() != DreamRecordStatus.COMPLETED) {

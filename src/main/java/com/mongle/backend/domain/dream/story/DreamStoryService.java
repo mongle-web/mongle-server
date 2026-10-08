@@ -25,8 +25,17 @@ public class DreamStoryService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public CompletableFuture<StoryResponse> generate(
             Long userId, Long dreamId, StoryRequest request) {
-        var reservation = transactions.begin(userId, dreamId, request, generator.available());
+        return launch(transactions.begin(userId, dreamId, request, generator.available()));
+    }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public CompletableFuture<StoryResponse> generateSource(
+            Long userId, Long dreamId, long sourceRevision) {
+        return launch(
+                transactions.beginForSource(userId, dreamId, sourceRevision, generator.available()));
+    }
+
+    private CompletableFuture<StoryResponse> launch(StoryTransactions.Reservation reservation) {
         if (reservation.input() == null) {
             return CompletableFuture.completedFuture(reservation.response());
         }

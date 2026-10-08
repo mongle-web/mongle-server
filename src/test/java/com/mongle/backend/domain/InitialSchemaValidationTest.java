@@ -20,6 +20,24 @@ class InitialSchemaValidationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
+    void createsAutoGenerationJobTableFromMigration() {
+        jdbcTemplate.execute("drop table dream_generation_jobs");
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var migration = new org.springframework.core.io.ClassPathResource(
+                    "db/migrations/20261008-dream-auto-generation.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            return null;
+        });
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'dream_generation_jobs'
+                """, String.class)).containsExactlyInAnyOrder(
+                "id", "dream_id", "user_id", "source_revision", "stage", "status", "claim_token",
+                "lease_until", "next_run_at", "recovering", "failure_code", "version",
+                "created_at", "updated_at");
+    }
+
+    @Test
     void createsImageTableFromMigrationAndAllowsRerunInH2MysqlMode() {
         jdbcTemplate.execute("drop table dream_images");
         jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
