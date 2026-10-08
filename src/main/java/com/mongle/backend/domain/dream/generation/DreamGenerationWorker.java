@@ -16,6 +16,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataAccessException;
 
 import java.time.Clock;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -141,8 +143,15 @@ public final class DreamGenerationWorker implements AutoCloseable {
             while (failure instanceof CompletionException && failure.getCause() != null) {
                 failure = failure.getCause();
             }
-            // DB 장애는 호출 결과를 확정하지 않는다. lease 만료 후 저장된 결과로 복구한다.
-            if (failure instanceof DataAccessException) {
+            // 서비스가 별도 트랜잭션에 기록한 실패 원인을 작업 상태에도 유지한다.
+            var stored = transactions.progress(claim);
+            if (stored != null && stored.status() == GenerationStatus.FAILED
+                    && stored.failureCode() != null) {
+                transactions.result(claim, GenerationStatus.FAILED, stored.failureCode());
+                return;
+            }
+            // 감싸진 DB 장애도 결과를 확정하지 않는다. lease 만료 후 저장된 결과로 복구한다.
+            if (hasDatabaseFailure(failure)) {
                 return;
             }
             String code = "CALL_FAILED";
@@ -159,8 +168,19 @@ public final class DreamGenerationWorker implements AutoCloseable {
             }
             transactions.result(claim, GenerationStatus.FAILED, code);
         } catch (RuntimeException ex) {
-            log.warn("자동 생성 진행 상태를기록하지 못했습니다. 만료 후 저장된 결과를 확인합니다.");
+            log.warn("자동 생성 진행 상태를 기록하지 못했습니다. 만료 후 저장된 결과를 확인합니다.");
         }
+    }
+
+    private boolean hasDatabaseFailure(Throwable failure) {
+        var seen = Collections.newSetFromMap(new IdentityHashMap<Throwable, Boolean>());
+        // 잘못 구성된 순환 cause도 제어 스레드를 붙잡지 않도록 한 번씩만 확인한다.
+        for (var cause = failure; cause != null && seen.add(cause); cause = cause.getCause()) {
+            if (cause instanceof DataAccessException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
