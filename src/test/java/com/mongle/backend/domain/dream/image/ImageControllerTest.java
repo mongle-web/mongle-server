@@ -61,4 +61,22 @@ class ImageControllerTest {
                 .hasNoCause()
                 .hasMessage(ImageErrorCode.CALL_FAILED.getMessage());
     }
+    @Test
+    void asynchronousFailureDoesNotExposeProviderResponseToGlobalLogger() {
+        var service = mock(DreamImageService.class);
+        var controller = new ImageController(
+                service, mock(ImageTransactions.class), new ImageOptions(null, null));
+        var jwt = new Jwt("token", Instant.now(), Instant.now().plusSeconds(60),
+                Map.of("alg", "none"), Map.of("sub", "1"));
+        var request = new ImageRequest(0L, "test-style", null, false, null);
+        when(service.generate(1L, 2L, request)).thenReturn(
+                java.util.concurrent.CompletableFuture.failedFuture(
+                        new BusinessException(ImageErrorCode.CALL_FAILED,
+                                new IllegalStateException("private provider response"))));
+        assertThatThrownBy(() -> com.mongle.backend.domain.dream.gateway.DreamAiTestAwait.await(
+                        controller.generate(jwt, 2L, request)))
+                .isInstanceOf(BusinessException.class).hasNoCause()
+                .hasMessage(ImageErrorCode.CALL_FAILED.getMessage());
+    }
+
 }
