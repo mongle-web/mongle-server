@@ -1,6 +1,6 @@
 package com.mongle.backend.domain.dream.story;
 
-import com.mongle.backend.global.error.BusinessException;
+import com.mongle.backend.domain.dream.gateway.DreamAiGateway;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -11,17 +11,7 @@ public class StoryConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(StoryGenerator.class)
-    StoryGenerator unavailableStoryGenerator() {
-        return new StoryGenerator() {
-            @Override
-            public boolean available() {
-                return false;
-            }
-
-            @Override
-            public java.util.concurrent.CompletableFuture<String> generate(Input input) {
-                throw new BusinessException(StoryErrorCode.UNAVAILABLE);
-            }
-        };
+    StoryGenerator aiGatewayStoryGenerator(DreamAiGateway gateway) {
+        return new AiGatewayStoryGenerator(gateway);
     }
 }
