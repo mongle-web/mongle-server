@@ -85,11 +85,11 @@ public interface DreamApi {
     @Operation(
             summary = "완성한 꿈 수정",
             description =
-                    "revision 필수. 미전달 항목은 유지합니다. originalText는 최대 500자이며 null·빈 내용은 불가합니다. 감정은 변경할"
-                        + " 수 없고 기존 감정과 같은 집합의 전달만 허용합니다. title:null 또는 빈 문자열·공백만 있는 값은 제목 제거입니다."
+                    "revision 필수. 미전달 항목은 유지합니다. originalText는 최대 500자이며 null·빈 내용은 불가합니다. 감정은 기존"
+                        + " 7종 중 중복 없이 1~3개로 수정할 수 있습니다. title:null 또는 빈 문자열·공백만 있는 값은 제목 제거입니다."
                         + " 제목은 최대 20자입니다. 날짜 및 사용자 ID는 변경할 수 없습니다. 제목 수정은 revision만 증가시키고 AI 입력 버전"
-                        + " sourceRevision은 유지합니다. 원문 변경은 두 버전을 증가시키며 이전 분석·이야기는 보존합니다. 실제 변경 시"
-                        + " edited=true입니다.")
+                        + " sourceRevision은 유지합니다. 원문·감정 변경은 두 버전을 증가시키며 이전 분석·이야기는 보존합니다. 실제 변경 시"
+                        + " edited=true이며 같은 값 재전달은 수정 표시·버전을 바꾸지 않습니다.")
     ResponseEntity<ApiResponse<DreamResponse>> update(
             @Parameter(hidden = true) Jwt jwt,
             @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId,

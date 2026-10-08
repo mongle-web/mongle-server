@@ -16,14 +16,14 @@ public record DreamResponse(
         String title,
         @Schema(description = "분석에서 생성한 순서 있는 표시 키워드. 이미지 불필요, 기존 분석은 빈 목록")
                 List<String> displayKeywords,
-        @Schema(description = "완료 분석의 입력과 현재 원문이 다르면 true. 기존 키워드는 유지")
+        @Schema(description = "완료 분석의 입력과 현재 원문·감정이 다르면 true. 기존 키워드는 유지")
                 boolean analysisSourceChanged,
         List<DreamEmotion> emotions,
         DreamRecordStatus recordStatus,
         GenerationStatus analysisStatus,
         boolean edited,
         @Schema(description = "수정 충돌 검사용 버전. 다음 수정·분석·서사화 요청의 revision에 전달") long revision,
-        @Schema(description = "AI 입력 버전. 원문·최초 감정 선택 변경 시 증가, 제목만 변경하면 유지") long sourceRevision,
+        @Schema(description = "AI 입력 버전. 원문·감정이 실제로 변경되면 증가, 제목만 변경하면 유지") long sourceRevision,
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
     public static DreamResponse from(Dream dream) {

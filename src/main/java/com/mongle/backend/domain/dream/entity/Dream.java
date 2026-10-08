@@ -24,6 +24,7 @@ import java.util.*;
 @Entity
 @Table(
         name = "dreams",
+        indexes = @Index(name = "idx_dreams_user_status_date_id", columnList = "user_id,record_status,dreamed_at,id"),
         uniqueConstraints =
                 @UniqueConstraint(
                         name = "uk_dreams_user_date",
@@ -154,10 +155,6 @@ public class Dream extends BaseEntity {
 
         if (emotionsProvided) {
             DreamPolicy.emotions(values);
-
-            if (!emotions.equals(new HashSet<>(values))) {
-                throw new BusinessException(DreamErrorCode.EMOTIONS_IMMUTABLE);
-            }
         }
 
         String normalizedTitle = title;
@@ -168,11 +165,20 @@ public class Dream extends BaseEntity {
         }
 
         boolean textChanged = textProvided && !Objects.equals(originalText, text);
+        // 감정은 순서 없는 집합이다. 순서만 바꾼 요청으로 수정 표시·버전이 증가하지 않는다.
+        boolean emotionsChanged = emotionsProvided && !emotions.equals(new HashSet<>(values));
         boolean titleChanged = titleProvided && !Objects.equals(title, normalizedTitle);
 
-        // 모든 입력을 검증한 뒤 변경한다. 감정은 완성 시 선택한 값을 유지한다.
+        // 복합 수정의 모든 필드를 검증한 뒤 변경해 잘못된 제목·감정으로 원문만 바뀌는 일을 막는다.
         if (textChanged) {
             originalText = text;
+        }
+        if (emotionsChanged) {
+            emotions.clear();
+            emotions.addAll(values);
+        }
+        if (textChanged || emotionsChanged) {
+            // 한 번의 수정은 하나의 AI 입력 버전이다. 기존 결과를 보존하면서 진행 중 생성의 반영을 차단한다.
             sourceRevision++;
         }
 
@@ -180,7 +186,7 @@ public class Dream extends BaseEntity {
             title = normalizedTitle;
         }
 
-        if (textChanged || titleChanged || (titleProvided && normalizedTitle == null)) {
+        if (textChanged || emotionsChanged || titleChanged) {
             edited = true;
         }
     }

@@ -18,6 +18,8 @@ public enum DreamErrorCode implements ErrorCode {
     INVALID_TEXT(
             HttpStatus.BAD_REQUEST, "DREAM_400_3", "꿈 원문은 공백을 제외한 내용이 있어야 하며 최대 500자입니다."),
     INVALID_EMOTIONS(HttpStatus.BAD_REQUEST, "DREAM_400_4", "감정은 중복 없이 1~3개 선택해주세요."),
+    // 이전 API 오류 코드의 식별자를 보존한다. 현재 감정 수정 정책에서는 발생하지 않는다.
+    @Deprecated
     EMOTIONS_IMMUTABLE(
             HttpStatus.BAD_REQUEST, "DREAM_400_5", "완성한 꿈의 감정은 수정할 수 없습니다."),
     INVALID_TITLE(

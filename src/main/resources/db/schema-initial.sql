@@ -64,6 +64,8 @@ CREATE TABLE dreams (
     CONSTRAINT fk_dreams_user FOREIGN KEY (user_id) REFERENCES users (id)
 );
 
+CREATE INDEX idx_dreams_user_status_date_id ON dreams(user_id, record_status, dreamed_at, id);
+
 CREATE TABLE dream_emotions (
     dream_id BIGINT NOT NULL,
     emotion VARCHAR(20) NOT NULL,

@@ -91,6 +91,7 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 [운영 로깅 문서](docs/operational-logging.md)에 HTTP·AI·인증 로그의 추적 ID, 레벨과 조회 방법을 정리했다.
 실제 장면 분석·서사화의 호출 흐름과 동시 처리 제한은
 [꿈 AI 연동 문서](docs/dream-ai-gateway.md)를 참고한다.
+[Archive 조회 문서](docs/archive.md)에 목록·상세 API, 수정 표시, 생성 결과 상태와 기존 이미지 URL API 연결을 정리했다.
 
 ---
 
