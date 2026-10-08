@@ -5,14 +5,15 @@ import com.mongle.backend.domain.dream.entity.DreamEmotion;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
-/** #5 Gateway 계약 확정 후 DREAM_NARRATIVE 어댑터에서 구현할 도메인 포트. */
+/** 서사화 포트. 기본 구현은 공통 AiGateway를 호출하고 서비스가 출력 검증·저장을 담당한다. */
 public interface StoryGenerator {
     default boolean available() {
         return true;
     }
 
-    String generate(Input input);
+    CompletableFuture<String> generate(Input input);
 
     record Input(
             Long userId,

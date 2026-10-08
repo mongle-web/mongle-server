@@ -4,15 +4,20 @@ import com.mongle.backend.domain.dream.analysis.api.AnalysisApi;
 import com.mongle.backend.domain.dream.dto.DreamRevisionRequest;
 import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.response.ApiResponse;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequiredArgsConstructor
@@ -23,18 +28,21 @@ public class AnalysisController implements AnalysisApi {
 
     @Override
     @PostMapping("/dreams/{dreamId}/analysis")
-    public ResponseEntity<ApiResponse<AnalysisResponse>> analyze(
+    public CompletableFuture<ResponseEntity<ApiResponse<AnalysisResponse>>> analyze(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable @Positive Long dreamId,
             @Valid @RequestBody DreamRevisionRequest request) {
-        var result = service.analyze(Long.valueOf(jwt.getSubject()), dreamId, request.revision());
-        var status =
-                result.status() == GenerationStatus.PROCESSING
-                        ? HttpStatus.ACCEPTED
-                        : HttpStatus.OK;
-        return ResponseEntity.status(status)
-                .cacheControl(CacheControl.noStore())
-                .body(ApiResponse.success(result));
+        return service.analyze(Long.valueOf(jwt.getSubject()), dreamId, request.revision())
+                .thenApply(
+                        result -> {
+                            var status =
+                                    result.status() == GenerationStatus.PROCESSING
+                                            ? HttpStatus.ACCEPTED
+                                            : HttpStatus.OK;
+                            return ResponseEntity.status(status)
+                                    .cacheControl(CacheControl.noStore())
+                                    .body(ApiResponse.success(result));
+                        });
     }
 
     @Override

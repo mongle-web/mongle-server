@@ -4,8 +4,9 @@
 
 `feat/10-scene-analysis`의 `6850bfe`를 기준으로 별도 `feat/dream-story` 브랜치에서 구현한다.
 #13의 장면 분석 모델과 revision 수정에 의존하며 #14의 통계·최근 대상에는 의존하지 않는다.
-Gateway #5의 실제 인터페이스·오류 계약은 확정 후 `StoryGenerator` 어댑터에서 연결한다.
-현재 기본 생성기는 미연결 상태이며 가짜 생성기는 테스트에서만 등록한다.
+기본 `AiGatewayStoryGenerator`는 #32의 비동기 Gateway에 연결한다.
+프롬프트·스키마와 실행 제한은 [꿈 AI 연동](dream-ai-gateway.md)을 따른다.
+가짜 생성기는 테스트에서만 등록하며 실제 키 미설정 시 신규 생성은 503이다.
 
 ## API
 
@@ -34,7 +35,7 @@ Gateway #5의 실제 인터페이스·오류 계약은 확정 후 `StoryGenerato
 `regenerate`를 생략하거나 null로 전달하면 false이다. 재생성에 storyVersion이 없으면 400이다.
 현재 꿈 revision 불일치, 완료 분석 부재·오래된 분석, 오래된 재생성 버전은 각각 409이다.
 진행 중 중복은 202, 완료/실패 상태 반환은 200이다. 실패는 `status=FAILED`와 `failureCode`로 처리한다.
-미연결 Gateway는 503이며 새 시도를 저장하지 않는다. DB 저장 실패는 실패 상태를 별도로 기록하도록 시도하고 502를 반환한다.
+Gateway 키 미설정은 503이며 새 시도를 저장하지 않는다. DB 저장 실패는 실패 상태를 별도로 기록하도록 시도하고 502를 반환한다.
 실패 상태 저장도 실패하면 기존 PROCESSING 상태는 작업 유효시간 만료까지 남을 수 있지만,
 응답은 `STORY_502_2`를 유지하며 원래 저장 오류와 복구 오류를 함께 보존한다.
 
@@ -97,8 +98,8 @@ SCENE 역시 AI가 다듬은 문장이므로 원문 인용 또는 서버가 사�
 `StoryGenerator.Input`은 userId, storyId, analysisId, attemptId, sourceRevision, originalText, emotions, scenes, elements를 제공한다.
 어댑터는 기존 `AiTaskType.DREAM_NARRATIVE`와 `StoryPrompt.VERSION`, system(), schema()를 사용한다.
 사용자 데이터는 명령과 분리하여 전달하며 DTO의 toString()에는 원문·장면·요소를 출력하지 않는다.
-Gateway 실패는 호출부로 전달하며 공통 AI 로그의 소유권·토큰 NULL/0 처리는 #5 담당 범위에서 연결한다.
-실제 호출 timeout은 도메인 작업 유효시간 2분보다 짧게 맞춘다.
+Gateway 실패는 호출부로 전달하며 공통 AI 로그·토큰 NULL/0·비용 저장은 #32의 Gateway가 담당한다.
+실제 호출 전체 timeout은 도메인 작업 유효시간 2분 미만이어야 하며 설정 시 검증한다.
 
 ## DB 적용
 
