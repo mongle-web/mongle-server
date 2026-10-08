@@ -1,5 +1,6 @@
 package com.mongle.backend.domain.dream.story;
 
+import com.mongle.backend.domain.dream.gateway.DreamGenerationResources;
 import com.mongle.backend.global.error.BusinessException;
 
 import lombok.RequiredArgsConstructor;
@@ -8,6 +9,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.RejectedExecutionException;
+
 @Service
 @RequiredArgsConstructor
 public class DreamStoryService {
@@ -15,20 +20,33 @@ public class DreamStoryService {
     private final StoryTransactions transactions;
     private final StoryGenerator generator;
     private final StoryValidator validator;
+    private final DreamGenerationResources resources;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public StoryResponse generate(Long userId, Long dreamId, StoryRequest request) {
+    public CompletableFuture<StoryResponse> generate(
+            Long userId, Long dreamId, StoryRequest request) {
         var reservation = transactions.begin(userId, dreamId, request, generator.available());
 
         if (reservation.input() == null) {
-            return reservation.response();
+            return CompletableFuture.completedFuture(reservation.response());
         }
 
         var input = reservation.input();
+        try {
+            return resources.execute(
+                    () -> generator.generate(input),
+                    (content, failure) -> complete(input, content, failure));
+        } catch (RejectedExecutionException ex) {
+            return CompletableFuture.completedFuture(transactions.fail(input, "CALL_FAILED"));
+        }
+    }
+
+    private StoryResponse complete(StoryGenerator.Input input, String content, Throwable failure) {
         StoryResult result;
 
         try {
-            result = validator.parse(generator.generate(input), input.scenes());
+            if (failure != null) throw new CompletionException(failure);
+            result = validator.parse(content, input.scenes());
         } catch (RuntimeException ex) {
             String code =
                     ex instanceof BusinessException business

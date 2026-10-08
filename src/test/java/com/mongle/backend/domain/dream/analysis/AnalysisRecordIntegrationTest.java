@@ -1,18 +1,23 @@
 package com.mongle.backend.domain.dream.analysis;
 
+import static com.mongle.backend.domain.dream.gateway.DreamAiTestAwait.await;
+
+import static org.assertj.core.api.Assertions.*;
+
 import com.mongle.backend.domain.dream.dto.*;
 import com.mongle.backend.domain.dream.entity.DreamEmotion;
 import com.mongle.backend.domain.dream.service.DreamService;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
+
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+
 import java.time.*;
 import java.util.*;
-import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(
         properties =
@@ -42,7 +47,7 @@ class AnalysisRecordIntegrationTest {
                         user,
                         draft.dreamId(),
                         new DreamEmotionsRequest(draft.revision(), List.of(DreamEmotion.HAPPY)));
-        structure.analyze(user, completed.dreamId(), completed.revision());
+        await(structure.analyze(user, completed.dreamId(), completed.revision()));
         return dreams.get(user, completed.dreamId());
     }
 
@@ -68,7 +73,8 @@ class AnalysisRecordIntegrationTest {
                 input ->
                         StructureValidatorTest.VALID.replace(
                                 "}]}",
-                                "},{\"sequence\":2,\"content\":\"바다에 내려왔다\",\"disconnectedFromPrevious\":false,\"elementKeys\":[\"sea\"]}]}");
+                                "},{\"sequence\":2,\"content\":\"바다에"
+                                    + " 내려왔다\",\"disconnectedFromPrevious\":false,\"elementKeys\":[\"sea\"]}]}");
         analyzed(today);
         assertThat(records.monthly(user, YearMonth.from(today)).keywords())
                 .containsExactly(new AnalysisRecordService.Keyword("바다", 1));

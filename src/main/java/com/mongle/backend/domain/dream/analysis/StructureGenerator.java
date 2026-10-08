@@ -1,15 +1,17 @@
 package com.mongle.backend.domain.dream.analysis;
 
 import com.mongle.backend.domain.dream.entity.DreamEmotion;
-import java.util.Set;
 
-/** 도메인 포트. #5의 AiGateway 계약 확정 후 어댑터에서 공통 Gateway를 호출한다. */
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+
+/** 장면 분석 포트. 기본 구현은 공통 AiGateway를 호출하고 서비스가 출력 검증·저장을 담당한다. */
 public interface StructureGenerator {
     default boolean available() {
         return true;
     }
 
-    String generate(Input input);
+    CompletableFuture<String> generate(Input input);
 
     record Input(
             Long userId,

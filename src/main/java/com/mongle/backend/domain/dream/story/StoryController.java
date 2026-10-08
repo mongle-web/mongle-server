@@ -16,6 +16,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.concurrent.CompletableFuture;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1")
@@ -26,19 +28,22 @@ public class StoryController implements StoryApi {
 
     @Override
     @PostMapping("/dreams/{dreamId}/story")
-    public ResponseEntity<ApiResponse<StoryResponse>> generate(
+    public CompletableFuture<ResponseEntity<ApiResponse<StoryResponse>>> generate(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable @Positive Long dreamId,
             @Valid @RequestBody StoryRequest request) {
-        var result = service.generate(Long.valueOf(jwt.getSubject()), dreamId, request);
-        var status =
-                result.status() == GenerationStatus.PROCESSING
-                        ? HttpStatus.ACCEPTED
-                        : HttpStatus.OK;
+        return service.generate(Long.valueOf(jwt.getSubject()), dreamId, request)
+                .thenApply(
+                        result -> {
+                            var status =
+                                    result.status() == GenerationStatus.PROCESSING
+                                            ? HttpStatus.ACCEPTED
+                                            : HttpStatus.OK;
 
-        return ResponseEntity.status(status)
-                .cacheControl(CacheControl.noStore())
-                .body(ApiResponse.success(result));
+                            return ResponseEntity.status(status)
+                                    .cacheControl(CacheControl.noStore())
+                                    .body(ApiResponse.success(result));
+                        });
     }
 
     @Override

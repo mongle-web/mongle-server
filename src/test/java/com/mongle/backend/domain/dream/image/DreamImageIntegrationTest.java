@@ -1,5 +1,7 @@
 package com.mongle.backend.domain.dream.image;
 
+import static com.mongle.backend.domain.dream.gateway.DreamAiTestAwait.await;
+
 import static org.assertj.core.api.Assertions.*;
 
 import com.mongle.backend.domain.auth.service.TokenService;
@@ -59,7 +61,7 @@ class DreamImageIntegrationTest {
         @Bean
         @Primary
         StructureGenerator structure() {
-            return input -> STRUCTURE;
+            return input -> CompletableFuture.completedFuture(STRUCTURE);
         }
 
         @Bean
@@ -85,8 +87,8 @@ class DreamImageIntegrationTest {
         volatile String output = STORY;
 
         @Override
-        public String generate(Input input) {
-            return output;
+        public CompletableFuture<String> generate(Input input) {
+            return CompletableFuture.completedFuture(output);
         }
     }
 
@@ -182,9 +184,11 @@ class DreamImageIntegrationTest {
                         userId,
                         dream.dreamId(),
                         new DreamEmotionsRequest(dream.revision(), List.of(DreamEmotion.HAPPY)));
-        analyses.analyze(userId, dream.dreamId(), dream.revision());
+        await(analyses.analyze(userId, dream.dreamId(), dream.revision()));
         dream = dreams.get(userId, dream.dreamId());
-        stories.generate(userId, dream.dreamId(), new StoryRequest(dream.revision(), false, null));
+        await(
+                stories.generate(
+                        userId, dream.dreamId(), new StoryRequest(dream.revision(), false, null)));
         return dream;
     }
 
@@ -350,10 +354,11 @@ class DreamImageIntegrationTest {
         generator.action = input -> ImagePayloadTest.png();
         var story = storyTransactions.latest(userId, dream.dreamId());
         storyteller.output = STORY.replace("바다를 보았다.", "바닷가를 바라보았다.");
-        stories.generate(
-                userId,
-                dream.dreamId(),
-                new StoryRequest(dream.revision(), true, story.storyVersion()));
+        await(
+                stories.generate(
+                        userId,
+                        dream.dreamId(),
+                        new StoryRequest(dream.revision(), true, story.storyVersion())));
 
         assertThatThrownBy(
                         () ->
@@ -536,10 +541,11 @@ class DreamImageIntegrationTest {
         var first = generate(dream);
         var story = storyTransactions.latest(userId, dream.dreamId());
         storyteller.output = STORY.replace("바다를 보았다.", "바닷가를 바라보았다.");
-        stories.generate(
-                userId,
-                dream.dreamId(),
-                new StoryRequest(dream.revision(), true, story.storyVersion()));
+        await(
+                stories.generate(
+                        userId,
+                        dream.dreamId(),
+                        new StoryRequest(dream.revision(), true, story.storyVersion())));
         assertThat(transactions.get(userId, first.imageId()).storyChanged()).isTrue();
         assertThatThrownBy(() -> generate(dream))
                 .isInstanceOf(BusinessException.class)
@@ -549,10 +555,12 @@ class DreamImageIntegrationTest {
                 input -> {
                     var latest = storyTransactions.latest(userId, dream.dreamId());
                     storyteller.output = STORY;
-                    stories.generate(
-                            userId,
-                            dream.dreamId(),
-                            new StoryRequest(dream.revision(), true, latest.storyVersion()));
+                    await(
+                            stories.generate(
+                                    userId,
+                                    dream.dreamId(),
+                                    new StoryRequest(
+                                            dream.revision(), true, latest.storyVersion())));
                     return ImagePayloadTest.png();
                 };
         var failed =
@@ -702,9 +710,11 @@ class DreamImageIntegrationTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ImageErrorCode.STORY_REQUIRED);
-        analyses.analyze(userId, completed.dreamId(), completed.revision());
+        await(analyses.analyze(userId, completed.dreamId(), completed.revision()));
         var dream = dreams.get(userId, completed.dreamId());
-        stories.generate(userId, dream.dreamId(), new StoryRequest(dream.revision(), false, null));
+        await(
+                stories.generate(
+                        userId, dream.dreamId(), new StoryRequest(dream.revision(), false, null)));
         assertThatThrownBy(
                         () ->
                                 service.generate(

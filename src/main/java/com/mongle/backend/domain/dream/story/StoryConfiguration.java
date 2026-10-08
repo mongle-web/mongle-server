@@ -19,7 +19,7 @@ public class StoryConfiguration {
             }
 
             @Override
-            public String generate(Input input) {
+            public java.util.concurrent.CompletableFuture<String> generate(Input input) {
                 throw new BusinessException(StoryErrorCode.UNAVAILABLE);
             }
         };

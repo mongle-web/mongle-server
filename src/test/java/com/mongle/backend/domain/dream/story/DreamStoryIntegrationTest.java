@@ -1,5 +1,7 @@
 package com.mongle.backend.domain.dream.story;
 
+import static com.mongle.backend.domain.dream.gateway.DreamAiTestAwait.await;
+
 import static org.assertj.core.api.Assertions.*;
 
 import com.mongle.backend.domain.auth.service.TokenService;
@@ -58,7 +60,7 @@ class DreamStoryIntegrationTest {
         @Bean
         @Primary
         StructureGenerator fakeStructureGenerator() {
-            return input -> STRUCTURE;
+            return input -> CompletableFuture.completedFuture(STRUCTURE);
         }
     }
 
@@ -73,13 +75,13 @@ class DreamStoryIntegrationTest {
         }
 
         @Override
-        public String generate(Input input) {
+        public CompletableFuture<String> generate(Input input) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             assertThat(input.originalText()).isEqualTo("바다 위를 날다가 숲길을 걸었다");
             assertThat(input.scenes()).hasSize(2);
             calls.incrementAndGet();
 
-            return action.apply(input);
+            return CompletableFuture.completedFuture(action.apply(input));
         }
     }
 
@@ -114,7 +116,7 @@ class DreamStoryIntegrationTest {
                         new DreamEmotionsRequest(dream.revision(), List.of(DreamEmotion.HAPPY)));
 
         if (analyzed) {
-            assertThat(structure.analyze(userId, dream.dreamId(), dream.revision()).status())
+            assertThat(await(structure.analyze(userId, dream.dreamId(), dream.revision())).status())
                     .isEqualTo(GenerationStatus.COMPLETED);
         }
 
@@ -128,7 +130,7 @@ class DreamStoryIntegrationTest {
     @Test
     void storesOrderedStoryAndReusesItWithoutChangingDreamRevision() {
         var dream = completed(true);
-        var story = service.generate(userId, dream.dreamId(), request(dream));
+        var story = await(service.generate(userId, dream.dreamId(), request(dream)));
 
         assertThat(story.status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(story.sections()).hasSize(3);
@@ -138,7 +140,7 @@ class DreamStoryIntegrationTest {
         assertThat(story.resultPromptVersion()).isEqualTo(StoryPrompt.VERSION);
         assertThat(transactions.latest(userId, dream.dreamId())).isEqualTo(story);
         assertThat(transactions.get(userId, story.storyId())).isEqualTo(story);
-        assertThat(service.generate(userId, dream.dreamId(), request(dream)).storyId())
+        assertThat(await(service.generate(userId, dream.dreamId(), request(dream))).storyId())
                 .isEqualTo(story.storyId());
         assertThat(generator.calls).hasValue(1);
         assertThat(dreams.get(userId, dream.dreamId()).revision()).isEqualTo(dream.revision());
@@ -159,20 +161,20 @@ class DreamStoryIntegrationTest {
                     dreams.update(userId, dream.dreamId(), during);
                     return StoryValidatorTest.VALID;
                 };
-        var story = service.generate(userId, dream.dreamId(), request(titled));
+        var story = await(service.generate(userId, dream.dreamId(), request(titled)));
         assertThat(story.status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(story.sourceChanged()).isFalse();
         var current = dreams.get(userId, dream.dreamId());
         assertThat(current.title()).isNull();
         assertThat(current.sourceRevision()).isEqualTo(dream.sourceRevision());
         assertError(
-                () -> service.generate(userId, dream.dreamId(), request(titled)),
+                () -> await(service.generate(userId, dream.dreamId(), request(titled))),
                 DreamErrorCode.VERSION_CONFLICT);
         var after = new DreamUpdateRequest();
         after.setRevision(current.revision());
         after.setTitle("수정 제목");
         current = dreams.update(userId, dream.dreamId(), after);
-        assertThat(service.generate(userId, dream.dreamId(), request(current)).storyId())
+        assertThat(await(service.generate(userId, dream.dreamId(), request(current))).storyId())
                 .isEqualTo(story.storyId());
         assertThat(transactions.get(userId, story.storyId()).sourceChanged()).isFalse();
         assertThat(generator.calls).hasValue(1);
@@ -181,17 +183,17 @@ class DreamStoryIntegrationTest {
     @Test
     void regenerationReplacesResultAndRejectsReplayedOldVersion() {
         var dream = completed(true);
-        var first = service.generate(userId, dream.dreamId(), request(dream));
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
         var regeneration = new StoryRequest(dream.revision(), true, first.storyVersion());
         generator.action = input -> StoryValidatorTest.VALID.replace("바다 위를 날았다.", "바다 위로 날아올랐다.");
 
-        var next = service.generate(userId, dream.dreamId(), regeneration);
+        var next = await(service.generate(userId, dream.dreamId(), regeneration));
 
         assertThat(next.storyId()).isEqualTo(first.storyId());
         assertThat(next.storyVersion()).isGreaterThan(first.storyVersion());
         assertThat(next.sections().getFirst().content()).isEqualTo("바다 위로 날아올랐다.");
         assertError(
-                () -> service.generate(userId, dream.dreamId(), regeneration),
+                () -> await(service.generate(userId, dream.dreamId(), regeneration)),
                 StoryErrorCode.VERSION_CONFLICT);
         assertThat(generator.calls).hasValue(2);
     }
@@ -199,14 +201,15 @@ class DreamStoryIntegrationTest {
     @Test
     void failedRegenerationKeepsPreviousResultAndRetryReplacesIt() {
         var dream = completed(true);
-        var first = service.generate(userId, dream.dreamId(), request(dream));
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
         generator.action = input -> "{}";
 
         var failed =
-                service.generate(
-                        userId,
-                        dream.dreamId(),
-                        new StoryRequest(dream.revision(), true, first.storyVersion()));
+                await(
+                        service.generate(
+                                userId,
+                                dream.dreamId(),
+                                new StoryRequest(dream.revision(), true, first.storyVersion())));
 
         assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
         assertThat(failed.failureCode()).isEqualTo("INVALID_OUTPUT");
@@ -214,7 +217,7 @@ class DreamStoryIntegrationTest {
         assertThat(failed.sections()).isEqualTo(first.sections());
         generator.action = input -> StoryValidatorTest.VALID;
 
-        var retried = service.generate(userId, dream.dreamId(), request(dream));
+        var retried = await(service.generate(userId, dream.dreamId(), request(dream)));
 
         assertThat(retried.status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(retried.hasPreviousResult()).isFalse();
@@ -224,13 +227,13 @@ class DreamStoryIntegrationTest {
     @Test
     void processingRegenerationExposesPreviousResultAndReusesTheAttempt() {
         var dream = completed(true);
-        var first = service.generate(userId, dream.dreamId(), request(dream));
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
         var request = new StoryRequest(dream.revision(), true, first.storyVersion());
         var reservation = transactions.begin(userId, dream.dreamId(), request, true);
 
         assertThat(reservation.response().hasPreviousResult()).isTrue();
         assertThat(reservation.response().sections()).isEqualTo(first.sections());
-        var duplicate = service.generate(userId, dream.dreamId(), request);
+        var duplicate = await(service.generate(userId, dream.dreamId(), request));
         assertThat(duplicate.status()).isEqualTo(GenerationStatus.PROCESSING);
         assertThat(duplicate.storyVersion()).isEqualTo(reservation.response().storyVersion());
         assertThat(generator.calls).hasValue(1);
@@ -246,13 +249,13 @@ class DreamStoryIntegrationTest {
                     throw new IllegalStateException("비공개 출력");
                 };
 
-        var failed = service.generate(userId, dream.dreamId(), request(dream));
+        var failed = await(service.generate(userId, dream.dreamId(), request(dream)));
 
         assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
         assertThat(failed.failureCode()).isEqualTo("CALL_FAILED");
         assertThat(failed.sections()).isEmpty();
         generator.action = input -> StoryValidatorTest.VALID;
-        assertThat(service.generate(userId, dream.dreamId(), request(dream)).status())
+        assertThat(await(service.generate(userId, dream.dreamId(), request(dream))).status())
                 .isEqualTo(GenerationStatus.COMPLETED);
     }
 
@@ -262,7 +265,7 @@ class DreamStoryIntegrationTest {
         generator.enabled = false;
 
         assertError(
-                () -> service.generate(userId, dream.dreamId(), request(dream)),
+                () -> await(service.generate(userId, dream.dreamId(), request(dream))),
                 StoryErrorCode.UNAVAILABLE);
         assertThat(
                         jdbc.queryForObject(
@@ -277,7 +280,7 @@ class DreamStoryIntegrationTest {
     void requiresCompletedDreamCurrentRevisionAndFreshCompletedAnalysis() {
         var draft = dreams.create(userId, new DreamCreateRequest(today, "작성 중"));
         assertError(
-                () -> service.generate(userId, draft.dreamId(), request(draft)),
+                () -> await(service.generate(userId, draft.dreamId(), request(draft))),
                 DreamErrorCode.INVALID_STATE);
         var dream =
                 dreams.complete(
@@ -285,19 +288,19 @@ class DreamStoryIntegrationTest {
                         draft.dreamId(),
                         new DreamEmotionsRequest(draft.revision(), List.of(DreamEmotion.HAPPY)));
         assertError(
-                () -> service.generate(userId, dream.dreamId(), request(dream)),
+                () -> await(service.generate(userId, dream.dreamId(), request(dream))),
                 StoryErrorCode.ANALYSIS_REQUIRED);
-        structure.analyze(userId, dream.dreamId(), dream.revision());
+        await(structure.analyze(userId, dream.dreamId(), dream.revision()));
         var edit = new DreamUpdateRequest();
         edit.setRevision(dreams.get(userId, dream.dreamId()).revision());
         edit.setOriginalText("수정한 원문");
         var changed = dreams.update(userId, dream.dreamId(), edit);
 
         assertError(
-                () -> service.generate(userId, dream.dreamId(), request(dream)),
+                () -> await(service.generate(userId, dream.dreamId(), request(dream))),
                 DreamErrorCode.VERSION_CONFLICT);
         assertError(
-                () -> service.generate(userId, changed.dreamId(), request(changed)),
+                () -> await(service.generate(userId, changed.dreamId(), request(changed))),
                 StoryErrorCode.ANALYSIS_STALE);
         assertThat(generator.calls).hasValue(0);
     }
@@ -315,7 +318,7 @@ class DreamStoryIntegrationTest {
                     return StoryValidatorTest.VALID;
                 };
 
-        var failed = service.generate(userId, dream.dreamId(), request(dream));
+        var failed = await(service.generate(userId, dream.dreamId(), request(dream)));
 
         assertThat(failed.failureCode()).isEqualTo("SOURCE_CHANGED");
         assertThat(failed.sections()).isEmpty();
@@ -331,7 +334,7 @@ class DreamStoryIntegrationTest {
     @Test
     void sourceEditsMarkPreservedStoryAsChanged() {
         var dream = completed(true);
-        var story = service.generate(userId, dream.dreamId(), request(dream));
+        var story = await(service.generate(userId, dream.dreamId(), request(dream)));
         var edit = new DreamUpdateRequest();
         edit.setRevision(dream.revision());
         edit.setOriginalText("다시 기록한 원문");
@@ -346,7 +349,7 @@ class DreamStoryIntegrationTest {
     @Test
     void deletionDuringGenerationFailsAttemptAndPreservesCompletedStory() {
         var dream = completed(true);
-        var first = service.generate(userId, dream.dreamId(), request(dream));
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
         generator.action =
                 input -> {
                     dreams.delete(userId, dream.dreamId(), dream.revision());
@@ -355,10 +358,11 @@ class DreamStoryIntegrationTest {
                 };
 
         var failed =
-                service.generate(
-                        userId,
-                        dream.dreamId(),
-                        new StoryRequest(dream.revision(), true, first.storyVersion()));
+                await(
+                        service.generate(
+                                userId,
+                                dream.dreamId(),
+                                new StoryRequest(dream.revision(), true, first.storyVersion())));
 
         assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
         assertThat(failed.failureCode()).isEqualTo("SOURCE_DELETED");
@@ -372,7 +376,9 @@ class DreamStoryIntegrationTest {
 
         var replacement = completed(true);
         generator.action = input -> StoryValidatorTest.VALID;
-        assertThat(service.generate(userId, replacement.dreamId(), request(replacement)).storyId())
+        assertThat(
+                        await(service.generate(userId, replacement.dreamId(), request(replacement)))
+                                .storyId())
                 .isNotEqualTo(first.storyId());
     }
 
@@ -385,7 +391,7 @@ class DreamStoryIntegrationTest {
                     return StoryValidatorTest.VALID;
                 };
 
-        var failed = service.generate(userId, dream.dreamId(), request(dream));
+        var failed = await(service.generate(userId, dream.dreamId(), request(dream)));
 
         assertThat(failed.failureCode()).isEqualTo("SOURCE_DELETED");
         assertThat(failed.sections()).isEmpty();
@@ -414,10 +420,10 @@ class DreamStoryIntegrationTest {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var future =
                     executor.submit(
-                            () -> service.generate(userId, dream.dreamId(), request(dream)));
+                            () -> await(service.generate(userId, dream.dreamId(), request(dream))));
             try {
                 assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
-                var duplicate = service.generate(userId, dream.dreamId(), request(dream));
+                var duplicate = await(service.generate(userId, dream.dreamId(), request(dream)));
                 assertThat(duplicate.status()).isEqualTo(GenerationStatus.PROCESSING);
                 assertThat(generator.calls).hasValue(1);
             } finally {
@@ -462,7 +468,7 @@ class DreamStoryIntegrationTest {
     @Test
     void persistenceFailureRollsBackNewResultAndKeepsPreviousSuccess() {
         var dream = completed(true);
-        var first = service.generate(userId, dream.dreamId(), request(dream));
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
         generator.action = input -> StoryValidatorTest.VALID.replace("바다 위를 날았다.", "새 결과");
         // 기존 행은 허용하고 이번 성공 갱신만 막는다.
         jdbc.execute(
@@ -473,10 +479,12 @@ class DreamStoryIntegrationTest {
         try {
             assertError(
                     () ->
-                            service.generate(
-                                    userId,
-                                    dream.dreamId(),
-                                    new StoryRequest(dream.revision(), true, first.storyVersion())),
+                            await(
+                                    service.generate(
+                                            userId,
+                                            dream.dreamId(),
+                                            new StoryRequest(
+                                                    dream.revision(), true, first.storyVersion()))),
                     StoryErrorCode.CALL_FAILED);
             var failed = transactions.get(userId, first.storyId());
             assertThat(failed.failureCode()).isEqualTo("PERSISTENCE_FAILED");
@@ -490,7 +498,7 @@ class DreamStoryIntegrationTest {
     @Test
     void databaseUniqueConstraintRejectsSecondStoryForSameAnalysis() {
         var dream = completed(true);
-        var story = service.generate(userId, dream.dreamId(), request(dream));
+        var story = await(service.generate(userId, dream.dreamId(), request(dream)));
 
         assertThatThrownBy(
                         () ->
@@ -533,7 +541,7 @@ values (?,?,?,'story-v1','PROCESSING','duplicate',0,CURRENT_TIMESTAMP,CURRENT_TI
     @Test
     void apiEnforcesAuthenticationOwnershipValidationAndNoStore() throws Exception {
         var dream = completed(true);
-        var story = service.generate(userId, dream.dreamId(), request(dream));
+        var story = await(service.generate(userId, dream.dreamId(), request(dream)));
         var token = tokens.login(userId).response().accessToken();
         var otherUser =
                 users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "타인")).getId();
