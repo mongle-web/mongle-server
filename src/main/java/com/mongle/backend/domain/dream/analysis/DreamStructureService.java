@@ -29,7 +29,7 @@ public class DreamStructureService {
                     () -> generator.generate(reserved.input()),
                     (content, failure) -> complete(reserved.input(), content, failure));
         } catch (RejectedExecutionException ex) {
-            // 受付スレッドで失敗状態だけ記録する。外部呼び出しも待機も行わない。
+            // 요청 스레드에서 실패 상태만 기록한다. 외부 호출과 대기는 하지 않는다.
             return CompletableFuture.completedFuture(
                     transactions.fail(reserved.input(), "CALL_FAILED"));
         }

@@ -67,11 +67,11 @@ DB 장애나 강제 종료로 실패 상태 저장도 완료되지 않으면 기
 
 ## 설정
 
-| 환경변수 | 기본값 | 설명 |
+| 설정 | 기본값 | 설명 |
 | --- | --- | --- |
 | `LINER_API_KEY` | 빈 값 | 실제 호출용 키. 저장소나 로그에 넣지 않는다 |
 | `MONGLE_DREAM_AI_MAX_CONCURRENT_CALLS` | 4 | 분석·서사화 합계 동시 호출 수, 1~64 |
-| `spring.mvc.async.request-timeout` | 130s | HTTP 비동기 요청 수명. 외부 호출 예산보다 길게 설정 |
+| `spring.mvc.async.request-timeout` (YAML 속성) | 130s | HTTP 비동기 요청 수명. 외부 호출 예산보다 길게 설정 |
 | `LINER_TOTAL_TIMEOUT` | 60s | 내부 재시도 포함 전체 통신 예산. 도메인 시도 유효시간 때문에 2분 미만만 허용 |
 
 나머지 모델·endpoint·개별 timeout·재시도 설정은 [LINER 연동 문서](liner-gateway.md)를 따른다.
