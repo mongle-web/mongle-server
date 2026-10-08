@@ -158,12 +158,12 @@ git diff --check
 아래 최종 검증 기록을 갱신한다. 이전 실패 기록이나 다른 PR의 테스트 수를 최종 결과로 사용하지 않는다.
 
 <!-- review-verification-start -->
-검증 시각: 2026-10-09 01:51:08 +0900
+검증 시각: 2026-10-09 02:31:43 +0900
 
-테스트 기준 커밋: `751b5ada38754e66f004655b889eae04dfce2d02`
+테스트 기준 커밋: `46411d2730ee40b629a767a24d7bd6ff6f567f48`
 
 실행 Java: openjdk version "21.0.12.1" 2026-08-18 LTS
 
-`./gradlew test --rerun-tasks`: 전체 323개, 실패 0, 오류 0, 건너뜀 0.
+`./gradlew test --rerun-tasks`: 전체 332개, 실패 0, 오류 0, 건너뜀 0.
 `git diff --check` 통과. 실제 유료 AI 호출은 사용하지 않았다.
 <!-- review-verification-end -->
