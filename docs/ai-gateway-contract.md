@@ -237,12 +237,19 @@ StubAiGateway stub = new StubAiGateway().enqueueResult(fixture);
 AiGateway gateway = stub;
 CompletableFuture<AiGenerationResult> pending = gateway.generate(request);
 
-// 아래는 본문 읽기만 하는 테스트용 예시다. 도메인 DB 저장은 자신의 작업 실행기에서 수행한다.
-pending.thenAccept(result -> {
+// domainExecutor는 호출 도메인에서 관리하는 제한된 실행기다. 이 예시에서는 준비되어 있다고 가정한다.
+// 응답 변환·DB 저장 같은 후속 작업을 Gateway 내부의 로그 저장 스레드에서 실행하지 않는다.
+pending.thenAcceptAsync(result -> {
     JsonNode output = mapper.readTree(result.content());
     String value = output.get("value").asString();
-});
+}, domainExecutor);
 ```
+
+결과 Future는 `ai-log-*`·`ai-response-*` 등 내부 작업 스레드에서 완료될 수 있다.
+`thenAccept()`·`thenApply()`는 완료 스레드에서 실행될 수 있으며, 이미 완료된 Future에 등록하면
+등록 스레드에서 실행될 수도 있다. 블로킹 DB 작업이나 긴 업무 처리는 호출부 실행기를 지정한
+`thenAcceptAsync()`·`thenApplyAsync()`로 연결한다. 실행기를 생략한 Async 메서드는 공용 풀을 사용하므로
+도메인 DB 저장용 실행기를 명시한다. 실패도 처리하며, 파생 Future만 취소하지 말고 원본 취소 정책을 연결한다.
 
 `StubAiGateway`는 `src/test`에 있으며 운영 Bean으로 등록되지 않는다. 도메인 테스트에서
 직접 생성하거나 테스트 전용 설정에 등록한다. `enqueueResult`와 `enqueueFailure`로
