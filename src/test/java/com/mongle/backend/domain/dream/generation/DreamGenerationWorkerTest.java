@@ -5,12 +5,15 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.mongle.backend.domain.dream.analysis.AnalysisResponse;
+import com.mongle.backend.domain.dream.analysis.AnalysisErrorCode;
 import com.mongle.backend.domain.dream.analysis.DreamStructureService;
 import com.mongle.backend.domain.dream.gateway.DreamAiProperties;
 import com.mongle.backend.domain.dream.story.DreamStoryService;
 import com.mongle.backend.global.common.GenerationStatus;
+import com.mongle.backend.global.error.BusinessException;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 import java.time.*;
 import java.util.*;
@@ -92,5 +95,64 @@ class DreamGenerationWorkerTest {
             verify(transactions).result(claim, GenerationStatus.PROCESSING, null);
             verifyNoInteractions(analysis, story);
         }
+    }
+
+    private CompletableFuture<AnalysisResponse> pendingAnalysis() {
+        var candidate = new DreamGenerationTransactions.Candidate(1L, 1L);
+        when(transactions.candidates()).thenReturn(List.of(candidate));
+        when(transactions.claim(candidate)).thenReturn(Optional.of(claim(1)));
+        var future = new CompletableFuture<AnalysisResponse>();
+        when(analysis.analyzeSource(1L, 1L, 1L)).thenReturn(future);
+        return future;
+    }
+
+    @Test
+    void preservesStoredPersistenceFailureInsteadOfWrappedCallFailure() {
+        var future = pendingAnalysis();
+        when(transactions.progress(claim(1))).thenReturn(null,
+                new DreamGenerationTransactions.Progress(
+                        GenerationStatus.FAILED, "PERSISTENCE_FAILED", null));
+        try (var worker = worker(2, Clock.systemUTC())) {
+            worker.poll();
+            future.completeExceptionally(new CompletionException(new BusinessException(
+                    AnalysisErrorCode.CALL_FAILED,
+                    new DataAccessResourceFailureException("테스트 저장 실패"))));
+        }
+        verify(transactions).result(claim(1), GenerationStatus.FAILED, "PERSISTENCE_FAILED");
+        verify(transactions, never()).result(any(), any(), eq("CALL_FAILED"));
+    }
+
+    @Test
+    void wrappedDatabaseFailureKeepsClaimForRecoveryWhenNoFailureWasStored() {
+        var future = pendingAnalysis();
+        try (var worker = worker(2, Clock.systemUTC())) {
+            worker.poll();
+            future.completeExceptionally(new CompletionException(new BusinessException(
+                    AnalysisErrorCode.CALL_FAILED,
+                    new IllegalStateException(new DataAccessResourceFailureException("테스트 DB 장애")))));
+        }
+        verify(transactions, never()).result(any(), any(), any());
+    }
+
+    @Test
+    void unavailableProgressKeepsClaimForRecoveryInsteadOfGuessingFailure() {
+        var future = pendingAnalysis();
+        when(transactions.progress(claim(1))).thenReturn(null)
+                .thenThrow(new DataAccessResourceFailureException("테스트 조회 장애"));
+        try (var worker = worker(2, Clock.systemUTC())) {
+            worker.poll();
+            future.completeExceptionally(new BusinessException(AnalysisErrorCode.CALL_FAILED));
+        }
+        verify(transactions, never()).result(any(), any(), any());
+    }
+
+    @Test
+    void providerFailureWithoutStoredStateStillRecordsCallFailure() {
+        var future = pendingAnalysis();
+        try (var worker = worker(2, Clock.systemUTC())) {
+            worker.poll();
+            future.completeExceptionally(new BusinessException(AnalysisErrorCode.CALL_FAILED));
+        }
+        verify(transactions).result(claim(1), GenerationStatus.FAILED, "CALL_FAILED");
     }
 }
