@@ -98,6 +98,7 @@ class DreamGenerationIntegrationTest {
     @Autowired DreamStructureService analysis;
     @Autowired AnalysisTransactions analysisTransactions;
     @Autowired DreamStoryService story;
+    @Autowired StoryTransactions storyTransactions;
     @Autowired UserRepository users;
     @Autowired FakeStructure structureGenerator;
     @Autowired FakeStory storyGenerator;
@@ -440,8 +441,34 @@ class DreamGenerationIntegrationTest {
         assertThat(state(dream).failureCode()).isEqualTo("RECOVERY_REQUIRED");
         assertThat(structureGenerator.calls).hasValue(0);
         transactions.retry(user, dream.dreamId(), dreams.get(user, dream.dreamId()).revision());
+        var late = analysisTransactions.finish(reserved.input(), new StructureValidator().parse(STRUCTURE));
+        assertThat(late.status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(late.scenes()).isEmpty();
         pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
         assertThat(structureGenerator.calls).hasValue(1);
+    }
+
+    @Test
+    void expiredStoryCanRetryWithoutRepeatingAnalysisOrAcceptingOldOutput() throws Exception {
+        var dream = completed();
+        var analysisClaim = transactions.claim(candidate(dream)).orElseThrow();
+        var analyzed = await(analysis.analyze(user, dream.dreamId(), dream.revision()));
+        transactions.result(analysisClaim, GenerationStatus.COMPLETED, null);
+        transactions.claim(candidate(dream)).orElseThrow();
+        var reserved = storyTransactions.begin(user, dream.dreamId(),
+                new StoryRequest(dreams.get(user, dream.dreamId()).revision(), false, null), true);
+        expireJob(dream);
+        jdbc.update("update dream_stories set lease_until=TIMESTAMP '2000-01-01 00:00:00' where id=?",
+                reserved.response().storyId());
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.FAILED);
+        assertThat(state(dream).failureCode()).isEqualTo("RECOVERY_REQUIRED");
+        transactions.retry(user, dream.dreamId(), dreams.get(user, dream.dreamId()).revision());
+        var late = storyTransactions.finish(reserved.input(), new StoryValidator().parse(STORY, analyzed.scenes()));
+        assertThat(late.status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(late.sections()).isEmpty();
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
+        assertThat(structureGenerator.calls).hasValue(1);
+        assertThat(storyGenerator.calls).hasValue(1);
     }
 
     @Test

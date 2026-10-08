@@ -153,9 +153,35 @@ public class DreamGenerationTransactions {
             throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
         }
         if (job.getStatus() == DreamGenerationJob.Status.FAILED) {
-            job.queue(authClock.instant(), false);
+            var now = authClock.instant();
+            retireExpiredAttempt(job, dream, now);
+            job.queue(now, false);
         }
         return response(job, dream);
+    }
+
+    private void retireExpiredAttempt(DreamGenerationJob job, Dream dream, Instant now) {
+        // 사용자 잠금 안에서 명시적 재시도 때만 만료 시도를 종료한다.
+        // 이전 attempt의 늦은 응답은 accepts 검사에서 거절하고, 유효한 시도는 건드리지 않는다.
+        var analysis =
+                analyses.findBySourceDreamIdAndUserId(job.getDreamId(), job.getUserId()).orElse(null);
+        if (analysis == null || analysis.getObservedRevision() != job.getSourceRevision()) {
+            return;
+        }
+        if (job.getStage() == DreamGenerationJob.Stage.ANALYSIS) {
+            if (analysis.getStatus() == GenerationStatus.PROCESSING && !analysis.active(now)) {
+                analysis.fail("RECOVERY_REQUIRED");
+                dream.changeAnalysisStatus(GenerationStatus.FAILED);
+            }
+            return;
+        }
+        var story = stories.findByAnalysisIdAndUserId(analysis.getId(), job.getUserId()).orElse(null);
+        if (story != null
+                && story.getSourceRevision() == job.getSourceRevision()
+                && story.getStatus() == GenerationStatus.PROCESSING
+                && !story.active(now)) {
+            story.fail("RECOVERY_REQUIRED");
+        }
     }
 
     private DreamGenerationResponse response(DreamGenerationJob job, Dream dream) {
