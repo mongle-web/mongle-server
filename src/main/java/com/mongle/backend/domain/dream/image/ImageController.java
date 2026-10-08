@@ -15,6 +15,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1")
@@ -31,19 +34,28 @@ public class ImageController implements ImageApi {
 
     @Override
     @PostMapping("/dreams/{dreamId}/image")
-    public ResponseEntity<ApiResponse<ImageResponse>> generate(
+    public CompletableFuture<ResponseEntity<ApiResponse<ImageResponse>>> generate(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable @Positive Long dreamId,
             @Valid @RequestBody ImageRequest request) {
-        var result =
-                externalBoundary(
-                        () -> service.generate(Long.valueOf(jwt.getSubject()), dreamId, request));
-        return ResponseEntity.status(
-                        result.status() == GenerationStatus.PROCESSING
-                                ? HttpStatus.ACCEPTED
-                                : HttpStatus.OK)
-                .cacheControl(CacheControl.noStore())
-                .body(ApiResponse.success(result));
+        return externalBoundary(
+                        () -> service.generate(Long.valueOf(jwt.getSubject()), dreamId, request))
+                .handle((result, failure) -> {
+                    if (failure != null) {
+                        while (failure instanceof CompletionException && failure.getCause() != null) {
+                            failure = failure.getCause();
+                        }
+                        if (failure instanceof BusinessException business) {
+                            throw new BusinessException(business.getErrorCode());
+                        }
+                        throw new BusinessException(ImageErrorCode.CALL_FAILED);
+                    }
+                    return ResponseEntity.status(
+                                    result.status() == GenerationStatus.PROCESSING
+                                            ? HttpStatus.ACCEPTED : HttpStatus.OK)
+                            .cacheControl(CacheControl.noStore())
+                            .body(ApiResponse.success(result));
+                });
     }
 
     @Override
