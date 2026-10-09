@@ -141,6 +141,102 @@ class ArchiveIntegrationTest {
     }
 
     @Test
+    void calendarIncludesOnlyOwnedCompletedDatesAndRefreshesAfterCompletionAndDeletion() throws Exception {
+        // 분석·이미지가 있는 기록과 생성 결과가 없는 기록을 모두 캘린더에 포함한다.
+        generations(completed(date.withDayOfMonth(1)));
+        var withoutAnalysis = completed(date);
+        var removed = completed(date.plusDays(1));
+        dreams.delete(userId, removed.dreamId(), removed.revision());
+        dreams.saveDraft(userId, date.plusDays(2), new DreamDraftRequest("작성 중", null, null));
+        var pending = dreams.create(userId, new DreamCreateRequest(date.plusDays(3), "감정 선택 전"));
+        completed(LocalDate.of(2026, 8, 31));
+        completed(LocalDate.of(2026, 10, 1));
+        var other = users.saveAndFlush(User.create(UUID.randomUUID() + "@archive.test", "타인"));
+        var foreign = dreams.create(other.getId(), new DreamCreateRequest(date.withDayOfMonth(2), "비공개"));
+        dreams.complete(other.getId(), foreign.dreamId(), new DreamEmotionsRequest(foreign.revision(), List.of(DreamEmotion.HAPPY)));
+
+        var response = get("/api/v1/archives/calendar?month=2026-09");
+        var calendar = data(response, 200);
+        assertThat(response.headers().firstValue("Cache-Control")).hasValue("no-store");
+        assertThat(calendar.get("month").asString()).isEqualTo("2026-09");
+        assertThat(calendar.get("recordedDayCount").asInt()).isEqualTo(2);
+        assertThat(calendar.get("recordedDates").size()).isEqualTo(2);
+        assertThat(calendar.at("/recordedDates/0").asString()).isEqualTo("2026-09-01");
+        assertThat(calendar.at("/recordedDates/1").asString()).isEqualTo("2026-09-16");
+        assertThat(response.body()).doesNotContain("originalText", "storageKey", "displayKeywords");
+        assertThat(store.calls).hasValue(0);
+        // 카드 조회는 기존 날짜별 Archive를 사용하며 생성 결과가 없는 꿈도 정상 조회한다.
+        assertThat(data(get("/api/v1/archives?date=2026-09-16"), 200).at("/items/0/dreamId").asLong())
+                .isEqualTo(withoutAnalysis.dreamId());
+
+        dreams.complete(userId, pending.dreamId(), new DreamEmotionsRequest(pending.revision(), List.of(DreamEmotion.CALM)));
+        var completed = data(get("/api/v1/archives/calendar?month=2026-09"), 200);
+        assertThat(completed.get("recordedDayCount").asInt()).isEqualTo(3);
+        assertThat(completed.at("/recordedDates/2").asString()).isEqualTo("2026-09-19");
+        dreams.delete(userId, withoutAnalysis.dreamId(), withoutAnalysis.revision());
+        var deleted = data(get("/api/v1/archives/calendar?month=2026-09"), 200);
+        assertThat(deleted.get("recordedDayCount").asInt()).isEqualTo(2);
+        assertThat(deleted.get("recordedDates").size()).isEqualTo(2);
+        assertThat(deleted.at("/recordedDates/1").asString()).isEqualTo("2026-09-19");
+    }
+
+    @Test
+    void calendarReturnsEntireThirtyOneDayMonthWithOneScalarQuery() throws Exception {
+        for (int day = 1; day <= 31; day++) completed(LocalDate.of(2025, 5, day));
+        var calendar = data(get("/api/v1/archives/calendar?month=2025-05"), 200);
+        assertThat(calendar.get("recordedDayCount").asInt()).isEqualTo(31);
+        assertThat(calendar.get("recordedDates").size()).isEqualTo(31);
+        assertThat(calendar.at("/recordedDates/0").asString()).isEqualTo("2025-05-01");
+        assertThat(calendar.at("/recordedDates/30").asString()).isEqualTo("2025-05-31");
+        assertThat(calendar.has("hasNext")).isFalse();
+
+        // 한 달 전체를 날짜 쿼리 한 번으로 읽고 Dream·분석 엔티티를 로딩하지 않는지 확인한다.
+        var stats = emf.unwrap(SessionFactory.class).getStatistics();
+        stats.clear();
+        var direct = archives.calendar(userId, "2025-05");
+        assertThat(direct.recordedDates()).hasSize(31);
+        assertThat(direct.recordedDayCount()).isEqualTo(direct.recordedDates().size());
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+        assertThat(stats.getEntityLoadCount()).isZero();
+    }
+
+    @Test
+    void calendarUsesDreamDateAndHandlesLeapMonthYearBoundaryAndEmptyResults() throws Exception {
+        completed(LocalDate.of(2023, 12, 31));
+        completed(LocalDate.of(2024, 1, 1));
+        completed(LocalDate.of(2024, 2, 1));
+        completed(LocalDate.of(2024, 2, 29));
+        completed(LocalDate.of(2024, 3, 1));
+        var february = data(get("/api/v1/archives/calendar?month=2024-02"), 200);
+        assertThat(february.get("recordedDayCount").asInt()).isEqualTo(2);
+        assertThat(february.at("/recordedDates/0").asString()).isEqualTo("2024-02-01");
+        assertThat(february.at("/recordedDates/1").asString()).isEqualTo("2024-02-29");
+        var december = data(get("/api/v1/archives/calendar?month=2023-12"), 200);
+        assertThat(december.get("recordedDayCount").asInt()).isEqualTo(1);
+        assertThat(december.at("/recordedDates/0").asString()).isEqualTo("2023-12-31");
+        var january = data(get("/api/v1/archives/calendar?month=2024-01"), 200);
+        assertThat(january.get("recordedDayCount").asInt()).isEqualTo(1);
+        assertThat(january.at("/recordedDates/0").asString()).isEqualTo("2024-01-01");
+        var empty = data(get("/api/v1/archives/calendar?month=2025-02"), 200);
+        assertThat(empty.get("month").asString()).isEqualTo("2025-02");
+        assertThat(empty.get("recordedDayCount").asInt()).isZero();
+        assertThat(empty.get("recordedDates").isEmpty()).isTrue();
+    }
+
+    @Test
+    void calendarRejectsMissingInvalidMonthAndAnonymousAccess() throws Exception {
+        for (String query : List.of("", "?month=", "?month=2026-13", "?month=2026-9",
+                "?month=0000-09", "?month=2026-09-01", "?month=invalid")) {
+            var response = get("/api/v1/archives/calendar" + query);
+            assertThat(response.statusCode()).isEqualTo(400);
+            assertThat(response.body()).contains("ARCHIVE_400_1");
+        }
+        var anonymous = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port
+                + "/api/v1/archives/calendar?month=2026-09")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(anonymous.statusCode()).isEqualTo(401);
+    }
+
+    @Test
     void paginatesOldestFirstAfterDeletedAnchorAndAppliesDateFilters() throws Exception {
         var oldest = completed(date.minusDays(2));
         var middle = completed(date.minusDays(1));
@@ -298,6 +394,10 @@ class ArchiveIntegrationTest {
         var document = json.readTree(get("/v3/api-docs").body());
         assertThat(document.at("/paths/~1api~1v1~1archives/get/summary").asString()).isEqualTo("Archive 목록 조회");
         assertThat(document.at("/paths/~1api~1v1~1archives~1{dreamId}/get/summary").asString()).isEqualTo("Archive 상세 조회");
+        assertThat(document.at("/paths/~1api~1v1~1archives~1calendar/get/summary").asString()).isEqualTo("꿈 캘린더 월별 조회");
+        var monthParameter = document.at("/paths/~1api~1v1~1archives~1calendar/get/parameters/0");
+        assertThat(monthParameter.get("name").asString()).isEqualTo("month");
+        assertThat(monthParameter.get("required").asBoolean()).isTrue();
         var parameters = document.at("/paths/~1api~1v1~1archives/get/parameters");
         boolean found = false;
         for (int i = 0; i < parameters.size(); i++) {
