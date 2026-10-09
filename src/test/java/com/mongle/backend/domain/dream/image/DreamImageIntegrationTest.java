@@ -37,6 +37,8 @@ import java.util.function.Function;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
             "spring.datasource.url=jdbc:h2:mem:mongle-image;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
+            // 두 진행 요청으로 슬롯을 채우는 경계 테스트는 운영 기본값과 분리한다.
+            "mongle.image.execution.max-concurrent-calls=2",
             "mongle.image.styles[0]=test-style",
             "mongle.image.styles[1]=other-style",
             "mongle.image.styles[2]=third-style",
