@@ -15,13 +15,21 @@ public final class ImageGenerationResources implements AutoCloseable {
     private boolean closing;
 
     public ImageGenerationResources(int capacity) {
-        if (capacity < 1 || capacity > 16) {
-            throw new IllegalArgumentException("이미지 동시 처리 제한은 1~16이어야 합니다.");
+        this(capacity, 2);
+    }
+
+    public ImageGenerationResources(int capacity, int resultThreads) {
+        if (capacity < 1 || capacity > 64) {
+            throw new IllegalArgumentException("이미지 동시 처리 제한은 1~64이어야 합니다.");
+        }
+        if (resultThreads < 1 || resultThreads > 8) {
+            throw new IllegalArgumentException("이미지 결과 처리 스레드는 1~8이어야 합니다.");
         }
         this.capacity = capacity;
         slots = new Semaphore(capacity);
         executor = new ThreadPoolExecutor(
-                Math.min(2, capacity), Math.min(2, capacity), 0, TimeUnit.MILLISECONDS,
+                Math.min(resultThreads, capacity), Math.min(resultThreads, capacity),
+                0, TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(capacity),
                 Thread.ofPlatform().name("image-result-", 0).factory(),
                 new ThreadPoolExecutor.AbortPolicy());

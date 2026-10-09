@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture;
 public class ImageConfiguration {
     @Bean(destroyMethod = "close")
     ImageGenerationResources imageGenerationResources(ImageExecutionProperties properties) {
-        return new ImageGenerationResources(properties.maxConcurrentCalls());
+        return new ImageGenerationResources(properties.maxConcurrentCalls(), properties.resultThreads());
     }
 
     @Bean
