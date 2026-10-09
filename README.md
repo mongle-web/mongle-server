@@ -94,6 +94,7 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 저장 완료 후 자동 분석·서사화, 실패 단계 재시도와 기존 DB 변경은
 [꿈 자동 생성 문서](docs/dream-auto-generation.md)를 참고한다.
 [Archive 조회 문서](docs/archive.md)에 목록·상세 API, 수정 표시, 생성 결과 상태와 기존 이미지 URL API 연결을 정리했다.
+[꿈 캘린더 문서](docs/dream-calendar.md)에 월별 기록 날짜·일수 조회와 날짜별 카드 연결 방법을 정리했다.
 
 ---
 
