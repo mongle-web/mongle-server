@@ -213,6 +213,20 @@ CREATE TABLE dream_stories (
 );
 CREATE INDEX idx_story_user_status ON dream_stories (user_id, status);
 
+CREATE TABLE dream_story_versions (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    story_id BIGINT NOT NULL,
+    generation_key VARCHAR(36) NOT NULL,
+    source_revision BIGINT NOT NULL,
+    prompt_version VARCHAR(50) NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_story_version_generation UNIQUE (story_id, generation_key),
+    INDEX idx_story_version_story_id (story_id, id),
+    CONSTRAINT fk_story_version_story FOREIGN KEY (story_id) REFERENCES dream_stories (id)
+);
+
 CREATE TABLE dream_images (
     id BIGINT NOT NULL AUTO_INCREMENT,
     analysis_id BIGINT NOT NULL,
