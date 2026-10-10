@@ -76,6 +76,10 @@ public class DreamGenerationJob extends BaseEntity {
 
     @Version private long version;
 
+    @Column(name = "regeneration", nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean regeneration;
+
     public static DreamGenerationJob create(Dream dream, Instant now) {
         var job = new DreamGenerationJob();
         job.dreamId = dream.getId();
@@ -96,6 +100,7 @@ public class DreamGenerationJob extends BaseEntity {
     }
 
     public void regenerate(long revision, Instant now) {
+        regeneration = true;
         sourceRevision = revision;
         stage = Stage.ANALYSIS;
         queue(now, false);

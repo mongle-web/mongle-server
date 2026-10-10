@@ -182,10 +182,10 @@ public class DreamGenerationTransactions {
             analysis.requestRegeneration();
         }
         if (job == null) {
-            job = jobs.save(DreamGenerationJob.create(dream, authClock.instant()));
-        } else {
-            job.regenerate(dream.getSourceRevision(), authClock.instant());
+            job = DreamGenerationJob.create(dream, authClock.instant());
         }
+        job.regenerate(dream.getSourceRevision(), authClock.instant());
+        jobs.save(job);
         jobs.flush();
         return response(job, dream);
     }

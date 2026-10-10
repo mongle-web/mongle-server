@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.archive.dto.response;
 
 import com.mongle.backend.global.common.GenerationStatus;
+import com.mongle.backend.domain.dream.generation.DreamGenerationResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.jspecify.annotations.Nullable;
 
@@ -16,7 +17,7 @@ public record ArchiveItem(
         @Schema(description = "아직 분석을 요청하지 않았으면 null") @Nullable Analysis analysis,
         @Schema(description = "아직 이야기 생성을 요청하지 않았으면 null") @Nullable Story story,
         @Schema(description = "아직 이미지 생성을 요청하지 않았으면 null") @Nullable Image image,
-        @Nullable com.mongle.backend.domain.dream.generation.DreamGenerationResponse generation) {
+        @Nullable DreamGenerationResponse generation) {
 
     public ArchiveItem {
         displayKeywords = List.copyOf(displayKeywords);

@@ -19,13 +19,14 @@ public class DreamGenerationGuard {
 
     public void requireMutable(Long userId, Long dreamId) {
         var job = jobs.findByDreamIdAndUserId(dreamId, userId).orElse(null);
-        if (job != null && job.unfinished()) {
+        if (job != null && job.isRegeneration() && job.unfinished()) {
             throw new BusinessException(DreamErrorCode.GENERATION_IN_PROGRESS);
         }
         var analysis = analyses.findBySourceDreamIdAndUserId(dreamId, userId).orElse(null);
         if (analysis != null) {
             var story = stories.findByAnalysisIdAndUserId(analysis.getId(), userId).orElse(null);
-            if (analysis.active(authClock.instant()) || (story != null && story.active(authClock.instant()))) {
+            if ((analysis.isRegenerating() && analysis.active(authClock.instant()))
+                    || (story != null && story.getResultJson() != null && story.active(authClock.instant()))) {
                 throw new BusinessException(DreamErrorCode.GENERATION_IN_PROGRESS);
             }
         }
