@@ -746,7 +746,8 @@ values (?,?,?,'story-v1','PROCESSING','duplicate',0,CURRENT_TIMESTAMP,CURRENT_TI
             assertThat(detail.headers().firstValue("Cache-Control")).contains("no-store");
             assertThat(detail.body())
                     .contains("versionId", "sections", "sourceRevision")
-                    .doesNotContain("generationKey", "resultJson", "originalText");
+                    .contains("originalText", "sourceSnapshotAvailable")
+                    .doesNotContain("generationKey", "resultJson");
             for (String query : List.of("?limit=0", "?limit=51", "?before=-1", "?limit=oops")) {
                 assertStatus(send(client, path + query, token, null), 400);
             }

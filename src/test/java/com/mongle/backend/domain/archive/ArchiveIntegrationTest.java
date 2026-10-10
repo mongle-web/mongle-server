@@ -386,7 +386,8 @@ class ArchiveIntegrationTest {
         stats.clear();
         var page = archives.list(userId, "2026-09", null, null, null, 20);
         assertThat(page.items()).hasSize(3);
-        assertThat(stats.getPrepareStatementCount()).isEqualTo(single).isLessThanOrEqualTo(4);
+        // 영속 생성 상태 조회 한 번이 추가되지만 페이지 크기와 관계없이 고정된 5회다.
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(single).isLessThanOrEqualTo(5);
     }
 
     @Test
