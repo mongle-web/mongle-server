@@ -26,6 +26,7 @@ public class AnalysisTransactions {
     private final StoredAnalysisRepository analyses;
     private final EntityManager em;
     private final Clock authClock;
+    private final AnalysisResultCodec codec;
 
     public record Reservation(AnalysisResponse response, StructureGenerator.Input input) {}
 
@@ -112,6 +113,49 @@ public class AnalysisTransactions {
             return response(analysis);
         }
 
+        if (!analysis.active(authClock.instant())) {
+            analysis.fail("ATTEMPT_EXPIRED");
+            return response(analysis);
+        }
+
+        if (analysis.isRegenerating()) {
+            // 새 분석은 서사 입력에만 사용한다. 조회·통계는 아직 기존 성공 결과를 사용한다.
+            analysis.stage(codec.encode(result));
+            em.flush();
+            return response(analysis);
+        }
+
+        publish(analysis, result);
+        return response(analysis);
+    }
+
+    /** StoryTransactions의 성공 트랜잭션에 참여한다. 외부 호출은 하지 않는다. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void publishPending(DreamAnalysis analysis) {
+        if (analysis.getPendingResultJson() != null) {
+            publish(analysis, codec.decode(analysis.getPendingResultJson()));
+        }
+    }
+
+    public StructureResult generationContext(DreamAnalysis analysis) {
+        if (analysis.getPendingResultJson() != null) {
+            return codec.decode(analysis.getPendingResultJson());
+        }
+        var current = response(analysis);
+        return new StructureResult(current.generatedTitle(), current.displayKeywords(),
+                current.elements(), current.scenes());
+    }
+
+    private void publish(DreamAnalysis analysis, StructureResult result) {
+        var dream = analysis.getDream();
+        // 장면-요소 FK를 먼저 정리한다. 새 성공 결과만 현재 조회·통계에 한 번 집계한다.
+        em.createQuery("delete from DreamSceneEntity l where l.dreamScene.analysis.id=:id")
+                .setParameter("id", analysis.getId()).executeUpdate();
+        em.createQuery("delete from DreamScene s where s.analysis.id=:id")
+                .setParameter("id", analysis.getId()).executeUpdate();
+        em.createQuery("delete from DreamEntity e where e.analysis.id=:id")
+                .setParameter("id", analysis.getId()).executeUpdate();
+
         Map<String, DreamEntity> elements = new HashMap<>();
 
         for (var e : result.elements()) {
@@ -137,7 +181,6 @@ public class AnalysisTransactions {
         // 자동 제목 저장은 revision을 바꿀 수 있지만 AI 입력 sourceRevision은 유지한다.
         em.flush();
 
-        return response(analysis);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -234,7 +277,7 @@ public class AnalysisTransactions {
                 a.getStatus(),
                 a.getFailureCode(),
                 a.getDream() == null,
-                a.getDream() != null && a.getDream().getSourceRevision() != a.getObservedRevision(),
+                a.getDream() != null && a.getDream().getSourceRevision() != a.visibleRevision(),
                 a.getDream() == null ? null : a.getDream().getRevision(),
                 a.getGeneratedTitle(),
                 a.getDisplayKeywords(),

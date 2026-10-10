@@ -41,6 +41,18 @@ public class StoryResultVersion extends BaseCreatedEntity {
     @Column(name = "result_json", nullable = false, updatable = false, columnDefinition = "TEXT")
     private String resultJson;
 
+    @Column(name = "source_text", updatable = false, columnDefinition = "TEXT")
+    private String sourceText;
+
+    @Column(name = "source_emotions", updatable = false, length = 100)
+    private String sourceEmotions;
+
+    @Column(name = "analysis_json", updatable = false, columnDefinition = "TEXT")
+    private String analysisJson;
+
+    @Column(name = "analysis_prompt_version", updatable = false, length = 50)
+    private String analysisPromptVersion;
+
     public static StoryResultVersion capture(DreamStory story, String encoded) {
         var result = new StoryResultVersion();
         result.story = story;
@@ -48,6 +60,11 @@ public class StoryResultVersion extends BaseCreatedEntity {
         result.sourceRevision = story.getSourceRevision();
         result.promptVersion = story.getPromptVersion();
         result.resultJson = encoded;
+        var analysis = story.getAnalysis();
+        result.sourceText = analysis.getSourceText();
+        result.sourceEmotions = analysis.getSourceEmotions();
+        result.analysisJson = analysis.getPendingResultJson();
+        result.analysisPromptVersion = analysis.getPromptVersion();
         return result;
     }
 }

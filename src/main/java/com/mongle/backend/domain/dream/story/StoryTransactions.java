@@ -106,7 +106,7 @@ public class StoryTransactions {
             throw new BusinessException(StoryErrorCode.UNAVAILABLE);
         }
 
-        var context = analysisTransactions.response(analysis);
+        var context = analysisTransactions.generationContext(analysis);
         var story = prior.orElseGet(() -> DreamStory.create(analysis));
         story.start(dream.getSourceRevision(), now, Duration.ofMinutes(2));
         stories.saveAndFlush(story);
@@ -147,6 +147,7 @@ public class StoryTransactions {
             // 성공 결과와 버전을 같은 트랜잭션에서 확정한다. 실패/늦은 응답은 버전을 만들지 않는다.
             versions.saveAndFlush(StoryResultVersion.capture(story, encoded));
             story.finish(encoded);
+            analysisTransactions.publishPending(story.getAnalysis());
         }
 
         stories.flush();
