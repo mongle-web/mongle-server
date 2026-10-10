@@ -725,6 +725,50 @@ values (?,?,?,'story-v1','PROCESSING','duplicate',0,CURRENT_TIMESTAMP,CURRENT_TI
     }
 
     @Test
+    void versionApiEnforcesOwnershipStoryMembershipPagingAndNoStore() throws Exception {
+        var dream = completed(true);
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
+        var token = tokens.login(userId).response().accessToken();
+        var strangerId =
+                users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "타인")).getId();
+        var stranger = tokens.login(strangerId).response().accessToken();
+        var path = "/stories/" + first.storyId() + "/versions";
+        try (var client = HttpClient.newHttpClient()) {
+            assertStatus(send(client, path, null, null), 401);
+            assertStatus(send(client, path, stranger, null), 404);
+            assertStatus(send(client, path + "/" + first.resultVersionId(), stranger, null), 404);
+            assertStatus(send(client, path + "/" + Long.MAX_VALUE, token, null), 404);
+            var page = send(client, path, token, null);
+            assertStatus(page, 200);
+            assertThat(page.headers().firstValue("Cache-Control")).contains("no-store");
+            var detail = send(client, path + "/" + first.resultVersionId(), token, null);
+            assertStatus(detail, 200);
+            assertThat(detail.headers().firstValue("Cache-Control")).contains("no-store");
+            assertThat(detail.body())
+                    .contains("versionId", "sections", "sourceRevision")
+                    .doesNotContain("generationKey", "resultJson", "originalText");
+            for (String query : List.of("?limit=0", "?limit=51", "?before=-1", "?limit=oops")) {
+                assertStatus(send(client, path + query, token, null), 400);
+            }
+        }
+        var otherDream =
+                dreams.create(
+                        userId, new DreamCreateRequest(today.minusDays(1), "바다 위를 날다가 숲길을 걸었다"));
+        otherDream =
+                dreams.complete(
+                        userId,
+                        otherDream.dreamId(),
+                        new DreamEmotionsRequest(
+                                otherDream.revision(), List.of(DreamEmotion.HAPPY)));
+        await(structure.analyze(userId, otherDream.dreamId(), otherDream.revision()));
+        otherDream = dreams.get(userId, otherDream.dreamId());
+        var otherStory = await(service.generate(userId, otherDream.dreamId(), request(otherDream)));
+        assertError(
+                () -> transactions.version(userId, otherStory.storyId(), first.resultVersionId()),
+                StoryErrorCode.NOT_FOUND);
+    }
+
+    @Test
     void migrationImportsLastSuccessAndDoesNotDuplicateNewOrImportedVersions() {
         var dream = completed(true);
         var first = await(service.generate(userId, dream.dreamId(), request(dream)));
