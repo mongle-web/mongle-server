@@ -141,3 +141,4 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 ---
 
 - [이야기 성공 버전과 세계관 참조 계약](docs/dream-story-versions.md)
+- [꿈 입력·생성 버전과 명시적 재생성](docs/dream-generation-versioning.md)
