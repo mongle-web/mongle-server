@@ -44,7 +44,7 @@ public class DreamGenerationJob extends BaseEntity {
     @Column(name = "user_id", nullable = false, updatable = false)
     private Long userId;
 
-    @Column(name = "source_revision", nullable = false, updatable = false)
+    @Column(name = "source_revision", nullable = false)
     private long sourceRevision;
 
     @Enumerated(EnumType.STRING)
@@ -89,6 +89,16 @@ public class DreamGenerationJob extends BaseEntity {
     public boolean due(Instant now) {
         return (status == Status.QUEUED && !nextRunAt.isAfter(now))
                 || (status == Status.PROCESSING && !leaseUntil.isAfter(now));
+    }
+
+    public boolean unfinished() {
+        return status == Status.QUEUED || status == Status.PROCESSING;
+    }
+
+    public void regenerate(long revision, Instant now) {
+        sourceRevision = revision;
+        stage = Stage.ANALYSIS;
+        queue(now, false);
     }
 
     public void claim(Instant now) {

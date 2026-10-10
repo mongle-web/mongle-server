@@ -97,6 +97,10 @@ public class DreamGenerationTransactions {
             return null;
         }
         if (analysis.getObservedRevision() != claim.sourceRevision()) {
+            if (claim.stage() == DreamGenerationJob.Stage.ANALYSIS && analysis.isRegenerating()
+                    && analysis.getStatus() == GenerationStatus.PENDING) {
+                return null;
+            }
             return new Progress(GenerationStatus.FAILED, "SOURCE_CHANGED", null);
         }
         if (claim.stage() == DreamGenerationJob.Stage.ANALYSIS) {
@@ -108,7 +112,13 @@ public class DreamGenerationTransactions {
             return null;
         }
         if (story.getSourceRevision() != claim.sourceRevision()) {
+            if (analysis.getPendingResultJson() != null) {
+                return null;
+            }
             return new Progress(GenerationStatus.FAILED, "SOURCE_CHANGED", null);
+        }
+        if (analysis.getPendingResultJson() != null && story.getStatus() == GenerationStatus.COMPLETED) {
+            return null;
         }
         return new Progress(story.getStatus(), story.getFailureCode(), story.getLeaseUntil());
     }
@@ -137,6 +147,47 @@ public class DreamGenerationTransactions {
     public DreamGenerationResponse get(Long userId, Long dreamId) {
         var dream = owned(userId, dreamId);
         return response(job(userId, dreamId), dream);
+    }
+
+    @Transactional
+    public DreamGenerationResponse regenerate(Long userId, Long dreamId, DreamRegenerationRequest request) {
+        var user = users.findByIdForUpdate(userId)
+                .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        if (!user.isOnboardingCompleted()) {
+            throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+        }
+        var dream = owned(userId, dreamId);
+        dream.checkRevision(request.revision());
+        if (dream.getRecordStatus() != DreamRecordStatus.COMPLETED) {
+            throw new BusinessException(DreamErrorCode.INVALID_STATE);
+        }
+        var job = jobs.findByDreamIdAndUserId(dreamId, userId).orElse(null);
+        if (job != null && job.unfinished()) {
+            if (job.getSourceRevision() != dream.getSourceRevision()) {
+                throw new BusinessException(DreamErrorCode.GENERATION_IN_PROGRESS);
+            }
+            return response(job, dream);
+        }
+        if (job == null ? request.generationVersion() != 0
+                : request.generationVersion() != job.getVersion()) {
+            throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
+        }
+        // 이미 진행 중인 개별 분석/서사 호출과도 겹치지 않는다.
+        var analysis = analyses.findBySourceDreamIdAndUserId(dreamId, userId).orElse(null);
+        if (analysis != null) {
+            var story = stories.findByAnalysisIdAndUserId(analysis.getId(), userId).orElse(null);
+            if (analysis.active(authClock.instant()) || (story != null && story.active(authClock.instant()))) {
+                throw new BusinessException(DreamErrorCode.GENERATION_IN_PROGRESS);
+            }
+            analysis.requestRegeneration();
+        }
+        if (job == null) {
+            job = jobs.save(DreamGenerationJob.create(dream, authClock.instant()));
+        } else {
+            job.regenerate(dream.getSourceRevision(), authClock.instant());
+        }
+        jobs.flush();
+        return response(job, dream);
     }
 
     @Transactional
@@ -193,7 +244,7 @@ public class DreamGenerationTransactions {
                 job.getDreamId(), job.getSourceRevision(),
                 job.getSourceRevision() != dream.getSourceRevision(), job.getStage(), job.getStatus(),
                 job.getFailureCode(), analysis == null ? null : analysis.getId(),
-                story == null ? null : story.getId());
+                story == null ? null : story.getId(), job.getVersion());
     }
 
     private Dream owned(Long userId, Long dreamId) {

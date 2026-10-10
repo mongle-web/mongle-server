@@ -90,6 +90,8 @@ public class StoryTransactions {
 
         if (prior.isPresent()
                 && prior.get().getStatus() == GenerationStatus.COMPLETED
+                && prior.get().getSourceRevision() == dream.getSourceRevision()
+                && analysis.getPendingResultJson() == null
                 && !request.regenerate()) {
             return new Reservation(response(prior.get()), null);
         }
