@@ -70,6 +70,13 @@ public class DreamStory extends BaseEntity {
     @Column(name = "result_prompt_version", length = 50)
     private String resultPromptVersion;
 
+    @Column(name = "generation_settings", columnDefinition = "TEXT")
+    private String generationSettings;
+
+    public void recordSettings(String settings) {
+        generationSettings = settings;
+    }
+
     @Version private long version;
 
     public static DreamStory create(DreamAnalysis analysis) {

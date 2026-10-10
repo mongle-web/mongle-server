@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets;
 
 public final class StoryPrompt {
 
-    public static final String VERSION = "story-v1";
+    public static final String VERSION = "story-v2";
 
     private StoryPrompt() {}
 

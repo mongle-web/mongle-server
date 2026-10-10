@@ -18,6 +18,16 @@ import org.springframework.security.oauth2.jwt.Jwt;
 @Tag(name = "Dream Generation", description = "저장 완료 후 자동 분석·서사화 상태 및 재시도")
 @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
 public interface DreamGenerationApi {
+    @Operation(summary = "최신 입력으로 분석·서사 명시적 재생성", description = """
+            꿈 revision과 generation 조회의 generationVersion을 전달합니다.
+            진행 중 동일 입력 작업은 재사용하며 완료된 요청의 재전송은 409입니다.
+            새 분석·서사가 모두 성공할 때만 기존 결과를 교체합니다. 이미지·세계관은 갱신하지 않습니다.
+            대기·진행 중 꿈 수정·삭제는 409입니다. 크레딧 차감은 아직 연동하지 않습니다.
+            """)
+    ResponseEntity<ApiResponse<DreamGenerationResponse>> regenerate(
+            @Parameter(hidden = true) Jwt jwt, @Positive Long dreamId,
+            @Valid DreamRegenerationRequest request);
+
     @Operation(
             summary = "자동 생성 진행 상태 조회",
             description = """

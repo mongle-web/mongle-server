@@ -2,11 +2,14 @@ package com.mongle.backend.domain.dream.analysis;
 
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.global.common.GenerationStatus;
+
 import jakarta.persistence.EntityManager;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.time.*;
 import java.util.*;
 
@@ -61,7 +64,10 @@ public class AnalysisRecordService {
         var to = month.atEndOfMonth();
         long count =
                 em.createQuery(
-                                "select count(a) from DreamAnalysis a where a.user.id=:user and a.status=:status and a.dreamedAt between :from and :to",
+                                "select count(a) from DreamAnalysis a where a.user.id=:user and"
+                                    + " (a.resultRevision is not null or (a.status=:status and"
+                                    + " a.regenerating=false)) and a.dreamedAt between :from and"
+                                    + " :to",
                                 Long.class)
                         .setParameter("user", userId)
                         .setParameter("status", GenerationStatus.COMPLETED)
@@ -70,7 +76,12 @@ public class AnalysisRecordService {
                         .getSingleResult();
         var rows =
                 em.createQuery(
-                                "select min(e.name),count(distinct a.id) from DreamEntity e join e.analysis a where a.user.id=:user and a.status=:status and a.dreamedAt between :from and :to and e.entityType<>:emotion group by e.normalizedName order by count(distinct a.id) desc,min(e.name) asc",
+                                "select min(e.name),count(distinct a.id) from DreamEntity e join"
+                                    + " e.analysis a where a.user.id=:user and (a.resultRevision is"
+                                    + " not null or (a.status=:status and a.regenerating=false))"
+                                    + " and a.dreamedAt between :from and :to and"
+                                    + " e.entityType<>:emotion group by e.normalizedName order by"
+                                    + " count(distinct a.id) desc,min(e.name) asc",
                                 Object[].class)
                         .setParameter("user", userId)
                         .setParameter("status", GenerationStatus.COMPLETED)
@@ -81,7 +92,9 @@ public class AnalysisRecordService {
                         .getResultList();
         var emotions =
                 em.createQuery(
-                                "select emotion,count(distinct d.id) from Dream d join d.emotions emotion where d.user.id=:user and d.recordStatus=:status and d.dreamedAt between :from and :to group by emotion",
+                                "select emotion,count(distinct d.id) from Dream d join d.emotions"
+                                    + " emotion where d.user.id=:user and d.recordStatus=:status"
+                                    + " and d.dreamedAt between :from and :to group by emotion",
                                 Object[].class)
                         .setParameter("user", userId)
                         .setParameter("status", DreamRecordStatus.COMPLETED)

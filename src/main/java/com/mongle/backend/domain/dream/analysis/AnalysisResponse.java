@@ -23,4 +23,5 @@ public record AnalysisResponse(
         @Schema(description = "중요한 순서대로 1~5개, 각 20 코드포인트 이내. 기존 분석은 빈 목록")
                 List<String> displayKeywords,
         List<StructureResult.Scene> scenes,
-        List<StructureResult.Element> elements) {}
+        List<StructureResult.Element> elements,
+        Long resultRevision) {}

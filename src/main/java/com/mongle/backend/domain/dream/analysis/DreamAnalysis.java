@@ -92,12 +92,64 @@ public class DreamAnalysis extends BaseEntity {
 
     @Version private long version;
 
+    @Column(name = "result_revision")
+    private Long resultRevision;
+
+    @Column(name = "source_text", columnDefinition = "TEXT")
+    private String sourceText;
+
+    @Column(name = "source_emotions", length = 100)
+    private String sourceEmotions;
+
+    @Column(name = "generation_settings", columnDefinition = "TEXT")
+    private String generationSettings;
+
+    public void recordSettings(String settings) {
+        generationSettings = settings;
+    }
+
+    @Column(name = "pending_result_json", columnDefinition = "TEXT")
+    private String pendingResultJson;
+
+    @Column(name = "regenerating", nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean regenerating;
+
+    /** 새 분석을 임시 저장하고, 분석·서사 전체 성공까지 기존 표시 결과를 유지한다. */
+    public void requestRegeneration() {
+        regenerating = true;
+        pendingResultJson = null;
+        status = GenerationStatus.PENDING;
+        attemptId = null;
+        leaseUntil = null;
+        failureCode = null;
+    }
+
+    public void stage(String encoded) {
+        pendingResultJson = encoded;
+        status = GenerationStatus.COMPLETED;
+        leaseUntil = null;
+        failureCode = null;
+    }
+
+    public long visibleRevision() {
+        return resultRevision == null ? observedRevision : resultRevision;
+    }
+
+    public boolean hasResult() {
+        return resultRevision != null || (status == GenerationStatus.COMPLETED && !regenerating);
+    }
+
     public static DreamAnalysis create(Dream dream) {
         var a = new DreamAnalysis();
         a.dream = dream;
         a.user = dream.getUser();
         a.sourceDreamId = dream.getId();
         a.dreamedAt = dream.getDreamedAt();
+        a.sourceRevision = dream.getSourceRevision();
+        a.observedRevision = dream.getSourceRevision();
+        a.promptVersion = StructurePrompt.VERSION;
+        a.status = GenerationStatus.PENDING;
         return a;
     }
 
@@ -109,6 +161,12 @@ public class DreamAnalysis extends BaseEntity {
         leaseUntil = now.plus(lease);
         failureCode = null;
         promptVersion = StructurePrompt.VERSION;
+        sourceText = dream.getOriginalText();
+        sourceEmotions =
+                dream.getEmotions().stream()
+                        .sorted()
+                        .map(Enum::name)
+                        .collect(java.util.stream.Collectors.joining(","));
     }
 
     public boolean accepts(String attempt) {
@@ -125,6 +183,9 @@ public class DreamAnalysis extends BaseEntity {
         displayKeywords.addAll(result.displayKeywords());
         status = GenerationStatus.COMPLETED;
         observedRevision = revision;
+        resultRevision = revision;
+        regenerating = false;
+        pendingResultJson = null;
         leaseUntil = null;
         failureCode = null;
     }
