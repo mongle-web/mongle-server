@@ -36,6 +36,7 @@ public class DreamService {
     private final DreamStoryRepository stories;
     private final Clock authClock;
     private final DreamGenerationJobRepository generationJobs;
+    private final com.mongle.backend.domain.dream.generation.DreamGenerationGuard generationGuard;
 
     @Transactional
     public DreamResponse create(Long userId, DreamCreateRequest request) {
@@ -107,6 +108,7 @@ public class DreamService {
         lockUser(userId);
         var dream = owned(userId, id);
         dream.checkRevision(request.getRevision());
+        generationGuard.requireMutable(userId, id);
         if (!request.isTextProvided()
                 && !request.isEmotionsProvided()
                 && !request.isTitleProvided()) {
@@ -127,6 +129,7 @@ public class DreamService {
         lockUser(userId);
         var dream = owned(userId, id);
         dream.checkRevision(revision);
+        generationGuard.requireMutable(userId, id);
 
         // 분석 FK를 해제하기 전에 생성 중 이야기를 실패 처리한다. 완료 결과는 보존한다.
         stories.failProcessingForDeletedDream(
@@ -151,13 +154,13 @@ public class DreamService {
         }
 
         return analyses.findDisplayMetadata(dream.getId(), dream.getUser().getId())
-                .filter(a -> a.getStatus() == GenerationStatus.COMPLETED)
+                .filter(a -> a.hasResult() || a.getStatus() == GenerationStatus.COMPLETED)
                 .map(
                         a ->
                                 DreamResponse.from(
                                         dream,
                                         a.getDisplayKeywords(),
-                                        dream.getSourceRevision() != a.getObservedRevision()))
+                                        dream.getSourceRevision() != a.visibleRevision()))
                 .orElseGet(() -> DreamResponse.from(dream));
     }
 

@@ -23,7 +23,7 @@ public record ArchiveItem(
 
     /** 분석 ID로 기존 장면·요소 조회 API에 접근한다. 키워드는 기존 생성값을 유지한다. */
     public record Analysis(Long analysisId, GenerationStatus status, @Nullable String failureCode,
-                           boolean sourceChanged) {}
+                           boolean sourceChanged, @Nullable Long resultRevision) {}
 
     /** 재생성 실패·진행 중에도 이전 성공 결과가 있으면 이를 별도로 표시한다. */
     public record Story(Long storyId, long storyVersion, GenerationStatus status,

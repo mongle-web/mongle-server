@@ -82,12 +82,13 @@ public class ArchiveService {
             var analysis = byDream.get(dream.getId());
             var story = analysis == null ? null : stories.get(analysis.getId());
             var image = analysis == null ? null : images.get(analysis.getId());
-            var keywords = analysis != null && analysis.getStatus() == GenerationStatus.COMPLETED
+            var keywords = analysis != null && (analysis.hasResult() || analysis.getStatus() == GenerationStatus.COMPLETED)
                     ? analysis.getDisplayKeywords() : List.<String>of();
             return new ArchiveItem(dream.getId(), dream.getDreamedAt(), dream.getTitle(), keywords,
                     dream.isEdited(), dream.getRevision(), dream.getSourceRevision(),
                     analysis == null ? null : new ArchiveItem.Analysis(analysis.getId(), analysis.getStatus(),
-                            analysis.getFailureCode(), analysis.getObservedRevision() != dream.getSourceRevision()),
+                            analysis.getFailureCode(), analysis.visibleRevision() != dream.getSourceRevision(),
+                            analysis.getResultRevision()),
                     story(story, dream), image(image, story, dream));
         }).toList();
     }
