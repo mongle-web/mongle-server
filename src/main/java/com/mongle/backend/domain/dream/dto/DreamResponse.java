@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.dream.dto;
 
 import com.mongle.backend.domain.dream.entity.*;
+import com.mongle.backend.domain.dream.generation.DreamGenerationResponse;
 import com.mongle.backend.global.common.GenerationStatus;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -27,14 +28,28 @@ public record DreamResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         Long analysisResultRevision,
-        com.mongle.backend.domain.dream.generation.DreamGenerationResponse generation) {
+        DreamGenerationResponse generation) {
 
-    public DreamResponse withGeneration(Long resultRevision,
-            com.mongle.backend.domain.dream.generation.DreamGenerationResponse generation) {
-        return new DreamResponse(dreamId, dreamedAt, originalText, title, displayKeywords,
-                analysisSourceChanged, emotions, recordStatus, analysisStatus, edited, revision,
-                sourceRevision, createdAt, updatedAt, resultRevision, generation);
+    public DreamResponse withGeneration(Long resultRevision, DreamGenerationResponse generation) {
+        return new DreamResponse(
+                dreamId,
+                dreamedAt,
+                originalText,
+                title,
+                displayKeywords,
+                analysisSourceChanged,
+                emotions,
+                recordStatus,
+                analysisStatus,
+                edited,
+                revision,
+                sourceRevision,
+                createdAt,
+                updatedAt,
+                resultRevision,
+                generation);
     }
+
     public static DreamResponse from(Dream dream) {
         return from(dream, List.of(), false);
     }
@@ -54,6 +69,8 @@ public record DreamResponse(
                 dream.getRevision(),
                 dream.getSourceRevision(),
                 dream.getCreatedAt(),
-                dream.getUpdatedAt(), null, null);
+                dream.getUpdatedAt(),
+                null,
+                null);
     }
 }

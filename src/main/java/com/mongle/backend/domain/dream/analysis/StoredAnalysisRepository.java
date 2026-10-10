@@ -1,9 +1,11 @@
 package com.mongle.backend.domain.dream.analysis;
 
-import org.springframework.data.jpa.repository.*;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.repository.query.Param;
 import com.mongle.backend.global.common.GenerationStatus;
+
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.*;
+import org.springframework.data.repository.query.Param;
+
 import java.time.LocalDate;
 import java.util.*;
 
@@ -13,7 +15,9 @@ public interface StoredAnalysisRepository extends JpaRepository<DreamAnalysis, L
     Optional<DreamAnalysis> findByIdAndUserId(Long id, Long userId);
 
     @Query(
-            "select a from DreamAnalysis a where a.user.id=:user and (a.resultRevision is not null or a.status=:status) and a.dreamedAt between :from and :to order by a.dreamedAt desc,a.id desc")
+            "select a from DreamAnalysis a where a.user.id=:user and (a.resultRevision is not null"
+                + " or (a.status=:status and a.regenerating=false)) and a.dreamedAt between :from"
+                + " and :to order by a.dreamedAt desc,a.id desc")
     List<DreamAnalysis> recent(
             @Param("user") Long user,
             @Param("status") GenerationStatus status,
