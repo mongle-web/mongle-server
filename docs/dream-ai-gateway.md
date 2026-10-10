@@ -27,6 +27,10 @@ DB 스키마, API URL·요청·응답 형식, 상태·중복 요청·수정/삭�
 | `AiGatewayStructureGenerator` | `DREAM_STRUCTURE` | `StructurePrompt`, `scene-v2-display` | originalText, emotions |
 | `AiGatewayStoryGenerator` | `DREAM_NARRATIVE` | `StoryPrompt`, `story-v1` | originalText, emotions, scenes, elements |
 
+#43 이후 새 서사에는 `story-v2`를 사용한다. #44의 `AiGatewayBridgeGenerator`는 `WORLD_BRIDGE`,
+`world-bridge-v1` 계약으로 두 성공 서사 본문만 전달한다. 연결 결과·재시도·삭제 정책은
+[두 꿈 사이 연결 문장 계약](world-bridge.md)을 따른다.
+
 시스템 메시지와 스키마는 생성기 초기화 때 읽고 이후 요청에서 재사용한다.
 사용자 원문은 JSON으로 직렬화해 별도 USER 메시지로 전달하며 지시문에 이어 붙이지 않는다.
 장면 순서는 유지하고 감정 목록은 enum 순서로 정렬한다.
@@ -47,7 +51,7 @@ Spring MVC 비동기 처리로 HTTP 요청 스레드를 반환하므로 가상 �
 HTTP 응답 JSON·상태 코드는 유지하며 진행 중 중복 요청만 기존대로 202를 반환한다.
 외부 호출 중에는 DB 트랜잭션·EntityManager·행 잠금을 유지하지 않는다.
 
-`DreamGenerationResources`는 서버 인스턴스당 분석·서사화 합계 4개를 기본으로 제한한다.
+`DreamGenerationResources`는 서버 인스턴스당 분석·서사화·꿈 사이 연결 합계 4개를 기본으로 제한한다.
 한 슬롯은 외부 호출 시작부터 검증·DB 저장 종료까지 유지한다. 한도 초과는 즉시 거절한다.
 검증·JPA 저장은 `dream-result-*` 플랫폼 스레드 2개에서 처리한다.
 한 작업의 후속 작업은 하나이며 큐 용량을 슬롯 수와 같게 제한한다.
@@ -71,7 +75,7 @@ DB 장애나 강제 종료로 실패 상태 저장도 완료되지 않으면 기
 | 설정 | 기본값 | 설명 |
 | --- | --- | --- |
 | `LINER_API_KEY` | 빈 값 | 실제 호출용 키. 저장소나 로그에 넣지 않는다 |
-| `MONGLE_DREAM_AI_MAX_CONCURRENT_CALLS` | 4 | 분석·서사화 합계 동시 호출 수, 1~64 |
+| `MONGLE_DREAM_AI_MAX_CONCURRENT_CALLS` | 4 | 분석·서사화·꿈 사이 연결 합계 동시 호출 수, 1~64 |
 | `spring.mvc.async.request-timeout` (YAML 속성) | 130s | HTTP 비동기 요청 수명. 외부 호출 예산보다 길게 설정 |
 | `LINER_TOTAL_TIMEOUT` | 60s | 내부 재시도 포함 전체 통신 예산. 도메인 시도 유효시간 때문에 2분 미만만 허용 |
 

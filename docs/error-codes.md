@@ -78,6 +78,13 @@ HTTP 상태와 메시지, 예외 처리 흐름은 코드 형식 변경과 무관
 | 이미지 | INVALID_OUTPUT | `IMAGE_502_1` | 502 |
 | 이미지 | CALL_FAILED | `IMAGE_502_2` | 502 |
 | 이미지 | UNAVAILABLE | `IMAGE_503_1` | 503 |
+| 꿈 사이 연결 | INVALID_PAIR | `BRIDGE_400_1` | 400 |
+| 꿈 사이 연결 | NOT_FOUND | `BRIDGE_404_1` | 404 |
+| 꿈 사이 연결 | VERSION_CONFLICT | `BRIDGE_409_1` | 409 |
+| 꿈 사이 연결 | SETTINGS_CHANGED | `BRIDGE_409_2` | 409 |
+| 꿈 사이 연결 | INVALID_OUTPUT | `BRIDGE_502_1` | 502 |
+| 꿈 사이 연결 | CALL_FAILED | `BRIDGE_502_2` | 502 |
+| 꿈 사이 연결 | UNAVAILABLE | `BRIDGE_503_1` | 503 |
 
 ## AI Gateway
 

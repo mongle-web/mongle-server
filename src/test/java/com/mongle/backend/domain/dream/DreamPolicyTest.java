@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.mongle.backend.domain.dream.dto.DreamCreateRequest;
-import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
 import com.mongle.backend.domain.dream.repository.*;
 import com.mongle.backend.domain.dream.service.DreamService;
 import com.mongle.backend.domain.dream.story.DreamStoryRepository;
@@ -96,7 +96,10 @@ class DreamPolicyTest {
                         Clock.fixed(Instant.parse("2026-10-01T15:00:00Z"), ZoneOffset.UTC),
                         mock(DreamGenerationJobRepository.class),
                         mock(com.mongle.backend.domain.dream.generation.DreamGenerationGuard.class),
-                        mock(com.mongle.backend.domain.dream.generation.DreamGenerationTransactions.class));
+                        mock(
+                                com.mongle.backend.domain.dream.generation
+                                        .DreamGenerationTransactions.class),
+                        mock(com.mongle.backend.domain.world.bridge.BridgeResultRepository.class));
         assertThat(
                         service.create(
                                         1L,
@@ -119,7 +122,10 @@ class DreamPolicyTest {
                         Clock.fixed(Instant.parse("2026-10-01T14:59:59Z"), ZoneOffset.UTC),
                         mock(DreamGenerationJobRepository.class),
                         mock(com.mongle.backend.domain.dream.generation.DreamGenerationGuard.class),
-                        mock(com.mongle.backend.domain.dream.generation.DreamGenerationTransactions.class));
+                        mock(
+                                com.mongle.backend.domain.dream.generation
+                                        .DreamGenerationTransactions.class),
+                        mock(com.mongle.backend.domain.world.bridge.BridgeResultRepository.class));
         assertThatThrownBy(
                         () ->
                                 service.create(
