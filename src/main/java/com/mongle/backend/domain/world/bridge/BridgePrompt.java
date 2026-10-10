@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.world.bridge;
 
 import org.springframework.core.io.ClassPathResource;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
@@ -9,8 +10,13 @@ public final class BridgePrompt {
 
     private BridgePrompt() {}
 
-    public static String system() { return resource("world-bridge-prompt.txt"); }
-    public static String schema() { return resource("world-bridge-schema.json"); }
+    public static String system() {
+        return resource("world-bridge-prompt.txt");
+    }
+
+    public static String schema() {
+        return resource("world-bridge-schema.json");
+    }
 
     private static String resource(String name) {
         try (var stream = new ClassPathResource("ai/" + name).getInputStream()) {

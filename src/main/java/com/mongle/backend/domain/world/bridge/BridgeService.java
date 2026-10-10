@@ -2,10 +2,13 @@ package com.mongle.backend.domain.world.bridge;
 
 import com.mongle.backend.domain.dream.gateway.DreamGenerationResources;
 import com.mongle.backend.global.error.BusinessException;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.RejectedExecutionException;
@@ -28,14 +31,19 @@ public class BridgeService {
         return launch(transactions.retry(userId, bridgeId, jobVersion, generator.available()));
     }
 
-    public BridgeResponse get(Long userId, Long bridgeId) { return transactions.get(userId, bridgeId); }
+    public BridgeResponse get(Long userId, Long bridgeId) {
+        return transactions.get(userId, bridgeId);
+    }
 
     private CompletableFuture<BridgeResponse> launch(BridgeTransactions.Reservation reservation) {
-        if (reservation.input() == null) return CompletableFuture.completedFuture(reservation.response());
+        if (reservation.input() == null)
+            return CompletableFuture.completedFuture(reservation.response());
         var input = reservation.input();
         try {
             // 분석·서사와 같은 제한된 완료 풀을 사용한다. 외부 대기용 스레드나 무제한 큐는 만들지 않는다.
-            return resources.execute(() -> generator.generate(input), (content, failure) -> complete(input, content, failure));
+            return resources.execute(
+                    () -> generator.generate(input),
+                    (content, failure) -> complete(input, content, failure));
         } catch (RejectedExecutionException ex) {
             return CompletableFuture.completedFuture(transactions.fail(input, "CAPACITY_EXCEEDED"));
         }
@@ -47,8 +55,11 @@ public class BridgeService {
             if (failure != null) throw new CompletionException(failure);
             content = validator.parse(raw);
         } catch (RuntimeException ex) {
-            String code = ex instanceof BusinessException business && business.getErrorCode() == BridgeErrorCode.INVALID_OUTPUT
-                    ? "INVALID_OUTPUT" : "CALL_FAILED";
+            String code =
+                    ex instanceof BusinessException business
+                                    && business.getErrorCode() == BridgeErrorCode.INVALID_OUTPUT
+                            ? "INVALID_OUTPUT"
+                            : "CALL_FAILED";
             return transactions.fail(input, code);
         }
         try {
@@ -62,9 +73,13 @@ public class BridgeService {
         }
     }
 
-    private BridgeResponse persistenceFailure(BridgeGenerator.Input input, RuntimeException failure) {
-        try { transactions.fail(input, "PERSISTENCE_FAILED"); }
-        catch (RuntimeException recovery) { failure.addSuppressed(recovery); }
+    private BridgeResponse persistenceFailure(
+            BridgeGenerator.Input input, RuntimeException failure) {
+        try {
+            transactions.fail(input, "PERSISTENCE_FAILED");
+        } catch (RuntimeException recovery) {
+            failure.addSuppressed(recovery);
+        }
         throw new BusinessException(BridgeErrorCode.CALL_FAILED, failure);
     }
 }
