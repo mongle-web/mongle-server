@@ -1,9 +1,11 @@
 package com.mongle.backend.domain.dream.story;
 
+import com.mongle.backend.domain.dream.analysis.AnalysisResultCodec;
 import com.mongle.backend.domain.dream.analysis.AnalysisTransactions;
 import com.mongle.backend.domain.dream.analysis.StoredAnalysisRepository;
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.gateway.DreamGenerationSettings;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
@@ -32,7 +34,8 @@ public class StoryTransactions {
     private final StoryResultVersionRepository versions;
     private final StoryValidator validator;
     private final Clock authClock;
-    private final com.mongle.backend.domain.dream.analysis.AnalysisResultCodec analysisCodec;
+    private final AnalysisResultCodec analysisCodec;
+    private final DreamGenerationSettings settings;
 
     public record Reservation(StoryResponse response, StoryGenerator.Input input) {}
 
@@ -74,6 +77,10 @@ public class StoryTransactions {
                 analyses.findBySourceDreamIdAndUserId(dreamId, userId)
                         .orElseThrow(() -> new BusinessException(StoryErrorCode.ANALYSIS_REQUIRED));
 
+        if (expectedSource == null && analysis.isRegenerating()) {
+            throw new BusinessException(DreamErrorCode.GENERATION_IN_PROGRESS);
+        }
+
         if (analysis.getStatus() != GenerationStatus.COMPLETED) {
             throw new BusinessException(StoryErrorCode.ANALYSIS_REQUIRED);
         }
@@ -112,6 +119,10 @@ public class StoryTransactions {
         var context = analysisTransactions.generationContext(analysis);
         var story = prior.orElseGet(() -> DreamStory.create(analysis));
         story.start(dream.getSourceRevision(), now, Duration.ofMinutes(2));
+        story.recordSettings(settings.capture());
+        if (analysis.getPendingResultJson() != null) {
+            dream.changeAnalysisStatus(GenerationStatus.PROCESSING);
+        }
         stories.saveAndFlush(story);
 
         var input =
@@ -143,13 +154,20 @@ public class StoryTransactions {
 
         if (failure != null) {
             story.fail(failure);
+            markPendingFailure(story);
         } else if (!story.active(authClock.instant())) {
             story.fail("ATTEMPT_EXPIRED");
+            markPendingFailure(story);
         } else {
             var encoded = validator.encode(result);
             // 성공 결과와 버전을 같은 트랜잭션에서 확정한다. 실패/늦은 응답은 버전을 만들지 않는다.
-            versions.saveAndFlush(StoryResultVersion.capture(story, encoded, input,
-                    analysisCodec.encode(analysisTransactions.generationContext(story.getAnalysis()))));
+            versions.saveAndFlush(
+                    StoryResultVersion.capture(
+                            story,
+                            encoded,
+                            input,
+                            analysisCodec.encode(
+                                    analysisTransactions.generationContext(story.getAnalysis()))));
             story.finish(encoded);
             analysisTransactions.publishPending(story.getAnalysis());
         }
@@ -171,9 +189,18 @@ public class StoryTransactions {
 
         String failure = sourceFailure(story);
         story.fail(failure == null ? code : failure);
+        markPendingFailure(story);
         stories.flush();
 
         return response(story);
+    }
+
+    private void markPendingFailure(DreamStory story) {
+        var analysis = story.getAnalysis();
+        if (analysis.getPendingResultJson() != null && analysis.getDream() != null) {
+            // 분석 임시 결과는 서사만 재시도할 수 있도록 보존한다.
+            analysis.getDream().changeAnalysisStatus(GenerationStatus.FAILED);
+        }
     }
 
     public StoryResponse get(Long userId, Long storyId) {
@@ -242,13 +269,19 @@ public class StoryTransactions {
                 "legacy".equals(version.getGenerationKey()),
                 validator.decode(version.getResultJson()).sections(),
                 version.getSourceText(),
-                version.getSourceEmotions() == null ? List.of()
+                version.getSourceEmotions() == null
+                        ? List.of()
                         : java.util.Arrays.stream(version.getSourceEmotions().split(","))
-                            .filter(s -> !s.isEmpty())
-                            .map(com.mongle.backend.domain.dream.entity.DreamEmotion::valueOf).toList(),
+                                .filter(s -> !s.isEmpty())
+                                .map(com.mongle.backend.domain.dream.entity.DreamEmotion::valueOf)
+                                .toList(),
                 version.getAnalysisPromptVersion(),
-                version.getAnalysisJson() == null ? null : analysisCodec.decode(version.getAnalysisJson()),
-                version.getSourceText() != null);
+                version.getAnalysisJson() == null
+                        ? null
+                        : analysisCodec.decode(version.getAnalysisJson()),
+                version.getSourceText() != null,
+                settings.decode(version.getAnalysisSettings()),
+                settings.decode(version.getStorySettings()));
     }
 
     private boolean changed(DreamStory story, long sourceRevision) {

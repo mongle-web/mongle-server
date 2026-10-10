@@ -17,6 +17,8 @@ DELIMITER ;
 CALL mongle_add_generation_column('dream_analyses','result_revision','BIGINT NULL');
 CALL mongle_add_generation_column('dream_analyses','source_text','TEXT NULL');
 CALL mongle_add_generation_column('dream_analyses','source_emotions','VARCHAR(100) NULL');
+CALL mongle_add_generation_column('dream_analyses','generation_settings','TEXT NULL');
+CALL mongle_add_generation_column('dream_stories','generation_settings','TEXT NULL');
 CALL mongle_add_generation_column('dream_analyses','pending_result_json','TEXT NULL');
 CALL mongle_add_generation_column('dream_analyses','regenerating','BOOLEAN NOT NULL DEFAULT FALSE');
 CALL mongle_add_generation_column('dream_generation_jobs','regeneration','BOOLEAN NOT NULL DEFAULT FALSE');
@@ -24,6 +26,8 @@ CALL mongle_add_generation_column('dream_story_versions','source_text','TEXT NUL
 CALL mongle_add_generation_column('dream_story_versions','source_emotions','VARCHAR(100) NULL');
 CALL mongle_add_generation_column('dream_story_versions','analysis_json','TEXT NULL');
 CALL mongle_add_generation_column('dream_story_versions','analysis_prompt_version','VARCHAR(50) NULL');
+CALL mongle_add_generation_column('dream_story_versions','analysis_settings','TEXT NULL');
+CALL mongle_add_generation_column('dream_story_versions','story_settings','TEXT NULL');
 DROP PROCEDURE mongle_add_generation_column;
 
 -- 기존 성공 분석의 입력 버전만 보존한다. 수정 후 원문을 과거 생성 입력으로 추정하지 않는다.

@@ -101,6 +101,13 @@ public class DreamAnalysis extends BaseEntity {
     @Column(name = "source_emotions", length = 100)
     private String sourceEmotions;
 
+    @Column(name = "generation_settings", columnDefinition = "TEXT")
+    private String generationSettings;
+
+    public void recordSettings(String settings) {
+        generationSettings = settings;
+    }
+
     @Column(name = "pending_result_json", columnDefinition = "TEXT")
     private String pendingResultJson;
 
@@ -130,7 +137,7 @@ public class DreamAnalysis extends BaseEntity {
     }
 
     public boolean hasResult() {
-        return resultRevision != null;
+        return resultRevision != null || (status == GenerationStatus.COMPLETED && !regenerating);
     }
 
     public static DreamAnalysis create(Dream dream) {
@@ -139,6 +146,10 @@ public class DreamAnalysis extends BaseEntity {
         a.user = dream.getUser();
         a.sourceDreamId = dream.getId();
         a.dreamedAt = dream.getDreamedAt();
+        a.sourceRevision = dream.getSourceRevision();
+        a.observedRevision = dream.getSourceRevision();
+        a.promptVersion = StructurePrompt.VERSION;
+        a.status = GenerationStatus.PENDING;
         return a;
     }
 
@@ -151,8 +162,11 @@ public class DreamAnalysis extends BaseEntity {
         failureCode = null;
         promptVersion = StructurePrompt.VERSION;
         sourceText = dream.getOriginalText();
-        sourceEmotions = dream.getEmotions().stream().sorted().map(Enum::name)
-                .collect(java.util.stream.Collectors.joining(","));
+        sourceEmotions =
+                dream.getEmotions().stream()
+                        .sorted()
+                        .map(Enum::name)
+                        .collect(java.util.stream.Collectors.joining(","));
     }
 
     public boolean accepts(String attempt) {

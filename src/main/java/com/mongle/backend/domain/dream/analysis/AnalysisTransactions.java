@@ -2,6 +2,7 @@ package com.mongle.backend.domain.dream.analysis;
 
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.gateway.DreamGenerationSettings;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
@@ -27,6 +28,7 @@ public class AnalysisTransactions {
     private final EntityManager em;
     private final Clock authClock;
     private final AnalysisResultCodec codec;
+    private final DreamGenerationSettings settings;
 
     public record Reservation(AnalysisResponse response, StructureGenerator.Input input) {}
 
@@ -54,6 +56,11 @@ public class AnalysisTransactions {
         var prior = analyses.findBySourceDreamIdAndUserId(dreamId, userId);
         var now = authClock.instant();
 
+        if (expectedSource == null && prior.isPresent() && prior.get().isRegenerating()) {
+            // 통합 작업은 /generation 재생성·재시도로만 실행한다. 개별 API가 시도를 바꾸지 않는다.
+            throw new BusinessException(DreamErrorCode.GENERATION_IN_PROGRESS);
+        }
+
         if (prior.isPresent()
                 && (prior.get().getStatus() == GenerationStatus.COMPLETED
                         || prior.get().active(now))) {
@@ -74,6 +81,7 @@ public class AnalysisTransactions {
 
         var analysis = prior.orElseGet(() -> DreamAnalysis.create(dream));
         analysis.start(dream.getSourceRevision(), now, Duration.ofMinutes(2));
+        analysis.recordSettings(settings.capture());
         dream.changeAnalysisStatus(GenerationStatus.PROCESSING);
         analyses.save(analysis);
         em.flush();
@@ -115,6 +123,7 @@ public class AnalysisTransactions {
 
         if (!analysis.active(authClock.instant())) {
             analysis.fail("ATTEMPT_EXPIRED");
+            dream.changeAnalysisStatus(GenerationStatus.FAILED);
             return response(analysis);
         }
 
@@ -142,19 +151,25 @@ public class AnalysisTransactions {
             return codec.decode(analysis.getPendingResultJson());
         }
         var current = response(analysis);
-        return new StructureResult(current.generatedTitle(), current.displayKeywords(),
-                current.elements(), current.scenes());
+        return new StructureResult(
+                current.generatedTitle(),
+                current.displayKeywords(),
+                current.elements(),
+                current.scenes());
     }
 
     private void publish(DreamAnalysis analysis, StructureResult result) {
         var dream = analysis.getDream();
         // 장면-요소 FK를 먼저 정리한다. 새 성공 결과만 현재 조회·통계에 한 번 집계한다.
         em.createQuery("delete from DreamSceneEntity l where l.dreamScene.analysis.id=:id")
-                .setParameter("id", analysis.getId()).executeUpdate();
+                .setParameter("id", analysis.getId())
+                .executeUpdate();
         em.createQuery("delete from DreamScene s where s.analysis.id=:id")
-                .setParameter("id", analysis.getId()).executeUpdate();
+                .setParameter("id", analysis.getId())
+                .executeUpdate();
         em.createQuery("delete from DreamEntity e where e.analysis.id=:id")
-                .setParameter("id", analysis.getId()).executeUpdate();
+                .setParameter("id", analysis.getId())
+                .executeUpdate();
 
         Map<String, DreamEntity> elements = new HashMap<>();
 
@@ -180,7 +195,6 @@ public class AnalysisTransactions {
         analysis.finish(dream.getSourceRevision(), result);
         // 자동 제목 저장은 revision을 바꿀 수 있지만 AI 입력 sourceRevision은 유지한다.
         em.flush();
-
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
