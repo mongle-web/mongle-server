@@ -10,6 +10,8 @@ import org.springframework.transaction.annotation.*;
 
 import java.net.URI;
 import java.time.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 @Slf4j
@@ -19,24 +21,53 @@ public class DreamImageService {
     private final ImageGenerator generator;
     private final ImageAssetStore storage;
     private final Clock authClock;
+    private final ImageGenerationResources resources;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public ImageResponse generate(Long userId, Long dreamId, ImageRequest request) {
-        var reservation =
-                transactions.begin(
-                        userId, dreamId, request, generator.available() && storage.available());
-        if (reservation.input() == null) return reservation.response();
+    public CompletableFuture<ImageResponse> generate(Long userId, Long dreamId, ImageRequest request) {
+        var permit = new AtomicReference<ImageGenerationResources.Permit>();
+        ImageTransactions.Reservation reservation;
+        try {
+            reservation = transactions.begin(
+                    userId, dreamId, request, generator.available() && storage.available(),
+                    () -> {
+                        try {
+                            permit.set(resources.reserve());
+                        } catch (RejectedExecutionException ex) {
+                            throw new BusinessException(ImageErrorCode.BUSY);
+                        }
+                    });
+        } catch (RuntimeException ex) {
+            if (permit.get() != null) permit.get().close();
+            throw ex;
+        }
+        if (reservation.input() == null) {
+            return CompletableFuture.completedFuture(reservation.response());
+        }
         var input = reservation.input();
+        return permit.get().execute(
+                () -> generator.generate(input),
+                (bytes, failure) -> complete(input, bytes, failure));
+    }
+
+    /** 디코딩·스토리지·DB 기록은 이미지 전용 완료 풀에서만 실행한다. */
+    private ImageResponse complete(ImageGenerator.Input input, byte[] bytes, Throwable failure) {
+        if (failure != null) {
+            while (failure instanceof CompletionException && failure.getCause() != null) {
+                failure = failure.getCause();
+            }
+            var original = failure instanceof RuntimeException runtime
+                    ? runtime : new IllegalStateException("이미지 제공자 호출 실패", failure);
+            String code = original instanceof BusinessException business
+                    && business.getErrorCode() == ImageErrorCode.INVALID_OUTPUT
+                    ? "INVALID_OUTPUT" : "CALL_FAILED";
+            return fail(input, code, original);
+        }
         ImagePayload payload;
         try {
-            payload = ImagePayload.parse(generator.generate(input));
+            payload = ImagePayload.parse(bytes);
         } catch (RuntimeException ex) {
-            String code =
-                    ex instanceof BusinessException b
-                                    && b.getErrorCode() == ImageErrorCode.INVALID_OUTPUT
-                            ? "INVALID_OUTPUT"
-                            : "CALL_FAILED";
-            return fail(input, code, ex);
+            return fail(input, "INVALID_OUTPUT", ex);
         }
         String key =
                 "dream-images/"

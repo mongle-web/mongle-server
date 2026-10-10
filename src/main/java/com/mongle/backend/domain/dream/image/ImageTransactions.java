@@ -39,6 +39,13 @@ public class ImageTransactions {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Reservation begin(Long userId, Long dreamId, ImageRequest request, boolean available) {
+        return begin(userId, dreamId, request, available, () -> {});
+    }
+
+    /** 기존 결과 재사용 판정 후에만 슬롯을 확보한다. 실패하면 예약 변경도 롤백한다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Reservation begin(
+            Long userId, Long dreamId, ImageRequest request, boolean available, Runnable admit) {
         lock(userId);
         var dream =
                 dreams.findByIdAndUserId(dreamId, userId)
@@ -104,6 +111,7 @@ public class ImageTransactions {
                         || request.imageVersion() != prior.get().getVersion()))
             throw new BusinessException(ImageErrorCode.VERSION_CONFLICT);
         if (!available) throw new BusinessException(ImageErrorCode.UNAVAILABLE);
+        admit.run();
         var image = prior.orElseGet(() -> DreamImage.create(analysis));
         image.start(
                 dream.getSourceRevision(),
