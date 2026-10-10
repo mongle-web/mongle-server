@@ -82,9 +82,11 @@ class DreamGenerationIntegrationTest {
     static class FakeStory implements StoryGenerator {
         final AtomicInteger calls = new AtomicInteger();
         volatile CompletableFuture<String> result;
+        volatile Input lastInput;
 
         @Override
         public CompletableFuture<String> generate(Input input) {
+            lastInput = input;
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             assertThat(input.scenes()).hasSize(1);
             calls.incrementAndGet();
@@ -155,6 +157,146 @@ class DreamGenerationIntegrationTest {
     }
 
     private DreamResponse completed() { return completed(user, today); }
+
+    private DreamResponse generated() throws Exception {
+        var dream = completed();
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
+        return dreams.get(user, dream.dreamId());
+    }
+
+    private DreamResponse editText(DreamResponse dream, String text) {
+        var request = new DreamUpdateRequest();
+        request.setRevision(dream.revision());
+        request.setOriginalText(text);
+        return dreams.update(user, dream.dreamId(), request);
+    }
+
+    private DreamGenerationResponse regenerate(DreamResponse dream) {
+        return transactions.regenerate(user, dream.dreamId(),
+                new DreamRegenerationRequest(dream.revision(), state(dream).generationVersion()));
+    }
+
+    @Test
+    void editDoesNotCallAiAndRegenerationPublishesAnalysisAndStoryTogether() throws Exception {
+        var dream = generated();
+        var oldStory = storyTransactions.latest(user, dream.dreamId());
+        var changed = editText(dream, "숲을 걸었다");
+        assertThat(changed.sourceRevision()).isEqualTo(dream.sourceRevision() + 1);
+        assertThat(changed.analysisSourceChanged()).isTrue();
+        assertThat(structureGenerator.calls).hasValue(1);
+        structureGenerator.result = CompletableFuture.completedFuture(
+                STRUCTURE.replace("바다", "숲").replace("날았다", "걸었다"));
+        storyGenerator.result = new CompletableFuture<>();
+        regenerate(changed);
+        pumpUntil(() -> storyGenerator.calls.get() == 2);
+        var interim = dreams.get(user, dream.dreamId());
+        assertThat(interim.displayKeywords()).containsExactly("바다");
+        assertThat(interim.analysisResultRevision()).isEqualTo(dream.sourceRevision());
+        assertThat(interim.analysisSourceChanged()).isTrue();
+        assertThat(analysisTransactions.get(user, oldStory.analysisId()).scenes().getFirst().content())
+                .contains("바다");
+        assertThat(storyGenerator.lastInput.scenes().getFirst().content()).contains("숲");
+        assertThat(storyGenerator.lastInput.originalText()).isEqualTo("숲을 걸었다");
+        assertThat(storyTransactions.latest(user, dream.dreamId()).resultVersionId())
+                .isEqualTo(oldStory.resultVersionId());
+        storyGenerator.result.complete(STORY.replace("바다", "숲").replace("날았다", "걸었다"));
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
+        var latest = dreams.get(user, dream.dreamId());
+        assertThat(latest.displayKeywords()).containsExactly("숲");
+        assertThat(latest.analysisSourceChanged()).isFalse();
+        assertThat(latest.analysisResultRevision()).isEqualTo(changed.sourceRevision());
+        var fresh = storyTransactions.latest(user, dream.dreamId());
+        assertThat(fresh.resultVersionId()).isNotEqualTo(oldStory.resultVersionId());
+        var old = storyTransactions.version(user, oldStory.storyId(), oldStory.resultVersionId());
+        assertThat(old.originalText()).isEqualTo("바다 위를 날았다");
+        assertThat(old.analysis().scenes().getFirst().content()).contains("바다");
+        assertThat(old.emotions()).containsExactly(DreamEmotion.HAPPY);
+        assertThat(old.sourceChanged()).isTrue();
+        assertThat(storyTransactions.versions(user, fresh.storyId(), null, 20).items()).hasSize(2);
+    }
+
+    @Test
+    void failedStoryPreservesPriorAnalysisAndRetryOnlyRepeatsStory() throws Exception {
+        var dream = generated();
+        var changed = editText(dream, "숲을 걸었다");
+        structureGenerator.result = CompletableFuture.completedFuture(STRUCTURE.replace("바다", "숲"));
+        storyGenerator.result = CompletableFuture.failedFuture(new IllegalStateException("provider"));
+        regenerate(changed);
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.FAILED);
+        assertThat(dreams.get(user, dream.dreamId()).displayKeywords()).containsExactly("바다");
+        assertThat(storyTransactions.latest(user, dream.dreamId()).sections().getFirst().content()).contains("바다");
+        assertThat(structureGenerator.calls).hasValue(2);
+        storyGenerator.result = CompletableFuture.completedFuture(STORY.replace("바다", "숲"));
+        transactions.retry(user, dream.dreamId(), dreams.get(user, dream.dreamId()).revision());
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
+        assertThat(structureGenerator.calls).hasValue(2);
+        assertThat(storyGenerator.calls).hasValue(3);
+        assertThat(dreams.get(user, dream.dreamId()).displayKeywords()).containsExactly("숲");
+    }
+
+    @Test
+    void regenerationBlocksEditsAndDeletionFromReservationUntilTerminalState() throws Exception {
+        var dream = generated();
+        var changed = editText(dream, "숲을 걸었다");
+        regenerate(changed);
+        var edit = new DreamUpdateRequest();
+        edit.setRevision(changed.revision());
+        edit.setTitle("새 제목");
+        assertThatThrownBy(() -> dreams.update(user, changed.dreamId(), edit))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(DreamErrorCode.GENERATION_IN_PROGRESS));
+        assertThatThrownBy(() -> dreams.delete(user, changed.dreamId(), changed.revision()))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(DreamErrorCode.GENERATION_IN_PROGRESS));
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
+        edit.setRevision(dreams.get(user, changed.dreamId()).revision());
+        assertThat(dreams.update(user, changed.dreamId(), edit).title()).isEqualTo("새 제목");
+    }
+
+    @Test
+    void duplicateRegenerationReusesJobAndCompletedReplayDoesNotCallAi() throws Exception {
+        var dream = generated();
+        var request = new DreamRegenerationRequest(dream.revision(), state(dream).generationVersion());
+        var first = transactions.regenerate(user, dream.dreamId(), request);
+        var duplicate = transactions.regenerate(user, dream.dreamId(), request);
+        assertThat(duplicate.generationVersion()).isEqualTo(first.generationVersion());
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
+        assertThatThrownBy(() -> transactions.regenerate(user, dream.dreamId(), request))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(DreamErrorCode.VERSION_CONFLICT));
+        assertThat(structureGenerator.calls).hasValue(2);
+        assertThat(storyGenerator.calls).hasValue(2);
+    }
+
+    @Test
+    void invalidAnalysisPreservesPreviousResultsAndCanBeRetried() throws Exception {
+        var dream = generated();
+        var changed = editText(dream, "숲을 걸었다");
+        structureGenerator.result = CompletableFuture.completedFuture("{}");
+        regenerate(changed);
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.FAILED);
+        assertThat(state(dream).failureCode()).isEqualTo("INVALID_OUTPUT");
+        assertThat(dreams.get(user, dream.dreamId()).displayKeywords()).containsExactly("바다");
+        assertThat(storyGenerator.calls).hasValue(1);
+        structureGenerator.result = CompletableFuture.completedFuture(STRUCTURE.replace("바다", "숲"));
+        transactions.retry(user, dream.dreamId(), dreams.get(user, dream.dreamId()).revision());
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
+        assertThat(dreams.get(user, dream.dreamId()).displayKeywords()).containsExactly("숲");
+    }
+
+    @Test
+    void regenerationRequiresOwnershipAndCurrentRevision() throws Exception {
+        var dream = generated();
+        var request = new DreamRegenerationRequest(dream.revision(), state(dream).generationVersion());
+        assertThatThrownBy(() -> transactions.regenerate(Long.MAX_VALUE, dream.dreamId(), request))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(DreamErrorCode.NOT_FOUND));
+        editText(dream, "숲");
+        assertThatThrownBy(() -> transactions.regenerate(user, dream.dreamId(), request))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(DreamErrorCode.VERSION_CONFLICT));
+        assertThat(structureGenerator.calls).hasValue(1);
+    }
 
     private DreamGenerationResponse state(DreamResponse dream) {
         return transactions.get(user, dream.dreamId());
