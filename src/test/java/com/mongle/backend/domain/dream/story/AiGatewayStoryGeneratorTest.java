@@ -69,7 +69,7 @@ class AiGatewayStoryGeneratorTest {
         var request = sent.get();
         assertThat(request.userId()).isEqualTo(17);
         assertThat(request.taskType()).isEqualTo(AiTaskType.DREAM_NARRATIVE);
-        assertThat(request.promptVersion()).isEqualTo("story-v1");
+        assertThat(request.promptVersion()).isEqualTo("story-v2");
         assertThat(request.messages()).hasSize(2);
         assertThat(request.messages().get(0).role()).isEqualTo(AiMessage.Role.SYSTEM);
         assertThat(request.messages().get(0).content()).isEqualTo(StoryPrompt.system());
