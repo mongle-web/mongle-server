@@ -93,3 +93,6 @@ Gateway 코드는 이미 공개된 번호를 그대로 유지한다.
 | RATE_LIMITED | `AI_503_2` | 503 |
 | PROVIDER_UNAVAILABLE | `AI_503_3` | 503 |
 | TIMEOUT | `AI_504_1` | 504 |
+
+이야기 성공 버전 조회: `STORY_400_1`(400)은 limit 1~50 또는 before 양수 조건 위반이다.
+타인의 이야기·없는 버전·다른 이야기의 버전은 기존 `STORY_404_1`로 처리한다.
