@@ -3,11 +3,11 @@
 이번 기능은 나의 꿈 카드와 기록 상세 화면에 필요한 읽기 API를 제공한다. 감정 선택까지 완료한
 `COMPLETED` 기록을 표시하며, 분석·서사·이미지 생성 여부는 포함 조건이 아니다.
 `DRAFT`, `EMOTION_PENDING`, 삭제한 꿈과 타인 기록은 제외한다.
-월별 캘린더 날짜 표시와 기록 일수 집계는 후속 이슈 범위다.
+월별 캘린더 날짜 표시와 기록 일수 집계는 [꿈 캘린더 문서](dream-calendar.md)를 참고한다.
 
 ## 호출과 화면 연결
 
-두 API 모두 온보딩을 완료한 사용자의 Bearer JWT가 필요하다. 사용자 ID는 요청으로 받지 않고
+Archive API는 온보딩을 완료한 사용자의 Bearer JWT가 필요하다. 사용자 ID는 요청으로 받지 않고
 JWT의 subject에서 결정한다. 성공 응답은 기존 `ApiResponse`의 `data`에 아래 DTO를 넣으며
 `Cache-Control: no-store`를 적용한다.
 
@@ -15,6 +15,7 @@ JWT의 subject에서 결정한다. 성공 응답은 기존 `ApiResponse`의 `dat
 | --- | --- | --- |
 | 전체 Archive | `GET /api/v1/archives` | `data.items`의 카드 정보 |
 | 꿈 연결 화면의 오래된순 목록 | `GET /api/v1/archives?sort=OLDEST` | 오래된 꿈부터 커서로 이어서 조회 |
+| 월별 캘린더 | `GET /api/v1/archives/calendar?month=2026-09` | 기록한 날짜 전체와 월별 기록 일수 |
 | 특정 월 목록 | `GET /api/v1/archives?month=2026-09` | 꿈을 꾼 날짜 기준으로 해당 월 조회 |
 | 선택한 날짜의 카드 | `GET /api/v1/archives?date=2026-09-16` | 해당 날짜의 완성 기록 |
 | 기록 상세 | `GET /api/v1/archives/{dreamId}` | 공통 정보 `dream`, 원문 `originalText`, 감정 `emotions` |

@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.archive.service;
 
 import com.mongle.backend.domain.archive.dto.request.ArchiveSearch;
+import com.mongle.backend.domain.archive.dto.request.ArchiveMonth;
 import com.mongle.backend.domain.archive.dto.response.*;
 import com.mongle.backend.domain.archive.error.ArchiveErrorCode;
 import com.mongle.backend.domain.archive.repository.ArchiveQueryRepository;
@@ -31,6 +32,17 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class ArchiveService {
     private final ArchiveQueryRepository queries;
+
+    /**
+     * 한 번 조회한 서로 다른 날짜 목록으로 표시와 집계를 함께 만든다.
+     * 별도 count 쿼리를 사용하지 않아 조회 사이의 작성·삭제로 집계와 날짜가 어긋나는 일을 피한다.
+     * 생성 결과·서명 URL을 읽지 않으므로 캘린더 펼침이나 월 이동에 외부 호출이 발생하지 않는다.
+     */
+    public DreamCalendarResponse calendar(Long userId, @Nullable String month) {
+        var selected = ArchiveMonth.parse(month);
+        var dates = queries.findRecordedDates(userId, selected);
+        return new DreamCalendarResponse(selected.value().toString(), dates.size(), dates);
+    }
 
     /** 크기가 제한된 페이지를 조회하고 실제 반환하는 마지막 카드로 다음 커서를 발급한다. */
     public ArchivePage list(Long userId, @Nullable String month, @Nullable String date,

@@ -2,6 +2,7 @@ package com.mongle.backend.domain.archive.repository;
 
 import com.mongle.backend.domain.archive.dto.request.ArchiveSearch;
 import com.mongle.backend.domain.archive.dto.request.ArchiveSort;
+import com.mongle.backend.domain.archive.dto.request.ArchiveMonth;
 import com.mongle.backend.domain.dream.analysis.DreamAnalysis;
 import com.mongle.backend.domain.dream.entity.Dream;
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
@@ -11,6 +12,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +24,19 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ArchiveQueryRepository {
     private final EntityManager em;
+
+    /**
+     * 캘린더는 날짜만 필요하므로 Dream 엔티티와 연관 컬렉션을 로딩하지 않는다.
+     * DISTINCT 날짜로 기록 일수를 계산하고, 분석·이미지 유무와 무관하게 내 완성 기록만 포함한다.
+     * 한 달 전체가 필요하므로 페이지 제한을 적용하지 않으며 최대 31개의 날짜를 반환한다.
+     */
+    public List<LocalDate> findRecordedDates(Long userId, ArchiveMonth month) {
+        return em.createQuery("select distinct d.dreamedAt from Dream d "
+                        + "where d.user.id=:user and d.recordStatus=:completed "
+                        + "and d.dreamedAt between :from and :to order by d.dreamedAt asc", LocalDate.class)
+                .setParameter("user", userId).setParameter("completed", DreamRecordStatus.COMPLETED)
+                .setParameter("from", month.firstDay()).setParameter("to", month.lastDay()).getResultList();
+    }
 
     /** 마지막 날짜·ID를 경계로 삼는다. 오래된순은 큰 값, 최신순은 작은 값부터 이어서 조회한다. */
     public List<Dream> findDreams(Long userId, ArchiveSearch search) {

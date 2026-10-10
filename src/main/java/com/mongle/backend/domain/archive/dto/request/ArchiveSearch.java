@@ -6,7 +6,6 @@ import org.jspecify.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.time.YearMonth;
 import java.util.Base64;
 
 /**
@@ -29,11 +28,10 @@ public record ArchiveSearch(@Nullable LocalDate from, @Nullable LocalDate to, St
         try {
             if (month != null && date != null) throw new IllegalArgumentException();
             if (month != null) {
-                if (!month.matches("[0-9]{4}-[0-9]{2}")) throw new IllegalArgumentException();
-                var selected = YearMonth.parse(month);
-                if (selected.getYear() < 1) throw new IllegalArgumentException();
-                from = selected.atDay(1);
-                to = selected.atEndOfMonth();
+                // 캘린더와 같은 월 검증을 사용해 목록과 달력의 조회 범위가 어긋나지 않게 한다.
+                var selected = ArchiveMonth.parse(month);
+                from = selected.firstDay();
+                to = selected.lastDay();
                 scope = "month:" + month;
             } else if (date != null) {
                 from = parseDate(date);

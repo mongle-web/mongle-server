@@ -2,6 +2,7 @@ package com.mongle.backend.domain.archive.controller.api;
 
 import com.mongle.backend.domain.archive.dto.response.ArchiveDetail;
 import com.mongle.backend.domain.archive.dto.response.ArchivePage;
+import com.mongle.backend.domain.archive.dto.response.DreamCalendarResponse;
 import com.mongle.backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,6 +17,15 @@ import org.springframework.security.oauth2.jwt.Jwt;
 @Tag(name = "Archive", description = "내 완성한 꿈 기록 탐색")
 @SecurityRequirement(name = "bearerAuth")
 public interface ArchiveApi {
+    @Operation(summary = "꿈 캘린더 월별 조회", description = "month(YYYY-MM) 필수. 로그인한 사용자의 해당 월 완성 기록 날짜와 기록 일수를 반환합니다. "
+            + "감정 선택을 완료한 COMPLETED 기록만 포함하며 분석·이미지가 없어도 포함합니다. "
+            + "초안·감정 선택 전·삭제한 기록은 제외합니다. 생성 시각이 아닌 꿈 날짜를 기준으로 날짜 오름차순으로 반환합니다. "
+            + "페이지네이션 없이 해당 월 전체를 반환하고 빈 달은 기록 일수 0과 빈 날짜 배열입니다. "
+            + "선택한 날짜의 카드는 기존 GET /api/v1/archives?date=YYYY-MM-DD로 조회합니다.")
+    ResponseEntity<ApiResponse<DreamCalendarResponse>> calendar(@Parameter(hidden = true) Jwt jwt,
+            @Parameter(description = "조회할 월. 생략하거나 형식이 잘못되면 ARCHIVE_400_1", required = true,
+                    example = "2026-09") String month);
+
     @Operation(summary = "Archive 목록 조회", description = "감정 선택을 완료한 내 꿈을 꿈 날짜·ID 순서로 조회합니다. "
             + "sort=LATEST(기본 최신순) 또는 OLDEST(오래된순)를 지정합니다. "
             + "month(YYYY-MM) 또는 date(YYYY-MM-DD) 중 하나를 사용하고 생략하면 전체를 조회합니다. "

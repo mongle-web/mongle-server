@@ -3,6 +3,7 @@ package com.mongle.backend.domain.archive.controller;
 import com.mongle.backend.domain.archive.controller.api.ArchiveApi;
 import com.mongle.backend.domain.archive.dto.response.ArchiveDetail;
 import com.mongle.backend.domain.archive.dto.response.ArchivePage;
+import com.mongle.backend.domain.archive.dto.response.DreamCalendarResponse;
 import com.mongle.backend.domain.archive.service.ArchiveService;
 import com.mongle.backend.global.response.ApiResponse;
 import jakarta.validation.constraints.Positive;
@@ -19,6 +20,14 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/archives")
 public class ArchiveController implements ArchiveApi {
     private final ArchiveService archives;
+
+    @Override
+    @GetMapping("/calendar")
+    public ResponseEntity<ApiResponse<DreamCalendarResponse>> calendar(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) String month) {
+        // month 생략도 서비스의 월 검증으로 넘겨 형식 오류와 같은 Archive 오류 계약을 적용한다.
+        return ok(archives.calendar(Long.valueOf(jwt.getSubject()), month));
+    }
 
     @Override
     @GetMapping
