@@ -29,6 +29,7 @@ public class StoryTransactions {
     private final StoredAnalysisRepository analyses;
     private final AnalysisTransactions analysisTransactions;
     private final DreamStoryRepository stories;
+    private final StoryResultVersionRepository versions;
     private final StoryValidator validator;
     private final Clock authClock;
 
@@ -46,7 +47,11 @@ public class StoryTransactions {
     }
 
     private Reservation reserve(
-            Long userId, Long dreamId, StoryRequest request, Long expectedSource, boolean available) {
+            Long userId,
+            Long dreamId,
+            StoryRequest request,
+            Long expectedSource,
+            boolean available) {
         lock(userId);
 
         var dream =
@@ -138,7 +143,10 @@ public class StoryTransactions {
         } else if (!story.active(authClock.instant())) {
             story.fail("ATTEMPT_EXPIRED");
         } else {
-            story.finish(validator.encode(result));
+            var encoded = validator.encode(result);
+            // 성공 결과와 버전을 같은 트랜잭션에서 확정한다. 실패/늦은 응답은 버전을 만들지 않는다.
+            versions.saveAndFlush(StoryResultVersion.capture(story, encoded));
+            story.finish(encoded);
         }
 
         stories.flush();
@@ -179,6 +187,60 @@ public class StoryTransactions {
                         .orElseThrow(() -> new BusinessException(StoryErrorCode.NOT_FOUND));
 
         return response(story);
+    }
+
+    public StoryVersionPage versions(Long userId, Long storyId, Long before, int limit) {
+        var story = owned(userId, storyId);
+        if (limit < 1 || limit > 50 || (before != null && before <= 0)) {
+            throw new BusinessException(StoryErrorCode.INVALID_VERSION_PAGE);
+        }
+        var rows =
+                versions.findPage(
+                        storyId,
+                        before,
+                        org.springframework.data.domain.PageRequest.of(0, limit + 1));
+        boolean more = rows.size() > limit;
+        var items =
+                rows.stream()
+                        .limit(limit)
+                        .map(
+                                v ->
+                                        new StoryVersionPage.Item(
+                                                v.getId(),
+                                                v.getSourceRevision(),
+                                                v.getPromptVersion(),
+                                                v.getCreatedAt(),
+                                                changed(story, v.getSourceRevision()),
+                                                "legacy".equals(v.getGenerationKey())))
+                        .toList();
+        return new StoryVersionPage(items, more ? items.getLast().versionId() : null);
+    }
+
+    public StoryVersionResponse version(Long userId, Long storyId, Long versionId) {
+        var story = owned(userId, storyId);
+        var version =
+                versions.findByIdAndStoryId(versionId, storyId)
+                        .orElseThrow(() -> new BusinessException(StoryErrorCode.NOT_FOUND));
+        var analysis = story.getAnalysis();
+        var dream = analysis.getDream();
+        return new StoryVersionResponse(
+                version.getId(),
+                storyId,
+                analysis.getId(),
+                dream == null ? null : dream.getId(),
+                analysis.getDreamedAt(),
+                version.getSourceRevision(),
+                version.getPromptVersion(),
+                version.getCreatedAt(),
+                dream == null,
+                changed(story, version.getSourceRevision()),
+                "legacy".equals(version.getGenerationKey()),
+                validator.decode(version.getResultJson()).sections());
+    }
+
+    private boolean changed(DreamStory story, long sourceRevision) {
+        var dream = story.getAnalysis().getDream();
+        return dream != null && dream.getSourceRevision() != sourceRevision;
     }
 
     private DreamStory owned(Long userId, Long storyId) {
@@ -236,6 +298,12 @@ public class StoryTransactions {
                 story.getResultJson() != null && story.getStatus() != GenerationStatus.COMPLETED,
                 story.getResultRevision(),
                 story.getResultPromptVersion(),
-                sections);
+                sections,
+                versions
+                        .findLatestId(
+                                story.getId(), org.springframework.data.domain.PageRequest.of(0, 1))
+                        .stream()
+                        .findFirst()
+                        .orElse(null));
     }
 }

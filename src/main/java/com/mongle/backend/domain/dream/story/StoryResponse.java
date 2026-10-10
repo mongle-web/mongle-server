@@ -19,4 +19,5 @@ public record StoryResponse(
         boolean hasPreviousResult,
         Long resultRevision,
         String resultPromptVersion,
-        List<StoryResult.Section> sections) {}
+        List<StoryResult.Section> sections,
+        Long resultVersionId) {}
