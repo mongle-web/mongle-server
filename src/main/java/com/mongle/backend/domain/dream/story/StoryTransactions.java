@@ -32,6 +32,7 @@ public class StoryTransactions {
     private final StoryResultVersionRepository versions;
     private final StoryValidator validator;
     private final Clock authClock;
+    private final com.mongle.backend.domain.dream.analysis.AnalysisResultCodec analysisCodec;
 
     public record Reservation(StoryResponse response, StoryGenerator.Input input) {}
 
@@ -147,7 +148,8 @@ public class StoryTransactions {
         } else {
             var encoded = validator.encode(result);
             // 성공 결과와 버전을 같은 트랜잭션에서 확정한다. 실패/늦은 응답은 버전을 만들지 않는다.
-            versions.saveAndFlush(StoryResultVersion.capture(story, encoded));
+            versions.saveAndFlush(StoryResultVersion.capture(story, encoded, input,
+                    analysisCodec.encode(analysisTransactions.generationContext(story.getAnalysis()))));
             story.finish(encoded);
             analysisTransactions.publishPending(story.getAnalysis());
         }
@@ -238,7 +240,15 @@ public class StoryTransactions {
                 dream == null,
                 changed(story, version.getSourceRevision()),
                 "legacy".equals(version.getGenerationKey()),
-                validator.decode(version.getResultJson()).sections());
+                validator.decode(version.getResultJson()).sections(),
+                version.getSourceText(),
+                version.getSourceEmotions() == null ? List.of()
+                        : java.util.Arrays.stream(version.getSourceEmotions().split(","))
+                            .filter(s -> !s.isEmpty())
+                            .map(com.mongle.backend.domain.dream.entity.DreamEmotion::valueOf).toList(),
+                version.getAnalysisPromptVersion(),
+                version.getAnalysisJson() == null ? null : analysisCodec.decode(version.getAnalysisJson()),
+                version.getSourceText() != null);
     }
 
     private boolean changed(DreamStory story, long sourceRevision) {

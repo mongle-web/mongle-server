@@ -94,7 +94,9 @@ class DreamPolicyTest {
                         mock(DreamAnalysisRepository.class),
                         mock(DreamStoryRepository.class),
                         Clock.fixed(Instant.parse("2026-10-01T15:00:00Z"), ZoneOffset.UTC),
-                        mock(DreamGenerationJobRepository.class));
+                        mock(DreamGenerationJobRepository.class),
+                        mock(com.mongle.backend.domain.dream.generation.DreamGenerationGuard.class),
+                        mock(com.mongle.backend.domain.dream.generation.DreamGenerationTransactions.class));
         assertThat(
                         service.create(
                                         1L,
@@ -115,7 +117,9 @@ class DreamPolicyTest {
                         mock(DreamAnalysisRepository.class),
                         mock(DreamStoryRepository.class),
                         Clock.fixed(Instant.parse("2026-10-01T14:59:59Z"), ZoneOffset.UTC),
-                        mock(DreamGenerationJobRepository.class));
+                        mock(DreamGenerationJobRepository.class),
+                        mock(com.mongle.backend.domain.dream.generation.DreamGenerationGuard.class),
+                        mock(com.mongle.backend.domain.dream.generation.DreamGenerationTransactions.class));
         assertThatThrownBy(
                         () ->
                                 service.create(

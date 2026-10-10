@@ -16,8 +16,14 @@ public record StoryVersionResponse(
         boolean sourceDeleted,
         boolean sourceChanged,
         boolean imported,
-        List<StoryResult.Section> sections) {
+        List<StoryResult.Section> sections,
+        String originalText,
+        List<com.mongle.backend.domain.dream.entity.DreamEmotion> emotions,
+        String analysisPromptVersion,
+        com.mongle.backend.domain.dream.analysis.StructureResult analysis,
+        boolean sourceSnapshotAvailable) {
     public StoryVersionResponse {
         sections = List.copyOf(sections);
+        emotions = List.copyOf(emotions);
     }
 }

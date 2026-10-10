@@ -25,6 +25,13 @@ import java.util.Optional;
 public class ArchiveQueryRepository {
     private final EntityManager em;
 
+    public List<com.mongle.backend.domain.dream.generation.DreamGenerationJob> findGenerationJobs(
+            Long userId, List<Long> dreamIds) {
+        return em.createQuery("select j from DreamGenerationJob j where j.userId=:user and j.dreamId in :ids",
+                com.mongle.backend.domain.dream.generation.DreamGenerationJob.class)
+                .setParameter("user", userId).setParameter("ids", dreamIds).getResultList();
+    }
+
     /**
      * 캘린더는 날짜만 필요하므로 Dream 엔티티와 연관 컬렉션을 로딩하지 않는다.
      * DISTINCT 날짜로 기록 일수를 계산하고, 분석·이미지 유무와 무관하게 내 완성 기록만 포함한다.

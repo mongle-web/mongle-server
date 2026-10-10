@@ -282,6 +282,7 @@ public class AnalysisTransactions {
                 a.getGeneratedTitle(),
                 a.getDisplayKeywords(),
                 scenes,
-                elements);
+                elements,
+                a.getResultRevision());
     }
 }

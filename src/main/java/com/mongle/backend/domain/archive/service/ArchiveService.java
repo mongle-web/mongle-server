@@ -70,6 +70,9 @@ public class ArchiveService {
 
     private List<ArchiveItem> items(Long userId, List<Dream> dreams) {
         if (dreams.isEmpty()) return List.of();
+        var jobs = queries.findGenerationJobs(userId, dreams.stream().map(Dream::getId).toList()).stream()
+                .collect(Collectors.toMap(com.mongle.backend.domain.dream.generation.DreamGenerationJob::getDreamId,
+                        Function.identity()));
         var analyses = queries.findAnalyses(userId, dreams.stream().map(Dream::getId).toList());
         var byDream = analyses.stream().collect(Collectors.toMap(DreamAnalysis::getSourceDreamId, Function.identity()));
         var ids = analyses.stream().map(DreamAnalysis::getId).toList();
@@ -82,6 +85,7 @@ public class ArchiveService {
             var analysis = byDream.get(dream.getId());
             var story = analysis == null ? null : stories.get(analysis.getId());
             var image = analysis == null ? null : images.get(analysis.getId());
+            var job = jobs.get(dream.getId());
             var keywords = analysis != null && (analysis.hasResult() || analysis.getStatus() == GenerationStatus.COMPLETED)
                     ? analysis.getDisplayKeywords() : List.<String>of();
             return new ArchiveItem(dream.getId(), dream.getDreamedAt(), dream.getTitle(), keywords,
@@ -89,7 +93,11 @@ public class ArchiveService {
                     analysis == null ? null : new ArchiveItem.Analysis(analysis.getId(), analysis.getStatus(),
                             analysis.getFailureCode(), analysis.visibleRevision() != dream.getSourceRevision(),
                             analysis.getResultRevision()),
-                    story(story, dream), image(image, story, dream));
+                    story(story, dream), image(image, story, dream),
+                    job == null ? null : new com.mongle.backend.domain.dream.generation.DreamGenerationResponse(
+                            dream.getId(), job.getSourceRevision(), job.getSourceRevision() != dream.getSourceRevision(),
+                            job.getStage(), job.getStatus(), job.getFailureCode(),
+                            analysis == null ? null : analysis.getId(), story == null ? null : story.getId(), job.getVersion()));
         }).toList();
     }
 

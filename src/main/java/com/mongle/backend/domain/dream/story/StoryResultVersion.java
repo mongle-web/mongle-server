@@ -53,7 +53,8 @@ public class StoryResultVersion extends BaseCreatedEntity {
     @Column(name = "analysis_prompt_version", updatable = false, length = 50)
     private String analysisPromptVersion;
 
-    public static StoryResultVersion capture(DreamStory story, String encoded) {
+    public static StoryResultVersion capture(DreamStory story, String encoded,
+                                            StoryGenerator.Input input, String analysisJson) {
         var result = new StoryResultVersion();
         result.story = story;
         result.generationKey = story.getAttemptId();
@@ -61,9 +62,10 @@ public class StoryResultVersion extends BaseCreatedEntity {
         result.promptVersion = story.getPromptVersion();
         result.resultJson = encoded;
         var analysis = story.getAnalysis();
-        result.sourceText = analysis.getSourceText();
-        result.sourceEmotions = analysis.getSourceEmotions();
-        result.analysisJson = analysis.getPendingResultJson();
+        result.sourceText = input.originalText();
+        result.sourceEmotions = input.emotions().stream().sorted().map(Enum::name)
+                .collect(java.util.stream.Collectors.joining(","));
+        result.analysisJson = analysisJson;
         result.analysisPromptVersion = analysis.getPromptVersion();
         return result;
     }

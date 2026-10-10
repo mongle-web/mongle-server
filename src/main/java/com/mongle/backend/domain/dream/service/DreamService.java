@@ -37,6 +37,7 @@ public class DreamService {
     private final Clock authClock;
     private final DreamGenerationJobRepository generationJobs;
     private final com.mongle.backend.domain.dream.generation.DreamGenerationGuard generationGuard;
+    private final com.mongle.backend.domain.dream.generation.DreamGenerationTransactions generationTransactions;
 
     @Transactional
     public DreamResponse create(Long userId, DreamCreateRequest request) {
@@ -153,7 +154,8 @@ public class DreamService {
             return DreamResponse.from(dream);
         }
 
-        return analyses.findDisplayMetadata(dream.getId(), dream.getUser().getId())
+        var analysis = analyses.findDisplayMetadata(dream.getId(), dream.getUser().getId());
+        var result = analysis
                 .filter(a -> a.hasResult() || a.getStatus() == GenerationStatus.COMPLETED)
                 .map(
                         a ->
@@ -162,6 +164,9 @@ public class DreamService {
                                         a.getDisplayKeywords(),
                                         dream.getSourceRevision() != a.visibleRevision()))
                 .orElseGet(() -> DreamResponse.from(dream));
+        var job = generationJobs.findByDreamIdAndUserId(dream.getId(), dream.getUser().getId());
+        return result.withGeneration(analysis.map(a -> a.getResultRevision()).orElse(null),
+                job.isEmpty() ? null : generationTransactions.get(dream.getUser().getId(), dream.getId()));
     }
 
     private Dream owned(Long userId, Long id) {

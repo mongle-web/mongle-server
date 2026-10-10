@@ -15,7 +15,8 @@ public record ArchiveItem(
         long sourceRevision,
         @Schema(description = "아직 분석을 요청하지 않았으면 null") @Nullable Analysis analysis,
         @Schema(description = "아직 이야기 생성을 요청하지 않았으면 null") @Nullable Story story,
-        @Schema(description = "아직 이미지 생성을 요청하지 않았으면 null") @Nullable Image image) {
+        @Schema(description = "아직 이미지 생성을 요청하지 않았으면 null") @Nullable Image image,
+        @Nullable com.mongle.backend.domain.dream.generation.DreamGenerationResponse generation) {
 
     public ArchiveItem {
         displayKeywords = List.copyOf(displayKeywords);
