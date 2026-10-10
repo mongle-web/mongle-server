@@ -347,14 +347,15 @@ class DreamStoryIntegrationTest {
     }
 
     @Test
-    void deletionDuringGenerationFailsAttemptAndPreservesCompletedStory() {
+    void regenerationBlocksDeletionAndFailurePreservesCompletedStory() {
         var dream = completed(true);
         var first = await(service.generate(userId, dream.dreamId(), request(dream)));
         generator.action =
                 input -> {
-                    dreams.delete(userId, dream.dreamId(), dream.revision());
-
-                    return StoryValidatorTest.VALID;
+                    assertError(
+                            () -> dreams.delete(userId, dream.dreamId(), dream.revision()),
+                            DreamErrorCode.GENERATION_IN_PROGRESS);
+                    throw new IllegalStateException("AI 호출 실패");
                 };
 
         var failed =
@@ -365,14 +366,21 @@ class DreamStoryIntegrationTest {
                                 new StoryRequest(dream.revision(), true, first.storyVersion())));
 
         assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
-        assertThat(failed.failureCode()).isEqualTo("SOURCE_DELETED");
-        assertThat(failed.sourceDeleted()).isTrue();
-        assertThat(failed.dreamId()).isNull();
+        assertThat(failed.failureCode()).isEqualTo("CALL_FAILED");
+        assertThat(failed.sourceDeleted()).isFalse();
+        assertThat(failed.dreamId()).isEqualTo(dream.dreamId());
         assertThat(failed.hasPreviousResult()).isTrue();
         assertThat(failed.sections()).isEqualTo(first.sections());
         assertThat(transactions.get(userId, failed.storyId()).sections())
                 .isEqualTo(first.sections());
+        dreams.delete(userId, dream.dreamId(), dreams.get(userId, dream.dreamId()).revision());
         assertError(() -> transactions.latest(userId, dream.dreamId()), DreamErrorCode.NOT_FOUND);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT COUNT(*) FROM dream_story_versions WHERE story_id = ?",
+                                Long.class,
+                                first.storyId()))
+                .isZero();
 
         var replacement = completed(true);
         generator.action = input -> StoryValidatorTest.VALID;
