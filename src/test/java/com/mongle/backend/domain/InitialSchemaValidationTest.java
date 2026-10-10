@@ -21,6 +21,7 @@ class InitialSchemaValidationTest {
 
     @Test
     void createsStoryVersionTableFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_bridge_results");
         jdbcTemplate.execute("drop table dream_story_versions");
         jdbcTemplate.execute(
                 (org.springframework.jdbc.core.ConnectionCallback<Void>)
@@ -49,6 +50,51 @@ class InitialSchemaValidationTest {
                         "prompt_version",
                         "result_json",
                         "created_at");
+        runBridgeMigration();
+    }
+
+    @Test
+    void createsBridgeTableFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_bridge_results");
+        runBridgeMigration();
+        runBridgeMigration();
+        assertThat(
+                        jdbcTemplate.queryForList(
+                                """
+                                select column_name from information_schema.columns
+                                where table_schema = 'public' and table_name = 'world_bridge_results'
+                                """,
+                                String.class))
+                .containsExactlyInAnyOrder(
+                        "id",
+                        "user_id",
+                        "before_dream_id",
+                        "after_dream_id",
+                        "before_version_id",
+                        "after_version_id",
+                        "prompt_version",
+                        "settings_json",
+                        "settings_hash",
+                        "status",
+                        "attempt_id",
+                        "lease_until",
+                        "failure_code",
+                        "content",
+                        "version",
+                        "created_at",
+                        "updated_at");
+    }
+
+    private void runBridgeMigration() {
+        jdbcTemplate.execute(
+                (org.springframework.jdbc.core.ConnectionCallback<Void>)
+                        connection -> {
+                            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(
+                                    connection,
+                                    new org.springframework.core.io.ClassPathResource(
+                                            "db/migrations/20261011-world-bridge-results.sql"));
+                            return null;
+                        });
     }
 
     @Test
