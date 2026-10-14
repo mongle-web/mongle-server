@@ -83,6 +83,13 @@ public interface DreamApi {
     ResponseEntity<ApiResponse<DreamResponse>> get(
             @Parameter(hidden = true) Jwt jwt, @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId);
 
+    @Operation(summary = "꿈 수정·삭제 허용 상태 조회",
+            description = "mutable과 blockingTasks(ANALYSIS_STORY/IMAGE/WORLD_BRIDGE)를 반환합니다. "
+                    + "이미지·브리지는 유효한 lease의 진행 작업만 차단합니다. 조회는 잠금이 아니며 "
+                    + "실제 수정·삭제 시 서버가 재검사합니다. 차단 중에는 409 DREAM_409_4입니다.")
+    ResponseEntity<ApiResponse<DreamMutationStatus>> mutationStatus(
+            @Parameter(hidden = true) Jwt jwt, @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId);
+
     @Operation(
             summary = "완성한 꿈 수정",
             description =
@@ -90,7 +97,7 @@ public interface DreamApi {
                         + " 7종 중 중복 없이 1~3개로 수정할 수 있습니다. title:null 또는 빈 문자열·공백만 있는 값은 제목 제거입니다."
                         + " 제목은 최대 20자입니다. 날짜 및 사용자 ID는 변경할 수 없습니다. 제목 수정은 revision만 증가시키고 AI 입력 버전"
                         + " sourceRevision은 유지합니다. 원문·감정 변경은 두 버전을 증가시키며 이전 분석·이야기는 보존합니다. 실제 변경 시"
-                        + " edited=true이며 같은 값 재전달은 수정 표시·버전을 바꾸지 않습니다.")
+                        + " edited=true이며 같은 값 재전달은 수정 표시·버전을 바꾸지 않습니다. 이미지·브리지 생성 중에는 제목을 포함해 409로 차단합니다.")
     ResponseEntity<ApiResponse<DreamResponse>> update(
             @Parameter(hidden = true) Jwt jwt,
             @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId,
@@ -101,7 +108,7 @@ public interface DreamApi {
             description =
                     "최신 revision을 쿼리로 전달합니다. 원문과 선택 감정은 영구 삭제하며 복구할 수 없습니다. 기존 분석 장면·요소·연결과 완료 이야기는"
                         + " 보존하고 꿈 FK를 해제합니다. 보존된 분석 키워드는 통계에 포함되며 삭제된 선택 감정은 제외됩니다. 삭제 확인 화면에 분석"
-                        + " 결과 보존 안내를 표시해주세요. 이미지·세계관 모델 추가 시 별도 삭제 처리를 연결해야 합니다.")
+                        + " 결과 보존 안내를 표시해주세요. 이미지·브리지 활성 작업 중에는 409로 차단합니다. 전체 영구 삭제 정책은 별도 후속 작업입니다.")
     ResponseEntity<ApiResponse<Void>> delete(
             @Parameter(hidden = true) Jwt jwt,
             @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId,

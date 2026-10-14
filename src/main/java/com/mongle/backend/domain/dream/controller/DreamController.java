@@ -80,6 +80,14 @@ public class DreamController implements DreamApi {
     }
 
     @Override
+    @GetMapping("/{dreamId}/mutation-status")
+    public ResponseEntity<ApiResponse<DreamMutationStatus>> mutationStatus(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive(message = "꿈 ID는 양수여야 합니다.") Long dreamId) {
+        return ok(dreams.mutationStatus(userId(jwt), dreamId));
+    }
+
+    @Override
     @PatchMapping("/{dreamId}")
     public ResponseEntity<ApiResponse<DreamResponse>> update(
             @AuthenticationPrincipal Jwt jwt,

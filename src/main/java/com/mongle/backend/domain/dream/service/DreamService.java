@@ -95,6 +95,11 @@ public class DreamService {
         return response(dream);
     }
 
+    public DreamMutationStatus mutationStatus(Long userId, Long id) {
+        owned(userId, id);
+        return generationGuard.status(userId, id);
+    }
+
     public DreamResponse get(Long userId, Long id) {
         return readResponse(owned(userId, id));
     }
