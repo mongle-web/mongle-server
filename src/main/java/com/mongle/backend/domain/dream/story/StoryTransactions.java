@@ -6,6 +6,7 @@ import com.mongle.backend.domain.dream.analysis.StoredAnalysisRepository;
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.domain.dream.gateway.DreamGenerationSettings;
+import com.mongle.backend.domain.dream.generation.DreamGenerationGuard;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
@@ -34,6 +35,7 @@ public class StoryTransactions {
     private final StoryResultVersionRepository versions;
     private final StoryValidator validator;
     private final Clock authClock;
+    private final DreamGenerationGuard generationGuard;
     private final AnalysisResultCodec analysisCodec;
     private final DreamGenerationSettings settings;
 
@@ -112,6 +114,7 @@ public class StoryTransactions {
             throw new BusinessException(StoryErrorCode.VERSION_CONFLICT);
         }
 
+        generationGuard.requireNoDerivedWork(userId, dreamId);
         if (!available) {
             throw new BusinessException(StoryErrorCode.UNAVAILABLE);
         }

@@ -3,6 +3,7 @@ package com.mongle.backend.domain.dream.analysis;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.domain.dream.gateway.DreamGenerationSettings;
+import com.mongle.backend.domain.dream.generation.DreamGenerationGuard;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
@@ -27,6 +28,7 @@ public class AnalysisTransactions {
     private final StoredAnalysisRepository analyses;
     private final EntityManager em;
     private final Clock authClock;
+    private final DreamGenerationGuard generationGuard;
     private final AnalysisResultCodec codec;
     private final DreamGenerationSettings settings;
 
@@ -75,6 +77,7 @@ public class AnalysisTransactions {
             dream.checkRevision(revision);
         }
 
+        generationGuard.requireNoDerivedWork(userId, dreamId);
         if (!available) {
             throw new BusinessException(AnalysisErrorCode.UNAVAILABLE);
         }
