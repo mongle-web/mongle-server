@@ -15,7 +15,7 @@ public interface StoredAnalysisRepository extends JpaRepository<DreamAnalysis, L
     Optional<DreamAnalysis> findByIdAndUserId(Long id, Long userId);
 
     @Query(
-            "select a from DreamAnalysis a where a.user.id=:user and (a.resultRevision is not null"
+            "select a from DreamAnalysis a where a.user.id=:user and a.dream is not null and (a.resultRevision is not null"
                 + " or (a.status=:status and a.regenerating=false)) and a.dreamedAt between :from"
                 + " and :to order by a.dreamedAt desc,a.id desc")
     List<DreamAnalysis> recent(

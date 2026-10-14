@@ -64,7 +64,7 @@ public class AnalysisRecordService {
         var to = month.atEndOfMonth();
         long count =
                 em.createQuery(
-                                "select count(a) from DreamAnalysis a where a.user.id=:user and"
+                                "select count(a) from DreamAnalysis a where a.user.id=:user and a.dream is not null and"
                                     + " (a.resultRevision is not null or (a.status=:status and"
                                     + " a.regenerating=false)) and a.dreamedAt between :from and"
                                     + " :to",
@@ -77,7 +77,7 @@ public class AnalysisRecordService {
         var rows =
                 em.createQuery(
                                 "select min(e.name),count(distinct a.id) from DreamEntity e join"
-                                    + " e.analysis a where a.user.id=:user and (a.resultRevision is"
+                                    + " e.analysis a where a.user.id=:user and a.dream is not null and (a.resultRevision is"
                                     + " not null or (a.status=:status and a.regenerating=false))"
                                     + " and a.dreamedAt between :from and :to and"
                                     + " e.entityType<>:emotion group by e.normalizedName order by"

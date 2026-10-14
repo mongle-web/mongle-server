@@ -18,6 +18,7 @@ public class DreamImageService {
     private final ImageTransactions transactions;
     private final ImageGenerator generator;
     private final ImageAssetStore storage;
+    private final ImageCleanupTransactions cleanupTransactions;
     private final Clock authClock;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -49,15 +50,17 @@ public class DreamImageService {
         try {
             storage.put(key, payload);
         } catch (RuntimeException ex) {
-            cleanup(key, ex);
+            cleanup(input, key, ex);
             return fail(input, "STORAGE_FAILED", ex);
         }
         try {
             var completion = transactions.finish(input, key, payload);
-            if (!completion.stored()) cleanup(key, null);
+            if (!completion.stored()) cleanup(input, key, null);
             return completion.response();
         } catch (RuntimeException ex) {
-            cleanup(key, ex);
+            cleanup(input, key, ex);
+            if (ex instanceof BusinessException b && b.getErrorCode() == ImageErrorCode.NOT_FOUND)
+                throw ex; // 삭제된 결과를 다시 만들거나 실패 상태로 복구하지 않는다.
             try {
                 transactions.fail(input, "PERSISTENCE_FAILED");
             } catch (RuntimeException recovery) {
@@ -93,16 +96,24 @@ public class DreamImageService {
         try {
             return transactions.fail(input, code);
         } catch (RuntimeException recovery) {
+            if (recovery instanceof BusinessException b && b.getErrorCode() == ImageErrorCode.NOT_FOUND)
+                throw recovery;
             ex.addSuppressed(recovery);
             throw new BusinessException(ImageErrorCode.CALL_FAILED, ex);
         }
     }
 
-    private void cleanup(String key, RuntimeException original) {
+    private void cleanup(ImageGenerator.Input input, String key, RuntimeException original) {
         try {
             storage.delete(key);
         } catch (RuntimeException cleanupFailure) {
             if (original != null) original.addSuppressed(cleanupFailure);
+            try {
+                cleanupTransactions.recordDiscardedUpload(input.userId(), input.imageId(), key);
+            } catch (RuntimeException recordFailure) {
+                if (original != null) original.addSuppressed(recordFailure);
+                log.warn("이미지 정리 요청 기록에 실패했습니다. 저장소 대조 회수가 필요합니다.");
+            }
             // 키·서명 URL·외부 예외 메시지를 로그에 노출하지 않는다.
             log.warn("이미지 시도 객체 정리에 실패했습니다. 미참조 객체 회수가 필요합니다.");
         }
