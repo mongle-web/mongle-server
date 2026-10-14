@@ -370,10 +370,12 @@ class ArchiveIntegrationTest {
         assertThat(edited.at("/dream/image/sourceChanged").asBoolean()).isTrue();
         assertThat(edited.at("/dream/displayKeywords/0").asString()).isEqualTo("계단");
         assertThat(data(get("/api/v1/archives?date=2026-09-16"), 200).at("/items/0/edited").asBoolean()).isTrue();
-        // 읽은 최신 revision으로 기존 삭제 API를 호출하면 Archive에서 사라지고 분석 결과는 보존된다.
+        // 읽은 최신 revision으로 삭제하면 Archive와 파생 결과 조회에서 모두 사라진다.
         assertThat(send("DELETE", "/api/v1/dreams/" + dream.dreamId() + "?revision=" + edited.at("/dream/revision").asLong(), null).statusCode()).isEqualTo(200);
         assertThat(data(get("/api/v1/archives"), 200).get("items").isEmpty()).isTrue();
-        assertThat(data(get("/api/v1/analyses/" + ids[0]), 200).get("sourceDeleted").asBoolean()).isTrue();
+        for (var path : List.of("/api/v1/analyses/" + ids[0], "/api/v1/stories/" + ids[1],
+                "/api/v1/images/" + ids[2], "/api/v1/images/" + ids[2] + "/download-url"))
+            assertThat(get(path).statusCode()).isEqualTo(404);
     }
 
     @Test

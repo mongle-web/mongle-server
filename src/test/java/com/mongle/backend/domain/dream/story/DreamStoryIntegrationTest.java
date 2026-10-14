@@ -399,10 +399,12 @@ class DreamStoryIntegrationTest {
                     return StoryValidatorTest.VALID;
                 };
 
-        var failed = await(service.generate(userId, dream.dreamId(), request(dream)));
-
-        assertThat(failed.failureCode()).isEqualTo("SOURCE_DELETED");
-        assertThat(failed.sections()).isEmpty();
+        assertThatThrownBy(() -> await(service.generate(userId, dream.dreamId(), request(dream))))
+                .isInstanceOf(BusinessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from dream_stories where user_id=?",
+                Long.class, userId)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from dream_analyses where source_dream_id=?",
+                Long.class, dream.dreamId())).isZero();
     }
 
     @Test
