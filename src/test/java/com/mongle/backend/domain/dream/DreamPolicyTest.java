@@ -9,7 +9,7 @@ import com.mongle.backend.domain.dream.exception.DreamErrorCode;
 import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
 import com.mongle.backend.domain.dream.repository.*;
 import com.mongle.backend.domain.dream.service.DreamService;
-import com.mongle.backend.domain.dream.story.DreamStoryRepository;
+import com.mongle.backend.domain.dream.repository.DreamDerivedDataDeletion;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.error.BusinessException;
@@ -92,7 +92,7 @@ class DreamPolicyTest {
                         dreams,
                         users,
                         mock(DreamAnalysisRepository.class),
-                        mock(DreamStoryRepository.class),
+                        mock(DreamDerivedDataDeletion.class),
                         Clock.fixed(Instant.parse("2026-10-01T15:00:00Z"), ZoneOffset.UTC),
                         mock(DreamGenerationJobRepository.class),
                         mock(com.mongle.backend.domain.dream.generation.DreamGenerationGuard.class),
@@ -118,7 +118,7 @@ class DreamPolicyTest {
                         mock(DreamRepository.class),
                         users,
                         mock(DreamAnalysisRepository.class),
-                        mock(DreamStoryRepository.class),
+                        mock(DreamDerivedDataDeletion.class),
                         Clock.fixed(Instant.parse("2026-10-01T14:59:59Z"), ZoneOffset.UTC),
                         mock(DreamGenerationJobRepository.class),
                         mock(com.mongle.backend.domain.dream.generation.DreamGenerationGuard.class),

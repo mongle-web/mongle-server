@@ -10,12 +10,11 @@ import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
 import com.mongle.backend.domain.dream.generation.DreamGenerationTransactions;
 import com.mongle.backend.domain.dream.repository.DreamAnalysisRepository;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
-import com.mongle.backend.domain.dream.story.DreamStoryRepository;
+import com.mongle.backend.domain.dream.repository.DreamDerivedDataDeletion;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.domain.world.bridge.BridgeResultRepository;
-import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.error.BusinessException;
 
 import lombok.RequiredArgsConstructor;
@@ -37,7 +36,7 @@ public class DreamService {
     private final DreamRepository dreams;
     private final UserRepository users;
     private final DreamAnalysisRepository analyses;
-    private final DreamStoryRepository stories;
+    private final DreamDerivedDataDeletion derivedDataDeletion;
     private final Clock authClock;
     private final DreamGenerationJobRepository generationJobs;
     private final DreamGenerationGuard generationGuard;
@@ -146,15 +145,12 @@ public class DreamService {
         // 새로 인접한 꿈 사이의 연결 문장은 생성하지 않는다.
         bridges.deleteForDream(userId, id);
 
-        // 분석 FK를 해제하기 전에 생성 중 이야기를 실패 처리한다. 완료 결과는 보존한다.
-        stories.failProcessingForDeletedDream(
-                id, GenerationStatus.PROCESSING, GenerationStatus.FAILED);
-        analyses.detachFromDream(id);
+        derivedDataDeletion.delete(userId, id);
 
         generationJobs.deleteByDreamIdAndUserId(id, userId);
 
         // 소프트 삭제나 원문 스냅샷을 남기지 않는다. 감정 컬렉션도 함께 삭제된다.
-        dreams.delete(dream);
+        dreams.deleteById(id);
         dreams.flush();
     }
 
