@@ -51,7 +51,7 @@ API 키 미설정 시 신규 생성은 unavailable(503)이며 가짜 생성기�
 사용자가 제목을 비우면 화면은 DreamResponse.title=null을 그대로 사용한다.
 AnalysisResponse.generatedTitle을 비운 제목의 대체 제목으로 쓰면 안 된다.
 원문을 바꾼 뒤에도 이전 키워드는 유지하며 analysisSourceChanged=true로 수정 전 결과임을 표시한다.
-원문 삭제 후 분석 generatedTitle·displayKeywords는 보존된다. 삭제된 원문의 dreamRevision은 null이다.
+꿈 삭제 후 분석 generatedTitle·displayKeywords도 제거하며 분석 조회는 404다. 과거 FK 분리 분석의 통계 제외와 운영 정리는 [영구 삭제 계약](dream-deletion.md)을 따른다.
 타인/없는 꿈·분석은 기존 404 정책을 유지한다.
 캘린더·보관함 목록 API는 후속 작업이며 이 계약을 재사용한다.
 

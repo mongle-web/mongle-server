@@ -40,11 +40,11 @@ public class DreamScene extends BaseEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    // 원문 삭제 후에도 분석 결과는 남기므로 꿈 연결은 해제할 수 있다.
+    // 과거 FK 분리 데이터와 호환하기 위해 nullable을 유지한다. 새 삭제는 행을 제거한다.
     @JoinColumn(name = "dream_id")
     private Dream dream;
 
-    // 꿈이 삭제된 뒤에도 분석 결과의 소유자를 확인할 수 있어야 한다.
+    // 결과 소유권을 명시한다. 원본 삭제 시 함께 제거한다.
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
