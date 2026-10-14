@@ -28,7 +28,11 @@ public class BridgeValidator {
             String text = root.get("content").asString().strip();
             if (text.codePointCount(0, text.length()) > 500
                     || text.codePoints()
-                            .noneMatch(c -> !Character.isWhitespace(c) && !Character.isSpaceChar(c))
+                            .noneMatch(
+                                    c ->
+                                            !Character.isWhitespace(c)
+                                                    && !Character.isSpaceChar(c)
+                                                    && Character.getType(c) != Character.FORMAT)
                     || text.codePoints()
                             .anyMatch(
                                     c ->

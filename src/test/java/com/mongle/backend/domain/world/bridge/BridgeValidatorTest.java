@@ -20,6 +20,31 @@ class BridgeValidatorTest {
     }
 
     @Test
+    void rejectsOutputsContainingOnlyInvisibleFormatCharacters() {
+        for (String raw :
+                List.of(
+                        "{\"content\":\"\\u200b\"}",
+                        "{\"content\":\"\\ufeff\"}",
+                        "{\"content\":\"\\u200e\"}",
+                        "{\"content\":\" \\u00a0\\u200b\\ufeff\\u200e \"}")) {
+            assertThatThrownBy(() -> validator.parse(raw))
+                    .isInstanceOfSatisfying(
+                            BusinessException.class,
+                            error -> {
+                                assertThat(error.getErrorCode())
+                                        .isEqualTo(BridgeErrorCode.INVALID_OUTPUT);
+                                assertThat(error.getCause()).isNull();
+                            });
+        }
+    }
+
+    @Test
+    void preservesVisibleTextAndJoinedEmoji() {
+        assertThat(validator.parse("{\"content\":\"숲에서 👩\\u200d🚀를 만났다.\"}"))
+                .isEqualTo("숲에서 👩\u200d🚀를 만났다.");
+    }
+
+    @Test
     void rejectsMalformedExtraDuplicateEmptyAndOversizedOutputsWithoutExposingText() {
         for (String raw :
                 List.of(
