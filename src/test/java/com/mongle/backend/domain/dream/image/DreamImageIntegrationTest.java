@@ -483,14 +483,16 @@ class DreamImageIntegrationTest {
     }
 
     @Test
-    void discardsSourceEditsAndKeepsTitleOnlyEdits() {
+    void blocksTitleEditsAndDiscardsSourceEditsAfterExpiry() {
         var dream = ready();
         generator.action =
                 input -> {
                     var edit = new DreamUpdateRequest();
                     edit.setRevision(dream.revision());
                     edit.setTitle("새 제목");
-                    dreams.update(userId, dream.dreamId(), edit);
+                    assertThatThrownBy(() -> dreams.update(userId, dream.dreamId(), edit))
+                            .isInstanceOf(BusinessException.class).extracting("errorCode")
+                            .isEqualTo(com.mongle.backend.domain.dream.exception.DreamErrorCode.GENERATION_IN_PROGRESS);
                     return ImagePayloadTest.png();
                 };
         var first = generate(dream);
@@ -501,6 +503,8 @@ class DreamImageIntegrationTest {
                     var edit = new DreamUpdateRequest();
                     edit.setRevision(current.revision());
                     edit.setOriginalText("다른 원문");
+                    jdbc.update("update dream_images set lease_until=? where id=?",
+                            java.sql.Timestamp.from(Instant.EPOCH), input.imageId());
                     dreams.update(userId, current.dreamId(), edit);
                     return ImagePayloadTest.png();
                 };
@@ -525,6 +529,11 @@ class DreamImageIntegrationTest {
         var dream = ready();
         generator.action =
                 input -> {
+                    assertThatThrownBy(() -> dreams.delete(userId, dream.dreamId(), dream.revision()))
+                            .isInstanceOf(BusinessException.class).extracting("errorCode")
+                            .isEqualTo(com.mongle.backend.domain.dream.exception.DreamErrorCode.GENERATION_IN_PROGRESS);
+                    jdbc.update("update dream_images set lease_until=? where id=?",
+                            java.sql.Timestamp.from(Instant.EPOCH), input.imageId());
                     dreams.delete(userId, dream.dreamId(), dream.revision());
                     return ImagePayloadTest.png();
                 };
@@ -555,6 +564,8 @@ class DreamImageIntegrationTest {
                 input -> {
                     var latest = storyTransactions.latest(userId, dream.dreamId());
                     storyteller.output = STORY;
+                    jdbc.update("update dream_images set lease_until=? where id=?",
+                            java.sql.Timestamp.from(Instant.EPOCH), input.imageId());
                     await(
                             stories.generate(
                                     userId,
