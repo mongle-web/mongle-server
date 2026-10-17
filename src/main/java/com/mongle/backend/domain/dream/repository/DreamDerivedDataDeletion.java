@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.*;
 @RequiredArgsConstructor
 public class DreamDerivedDataDeletion {
     private final EntityManager em;
-    private final ImageCleanupRequestRepository cleanupRequests;
+    private final ImageCleanupRegistration cleanupRegistration;
     private static final String ANALYSES =
             "select id from dream_analyses where source_dream_id=:dream and user_id=:user";
     private static final String SCENES = "select id from dream_scenes where user_id=:user and"
@@ -28,11 +28,11 @@ public class DreamDerivedDataDeletion {
                 .setParameter("user", userId).setParameter("dream", dreamId).getResultList();
         for (var image : images) {
             if (image.getStorageKey() != null)
-                cleanupRequests.save(ImageCleanupRequest.create(userId, dreamId, image.getId(),
-                        image.getStorageKey(), ImageCleanupRequest.Reason.DREAM_DELETED));
+                cleanupRegistration.register(userId, dreamId, image.getId(),
+                        image.getStorageKey(), ImageCleanupRequest.Reason.DREAM_DELETED);
         }
         // 기록 실패 시 브리지 제거를 포함한 호출자 트랜잭션 전체가 롤백되어야 한다.
-        cleanupRequests.flush();
+        em.flush();
         execute("delete from dream_story_versions where story_id in (select id from dream_stories"
                 + " where analysis_id in (" + ANALYSES + "))", userId, dreamId);
         execute("delete from dream_stories where analysis_id in (" + ANALYSES + ")", userId, dreamId);

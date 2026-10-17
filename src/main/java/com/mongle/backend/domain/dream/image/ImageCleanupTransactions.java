@@ -9,15 +9,13 @@ import org.springframework.transaction.annotation.*;
 @Service
 @RequiredArgsConstructor
 public class ImageCleanupTransactions {
-    private final ImageCleanupRequestRepository requests;
+    private final ImageCleanupRegistration registration;
     private final UserRepository users;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordDiscardedUpload(Long userId, Long imageId, String key) {
         // 동일 키 재전송과 꿈 삭제의 정리 요청 기록을 직렬화한다.
         users.findByIdForUpdate(userId).orElseThrow();
-        if (!requests.existsByStorageKey(key))
-            requests.saveAndFlush(ImageCleanupRequest.create(userId, null, imageId, key,
-                    ImageCleanupRequest.Reason.DISCARDED_UPLOAD));
+        registration.register(userId, null, imageId, key, ImageCleanupRequest.Reason.DISCARDED_UPLOAD);
     }
 }
