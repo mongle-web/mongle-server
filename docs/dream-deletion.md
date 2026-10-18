@@ -63,7 +63,7 @@ FK 삭제 순서를 지키고 벌크 제거 뒤 영속성 컨텍스트를 비운
 운영 DB는 실행하지 않았다. H2 MySQL 모드 초기 SQL/JPA validate 및 마이그레이션 재실행 검증과 실제 MySQL 검증을 구분한다.
 
 브랜치와 PR base는 `feat/46-dream-generation-guards`(#47)다. develop에 선행 PR이 합쳐졌다고 가정하지 않는다.
-#39 비동기 이미지 PR과 통합할 때 cleanup(input, key, failure)의 영속 정리 전달·NOT_FOUND 전파·생성 보호를 유지해야 한다.
+#52에서 #39 비동기 이미지와 통합했다. cleanup(input, key, failure)의 영속 정리 전달·NOT_FOUND 전파·생성 보호는 [통합 계약](image-async-integration.md)을 따른다.
 
 ## 세계관 후속 계약
 
