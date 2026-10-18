@@ -46,6 +46,10 @@ mongle:
       retry-base-delay: ${MONGLE_IMAGE_CLEANUP_RETRY_BASE_DELAY:30s}
       retry-max-delay: ${MONGLE_IMAGE_CLEANUP_RETRY_MAX_DELAY:1h}
       max-attempts: ${MONGLE_IMAGE_CLEANUP_MAX_ATTEMPTS:5}
+    execution:
+      # 외부 응답 대기를 포함한 작업 수이며, 결과 처리 스레드 수와 별개다.
+      max-concurrent-calls: ${MONGLE_IMAGE_MAX_CONCURRENT_CALLS:16}
+      result-threads: ${MONGLE_IMAGE_RESULT_THREADS:2}
   dream:
     generation:
       enabled: ${MONGLE_DREAM_GENERATION_ENABLED:true}

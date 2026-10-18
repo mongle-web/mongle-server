@@ -61,7 +61,7 @@ class ImageCleanupWorkerIntegrationTest {
             var clock = new MutableClock(); clock.now.set(Instant.parse("2026-10-18T03:00:00Z")); return clock;
         }
         @Bean @Primary Store cleanupStore() { return new Store(); }
-        @Bean @Primary ImageGenerator cleanupGenerator() { return input -> ImagePayloadTest.png(); }
+        @Bean @Primary ImageGenerator cleanupGenerator() { return input -> CompletableFuture.completedFuture(ImagePayloadTest.png()); }
         @Bean @Primary StructureGenerator cleanupStructure() {
             return input -> CompletableFuture.completedFuture(DreamImageIntegrationTest.STRUCTURE);
         }
@@ -127,7 +127,7 @@ class ImageCleanupWorkerIntegrationTest {
     @Test
     void deletedDreamFileIsRemovedOnlyAfterCommitWithoutAffectingOtherObjects() throws Exception {
         var dream = ready();
-        var result = images.generate(user, dream.dreamId(), imageRequest(dream));
+        var result = await(images.generate(user, dream.dreamId(), imageRequest(dream)));
         String key = imageTransactions.assetKey(user, result.imageId());
         store.objects.add("unrelated-object");
         dreams.delete(user, dream.dreamId(), dream.revision());
@@ -228,7 +228,7 @@ class ImageCleanupWorkerIntegrationTest {
     @Test
     void currentAndPreviousSuccessfulFileReferencesAreProtectedThenDeletionReusesTheRequest() throws Exception {
         var dream = ready();
-        var image = images.generate(user, dream.dreamId(), imageRequest(dream));
+        var image = await(images.generate(user, dream.dreamId(), imageRequest(dream)));
         String key = imageTransactions.assetKey(user, image.imageId());
         var id = enqueue(image.imageId(), key); run();
         assertThat(request(id).getFailureCode()).isEqualTo("REFERENCED");

@@ -63,7 +63,7 @@ class DreamDeletionIntegrationTest {
         var analysis = await(analyses.analyze(owner, complete.dreamId(), complete.revision()));
         var dream = dreams.get(owner, complete.dreamId());
         var story = await(stories.generate(owner, dream.dreamId(), new StoryRequest(dream.revision(), false, null)));
-        var image = images.generate(owner, dream.dreamId(), new ImageRequest(dream.revision(), "test-style", null, false, null));
+        var image = await(images.generate(owner, dream.dreamId(), new ImageRequest(dream.revision(), "test-style", null, false, null)));
         return new Graph(dream, analysis, story, image);
     }
 
@@ -173,7 +173,7 @@ class DreamDeletionIntegrationTest {
         var graph = ready(user, today);
         String key = imageTransactions.assetKey(user, graph.image.imageId());
         generator.action = input -> { throw new IllegalStateException("test failure"); };
-        images.generate(user, graph.dream.dreamId(), new ImageRequest(graph.dream.revision(), "test-style", null, true, graph.image.imageVersion()));
+        await(images.generate(user, graph.dream.dreamId(), new ImageRequest(graph.dream.revision(), "test-style", null, true, graph.image.imageVersion())));
         dreams.delete(user, graph.dream.dreamId(), graph.dream.revision());
         assertThat(jdbc.queryForObject("select storage_key from image_cleanup_requests where dream_id=?", String.class, graph.dream.dreamId())).isEqualTo(key);
         var draft = dreams.saveDraft(user, today, new DreamDraftRequest("초안", null, null));
@@ -191,7 +191,7 @@ class DreamDeletionIntegrationTest {
             storage.failDelete = true;
             return ImagePayloadTest.png();
         };
-        missing(() -> images.generate(user, graph.dream.dreamId(), new ImageRequest(graph.dream.revision(), "test-style", null, true, graph.image.imageVersion())));
+        missing(() -> await(images.generate(user, graph.dream.dreamId(), new ImageRequest(graph.dream.revision(), "test-style", null, true, graph.image.imageVersion()))));
         assertThat(count("dream_images", "id", graph.image.imageId())).isZero();
         assertThat(jdbc.queryForList("select reason from image_cleanup_requests where image_id=?", String.class, graph.image.imageId()))
                 .containsExactlyInAnyOrder("DREAM_DELETED", "DISCARDED_UPLOAD");
