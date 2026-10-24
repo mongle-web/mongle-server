@@ -150,3 +150,5 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 - [이미지 파일 정리 워커와 실패 복구](docs/image-cleanup-worker.md)
 
 - [비동기 이미지·생성 보호·삭제·정리 통합](docs/image-async-integration.md)
+
+- [비공개 S3 이미지 저장소 설정과 연동](docs/image-s3.md)
