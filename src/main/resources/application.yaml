@@ -37,6 +37,16 @@ logging:
 
 mongle:
   image:
+    openai:
+      enabled: ${MONGLE_IMAGE_OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      model: ${MONGLE_IMAGE_OPENAI_MODEL:}
+      size: ${MONGLE_IMAGE_OPENAI_SIZE:}
+      quality: ${MONGLE_IMAGE_OPENAI_QUALITY:}
+      output-format: ${MONGLE_IMAGE_OPENAI_OUTPUT_FORMAT:png}
+      connect-timeout: ${MONGLE_IMAGE_OPENAI_CONNECT_TIMEOUT:3s}
+      total-timeout: ${MONGLE_IMAGE_OPENAI_TOTAL_TIMEOUT:60s}
+      response-threads: ${MONGLE_IMAGE_OPENAI_RESPONSE_THREADS:2}
     s3:
       enabled: ${MONGLE_IMAGE_S3_ENABLED:false}
       bucket: ${MONGLE_IMAGE_S3_BUCKET:}
