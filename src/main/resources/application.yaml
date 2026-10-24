@@ -37,6 +37,14 @@ logging:
 
 mongle:
   image:
+    s3:
+      enabled: ${MONGLE_IMAGE_S3_ENABLED:false}
+      bucket: ${MONGLE_IMAGE_S3_BUCKET:}
+      region: ${MONGLE_IMAGE_S3_REGION:}
+      connect-timeout: ${MONGLE_IMAGE_S3_CONNECT_TIMEOUT:2s}
+      attempt-timeout: ${MONGLE_IMAGE_S3_ATTEMPT_TIMEOUT:4s}
+      total-timeout: ${MONGLE_IMAGE_S3_TOTAL_TIMEOUT:10s}
+      max-attempts: ${MONGLE_IMAGE_S3_MAX_ATTEMPTS:2}
     cleanup:
       enabled: ${MONGLE_IMAGE_CLEANUP_ENABLED:false}
       poll-interval: ${MONGLE_IMAGE_CLEANUP_POLL_INTERVAL:2s}
