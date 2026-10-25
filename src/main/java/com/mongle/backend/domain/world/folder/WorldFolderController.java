@@ -52,6 +52,12 @@ public class WorldFolderController implements WorldFolderApi {
         return ok(folders.select(userId(jwt), worldId, dreamId, request.revision()));
     }
 
+    @Override @DeleteMapping("/{worldId}/dreams/{dreamId}")
+    public ResponseEntity<ApiResponse<WorldFolderResponse>> exclude(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive Long worldId, @PathVariable @Positive Long dreamId,
+            @RequestParam @PositiveOrZero Long revision) {
+        return ok(folders.exclude(userId(jwt), worldId, dreamId, revision));
+    }
 
     private Long userId(Jwt jwt) { return Long.valueOf(jwt.getSubject()); }
 

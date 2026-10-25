@@ -52,4 +52,7 @@ public interface WorldFolderApi {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "선택 성공", useReturnTypeSchema = true)
     ResponseEntity<ApiResponse<WorldFolderResponse>> select(@Parameter(hidden = true) Jwt jwt, @Positive Long worldId, @Positive Long dreamId, @Valid WorldRevisionRequest request);
 
+    @Operation(summary = "세계관에서 꿈 제외", description = "최신 폴더 revision을 쿼리로 전달합니다. 원본 꿈·개별 AI 결과를 삭제하지 않습니다. 선택되지 않은 내 완성 꿈이면 같은 revision을 유지합니다. 이전 revision은 409입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "제외 성공", useReturnTypeSchema = true)
+    ResponseEntity<ApiResponse<WorldFolderResponse>> exclude(@Parameter(hidden = true) Jwt jwt, @Positive Long worldId, @Positive Long dreamId, @PositiveOrZero Long revision);
 }

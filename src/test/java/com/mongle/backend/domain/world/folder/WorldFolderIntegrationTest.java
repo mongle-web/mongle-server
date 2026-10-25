@@ -73,6 +73,9 @@ class WorldFolderIntegrationTest {
         var dream = completed(user, 0);
         var selected = data(send(token, "PUT", path(id) + "/dreams/" + dream, Map.of("revision", 1)), 200);
         assertThat(selected.get("selectedDreamCount").asLong()).isEqualTo(1);
+        var excluded = data(send(token, "DELETE", path(id) + "/dreams/" + dream + "?revision=2", null), 200);
+        assertThat(excluded.get("selectedDreamCount").asLong()).isZero();
+        data(send(token, "GET", path(id), null), 200);
     }
 
     @ParameterizedTest @NullSource @ValueSource(strings = {"", " ", "\t\n", "\u00a0\u3000"})
@@ -97,7 +100,11 @@ class WorldFolderIntegrationTest {
         assertThat(folders.select(user, folder.worldId(), dream, selected.revision())).isEqualTo(before);
         assertThat(folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("꿈", selected.revision()))).isEqualTo(before);
         error(() -> folders.select(user, folder.worldId(), dream, 0L), WorldFolderErrorCode.VERSION_CONFLICT);
+        error(() -> folders.exclude(user, folder.worldId(), dream, 0L), WorldFolderErrorCode.VERSION_CONFLICT);
         error(() -> folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("꿈", 0L)), WorldFolderErrorCode.VERSION_CONFLICT);
+        var excluded = folders.exclude(user, folder.worldId(), dream, selected.revision());
+        assertThat(excluded.revision()).isEqualTo(2);
+        assertThat(folders.exclude(user, folder.worldId(), dream, excluded.revision()).revision()).isEqualTo(2);
     }
 
     @Test
@@ -108,10 +115,12 @@ class WorldFolderIntegrationTest {
             error(() -> folders.get(other, id), WorldFolderErrorCode.NOT_FOUND);
             error(() -> folders.rename(other, id, new WorldFolderUpdateRequest("변경", 0L)), WorldFolderErrorCode.NOT_FOUND);
             error(() -> folders.select(other, id, 1L, 0L), WorldFolderErrorCode.NOT_FOUND);
+            error(() -> folders.exclude(other, id, 1L, 0L), WorldFolderErrorCode.NOT_FOUND);
         }
         var foreign = completed(other, 0);
         for (long dream : List.of(foreign, Long.MAX_VALUE)) {
             error(() -> folders.select(user, folder.worldId(), dream, 0L), DreamErrorCode.NOT_FOUND);
+            error(() -> folders.exclude(user, folder.worldId(), dream, 0L), DreamErrorCode.NOT_FOUND);
         }
         for (boolean draft : List.of(true, false)) {
             var incomplete = transactions.execute(s -> dreams.saveAndFlush(draft

@@ -63,6 +63,15 @@ public class WorldFolderService {
         return response(folder);
     }
 
+    @Transactional
+    public WorldFolderResponse exclude(Long userId, Long worldId, Long dreamId, Long revision) {
+        lockUser(userId);
+        var folder = owned(userId, worldId);
+        folder.checkRevision(revision);
+        completedDream(userId, dreamId);
+        if (selections.exclude(worldId, dreamId) > 0) folder.excluded();
+        return response(folder);
+    }
 
 
     private WorldFolderResponse response(WorldFolder folder) {
