@@ -43,6 +43,12 @@ public class WorldFolderController implements WorldFolderApi {
         return ok(folders.rename(userId(jwt), worldId, request));
     }
 
+    @Override @DeleteMapping("/{worldId}")
+    public ResponseEntity<ApiResponse<Void>> delete(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive Long worldId, @RequestParam @PositiveOrZero Long revision) {
+        folders.delete(userId(jwt), worldId, revision);
+        return ok(null);
+    }
 
     @Override @GetMapping("/{worldId}/dreams")
     public ResponseEntity<ApiResponse<SelectedDreamPage>> selectedDreams(@AuthenticationPrincipal Jwt jwt,

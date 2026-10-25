@@ -85,6 +85,15 @@ public class WorldFolderService {
         return response(folder);
     }
 
+    @Transactional
+    public void delete(Long userId, Long worldId, Long revision) {
+        lockUser(userId);
+        var folder = owned(userId, worldId);
+        folder.checkRevision(revision);
+        selections.deleteForFolder(worldId);
+        folders.delete(folder);
+        folders.flush();
+    }
 
     private WorldFolderResponse response(WorldFolder folder) {
         folders.flush();

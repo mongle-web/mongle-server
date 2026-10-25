@@ -163,6 +163,25 @@ class DreamDeletionIntegrationTest {
         assertThat(folders.get(user, folder.worldId()).revision()).isEqualTo(before.revision() + 1);
     }
 
+    @Test
+    void deletingFolderPreservesSourceGraphAndSharedBridgeAndOtherFolder() {
+        var a = ready(user, today.minusDays(1));
+        var b = ready(user, today);
+        var edge = bridges.begin(user, new BridgeRequest(version(a), version(b)), true);
+        bridges.finish(edge.input(), "유지할 연결");
+        var first = folders.create(user, "삭제 폴더");
+        var second = folders.create(user, "남길 폴더");
+        folders.select(user, first.worldId(), a.dream.dreamId(), 0L);
+        folders.select(user, second.worldId(), a.dream.dreamId(), 0L);
+        folders.delete(user, first.worldId(), 1L);
+        assertThat(dreams.get(user, a.dream.dreamId()).dreamId()).isEqualTo(a.dream.dreamId());
+        assertThat(analysisTransactions.get(user, a.analysis.analysisId()).scenes()).isNotEmpty();
+        assertThat(storyTransactions.get(user, a.story.storyId())).isEqualTo(a.story);
+        assertThat(imageTransactions.get(user, a.image.imageId())).isEqualTo(a.image);
+        assertThat(count("world_bridge_results", "id", edge.response().bridgeId())).isEqualTo(1);
+        assertThat(folders.selectedDreams(user, second.worldId(), null, 20).items()).hasSize(1);
+        assertThat(count("image_cleanup_requests", "dream_id", a.dream.dreamId())).isZero();
+    }
 
     @Test
     void outerRollbackRestoresDeletedRowsAndRemovesCleanupRequest() {

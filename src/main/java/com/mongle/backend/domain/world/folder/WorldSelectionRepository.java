@@ -12,4 +12,7 @@ public interface WorldSelectionRepository extends JpaRepository<WorldSelection, 
     @Query("delete from WorldSelection s where s.folder.id=:world and s.dream.id=:dream")
     int exclude(@Param("world") Long worldId, @Param("dream") Long dreamId);
 
+    @Modifying
+    @Query("delete from WorldSelection s where s.folder.id=:world")
+    int deleteForFolder(@Param("world") Long worldId);
 }

@@ -80,6 +80,9 @@ class WorldFolderIntegrationTest {
         var excluded = data(send(token, "DELETE", path(id) + "/dreams/" + dream + "?revision=2", null), 200);
         assertThat(excluded.get("selectedDreamCount").asLong()).isZero();
         data(send(token, "GET", path(id), null), 200);
+        assertThat(send(token, "DELETE", path(id) + "?revision=3", null).statusCode()).isEqualTo(200);
+        assertThat(send(token, "GET", path(id), null).statusCode()).isEqualTo(404);
+        assertThat(dreams.existsById(dream)).isTrue();
     }
 
     @ParameterizedTest @NullSource @ValueSource(strings = {"", " ", "\t\n", "\u00a0\u3000"})
@@ -106,6 +109,7 @@ class WorldFolderIntegrationTest {
         error(() -> folders.select(user, folder.worldId(), dream, 0L), WorldFolderErrorCode.VERSION_CONFLICT);
         error(() -> folders.exclude(user, folder.worldId(), dream, 0L), WorldFolderErrorCode.VERSION_CONFLICT);
         error(() -> folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("꿈", 0L)), WorldFolderErrorCode.VERSION_CONFLICT);
+        error(() -> folders.delete(user, folder.worldId(), 0L), WorldFolderErrorCode.VERSION_CONFLICT);
         var excluded = folders.exclude(user, folder.worldId(), dream, selected.revision());
         assertThat(excluded.revision()).isEqualTo(2);
         assertThat(folders.exclude(user, folder.worldId(), dream, excluded.revision()).revision()).isEqualTo(2);
@@ -118,6 +122,7 @@ class WorldFolderIntegrationTest {
         for (long id : List.of(folder.worldId(), Long.MAX_VALUE)) {
             error(() -> folders.get(other, id), WorldFolderErrorCode.NOT_FOUND);
             error(() -> folders.rename(other, id, new WorldFolderUpdateRequest("변경", 0L)), WorldFolderErrorCode.NOT_FOUND);
+            error(() -> folders.delete(other, id, 0L), WorldFolderErrorCode.NOT_FOUND);
             error(() -> folders.selectedDreams(other, id, null, 20), WorldFolderErrorCode.NOT_FOUND);
             error(() -> folders.select(other, id, 1L, 0L), WorldFolderErrorCode.NOT_FOUND);
             error(() -> folders.exclude(other, id, 1L, 0L), WorldFolderErrorCode.NOT_FOUND);
@@ -146,6 +151,8 @@ class WorldFolderIntegrationTest {
         assertThat(send(newcomer, "GET", "/api/v1/worlds", null).statusCode()).isEqualTo(403);
         assertThat(send(token, "GET", path(-1L), null).statusCode()).isEqualTo(400);
         assertThat(send(token, "PATCH", path(id), Map.of("name", "이름")).statusCode()).isEqualTo(400);
+        assertThat(send(token, "DELETE", path(id), null).statusCode()).isEqualTo(400);
+        assertThat(send(token, "DELETE", path(id) + "?revision=-1", null).statusCode()).isEqualTo(400);
         assertThat(send(token, "PUT", path(id) + "/dreams/1", Map.of()).statusCode()).isEqualTo(400);
         for (String query : List.of("size=0", "size=51", "beforeId=0", "size=x"))
             assertThat(send(token, "GET", "/api/v1/worlds?" + query, null).statusCode()).isEqualTo(400);
@@ -197,6 +204,20 @@ class WorldFolderIntegrationTest {
         error(() -> folders.selectedDreams(user, id, page.nextCursor(), 20), WorldFolderErrorCode.VERSION_CONFLICT);
     }
 
+    @Test
+    void editingAndDeletingFolderDoesNotGenerateOrDeleteDreamsAndOtherFolders() {
+        long dream = completed(user, 0);
+        var a = folders.create(user, "A");
+        var b = folders.create(user, "B");
+        var selected = folders.select(user, a.worldId(), dream, a.revision());
+        var bSelected = folders.select(user, b.worldId(), dream, b.revision());
+        folders.delete(user, a.worldId(), selected.revision());
+        assertThat(dreams.existsById(dream)).isTrue();
+        assertThat(folders.get(user, b.worldId()).revision()).isEqualTo(bSelected.revision());
+        assertThat(folders.selectedDreams(user, b.worldId(), null, 20).items()).hasSize(1);
+        for (String table : List.of("ai_generation_logs", "dream_generation_jobs", "dream_analyses", "world_bridge_results"))
+            assertThat(jdbc.queryForObject("select count(*) from " + table + " where user_id=?", Long.class, user)).isZero();
+    }
 
     @Test
     void deletingDreamUpdatesOnlyRelatedFoldersAndInvalidatesCursor() {
@@ -232,6 +253,12 @@ class WorldFolderIntegrationTest {
         });
         assertThat(folders.get(user, folder.worldId())).isEqualTo(before);
         assertThat(dreams.existsById(dream)).isTrue();
+        assertThat(folders.selectedDreams(user, folder.worldId(), null, 20).items()).hasSize(1);
+        transactions.executeWithoutResult(status -> {
+            folders.delete(user, folder.worldId(), before.revision());
+            status.setRollbackOnly();
+        });
+        assertThat(folders.get(user, folder.worldId())).isEqualTo(before);
         assertThat(folders.selectedDreams(user, folder.worldId(), null, 20).items()).hasSize(1);
     }
 
@@ -281,6 +308,21 @@ class WorldFolderIntegrationTest {
         assertThat(folders.selectedDreams(user, folder.worldId(), null, 20).items()).isEmpty();
     }
 
+    @Test
+    void concurrentFolderDeleteAndSelectionCannotLoseSuccessfulSelection() throws Exception {
+        var folder = folders.create(user, "경합");
+        var dream = completed(user, 0);
+        var outcomes = race(() -> folders.delete(user, folder.worldId(), 0L),
+                () -> folders.select(user, folder.worldId(), dream, 0L));
+        assertThat(outcomes).contains("OK");
+        if (outcomes.contains(WorldFolderErrorCode.VERSION_CONFLICT.getCode())) {
+            assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isEqualTo(1);
+        } else {
+            assertThat(outcomes).contains(WorldFolderErrorCode.NOT_FOUND.getCode());
+            error(() -> folders.get(user, folder.worldId()), WorldFolderErrorCode.NOT_FOUND);
+        }
+        assertThat(dreams.existsById(dream)).isTrue();
+    }
 
     @Test
     void documentsAllEightOperationsWithRevisionAndPageSchemas() throws Exception {
@@ -300,7 +342,7 @@ class WorldFolderIntegrationTest {
                 operations++;
             }
         }
-        assertThat(operations).isEqualTo(7);
+        assertThat(operations).isEqualTo(8);
         assertThat(spec.at("/components/schemas/WorldFolderRequest/required/0").asString()).isEqualTo("name");
         assertThat(spec.at("/components/schemas/WorldFolderRequest/properties/name/maxLength").asInt()).isEqualTo(100);
         assertThat(spec.get("paths").get("/api/v1/worlds").get("post").at("/responses/400/content/application~1json/schema/$ref").asString())
