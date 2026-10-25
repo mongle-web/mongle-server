@@ -496,3 +496,23 @@ CREATE TABLE IF NOT EXISTS payment_transaction_bindings (
  INDEX idx_payment_binding_order(order_id),
  CONSTRAINT fk_payment_binding_order FOREIGN KEY(order_id) REFERENCES payment_orders(id)
 );
+
+CREATE TABLE IF NOT EXISTS payment_notifications (
+ event_hash VARCHAR(64) NOT NULL PRIMARY KEY,
+ order_id BIGINT NOT NULL,
+ provider_transaction VARCHAR(40) NOT NULL,
+ state_code INT NOT NULL,
+ amount BIGINT NOT NULL,
+ responded_at DATETIME(6) NOT NULL,
+ created_at DATETIME NOT NULL,
+ INDEX idx_payment_notification_order(order_id),
+ CONSTRAINT fk_payment_notification_order FOREIGN KEY(order_id) REFERENCES payment_orders(id),
+ CONSTRAINT ck_payment_notification_amount CHECK(amount>0)
+);
+CREATE TABLE IF NOT EXISTS credit_payment_holds (
+ grant_id BIGINT NOT NULL PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ created_at DATETIME NOT NULL,
+ INDEX idx_credit_payment_hold_user(user_id),
+ CONSTRAINT fk_credit_payment_hold_user FOREIGN KEY(user_id) REFERENCES users(id)
+);

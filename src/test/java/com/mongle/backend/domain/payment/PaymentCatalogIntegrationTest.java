@@ -32,6 +32,10 @@ class PaymentCatalogIntegrationTest {
             assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
             var json=JsonMapper.builder().build();
             assertThat(json.readTree(response.body()).at("/data/0/credits").asLong()).isEqualTo(7);
+            var orderUri=URI.create("http://localhost:"+port+"/api/v1/payments/orders");
+            var disabled=client.send(HttpRequest.newBuilder(orderUri).header("Authorization","Bearer "+tokens.login(id).response().accessToken())
+                    .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(new PaymentOrderRequest(UUID.randomUUID(),"pack","01012345678")))).build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(disabled.statusCode()).isEqualTo(503);
             var spec=client.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/v3/api-docs")).GET().build(),HttpResponse.BodyHandlers.ofString());
             assertThat(json.readTree(spec.body()).get("paths").get("/api/v1/payments/products").get("get").get("security").size()).isPositive();
             Long pending=users.saveAndFlush(User.register(UUID.randomUUID()+"@pending.test")).getId();

@@ -130,7 +130,7 @@ class PaymentOrderIntegrationTest {
         pending.cancel(true);
         gateway.next.complete(new PaymentGateway.Result(PaymentGateway.Outcome.READY,"100001","https://payapp.kr/ready"));
         long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
-        while(orders.findByPublicId(duplicate.orderId()).orElseThrow().getState()==PaymentOrder.State.REQUESTING && System.nanoTime()<end) Thread.onSpinWait();
+        while(orders.findByPublicId(duplicate.orderId()).orElseThrow().getState()==PaymentOrder.State.REQUESTING && System.nanoTime()<end) Thread.sleep(10);
         assertThat(orders.findByPublicId(duplicate.orderId()).orElseThrow().getState()).isEqualTo(PaymentOrder.State.READY);
     }
     @Test void uncertainAndRejectedResultsArePersistedAndNeverAutomaticallyRetried() throws Exception {

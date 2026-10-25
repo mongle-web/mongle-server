@@ -17,6 +17,7 @@ public class PaymentTransactions {
     private final PaymentCatalog catalog;
     private final PaymentProperties properties;
     private final CreditProperties creditProperties;
+    private final com.mongle.backend.domain.credit.CreditService credits;
     private final Clock authClock;
     public record Begin(PaymentOrderResponse response,PaymentGateway.Command command) {}
 
@@ -35,6 +36,8 @@ public class PaymentTransactions {
         }
         if(!properties.enabled() || !creditProperties.enabled() || !providerAvailable)
             throw new BusinessException(PaymentErrorCode.UNAVAILABLE);
+        if(credits.balance(user).spendingBlocked())
+            throw new BusinessException(com.mongle.backend.domain.credit.CreditErrorCode.PAYMENT_REVIEW);
         var product=catalog.purchasable(request.productId());
         acquire.run();
         var order=orders.saveAndFlush(PaymentOrder.create(user,request,product,authClock.instant().plusSeconds(45)));

@@ -39,6 +39,7 @@ public class CreditReservationService {
         if (!expiresAt.isAfter(authClock.instant())) throw new BusinessException(CreditErrorCode.INVALID_INPUT);
         if (reservations.existsByUserIdAndUsageAndTargetHash(userId, usage, targetHash))
             throw new BusinessException(CreditErrorCode.REQUEST_CONFLICT);
+        credits.requireSpendingAllowed(userId);
         long amount = properties.cost(usage);
         var account = credits.account(userId);
         account.reserve(amount);
@@ -72,6 +73,7 @@ public class CreditReservationService {
         }
         if (r.getState() != CreditReservation.State.RESERVED || !r.getExpiresAt().isAfter(authClock.instant()))
             throw new BusinessException(CreditErrorCode.STATE_CONFLICT);
+        credits.requireSpendingAllowed(userId);
         var account = credits.account(userId);
         account.settle(r.getAmount());
         for (var allocation : checkedAllocations(r)) allocation.getGrant().settle(allocation.getAmount());

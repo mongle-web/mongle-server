@@ -11,6 +11,7 @@ final class PayAppForm {
         var values=new LinkedHashMap<String,String>();
         if(text.length()>32768) throw new IllegalArgumentException("잘못된 결제 응답");
         for(String part:text.split("&",-1)) {
+            if(part.isEmpty()) continue;
             int split=part.indexOf('=');
             if(split<1) throw new IllegalArgumentException("잘못된 결제 응답");
             String key=URLDecoder.decode(part.substring(0,split),StandardCharsets.UTF_8);
