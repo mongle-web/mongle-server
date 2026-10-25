@@ -50,6 +50,10 @@ public class WorldFolder extends BaseEntity {
         name = value;
     }
 
+    public void checkRevision(Long expected) {
+        if (expected == null || expected != revision)
+            throw new BusinessException(WorldFolderErrorCode.VERSION_CONFLICT);
+    }
 
 
 }

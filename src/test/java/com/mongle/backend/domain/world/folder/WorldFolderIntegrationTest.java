@@ -68,6 +68,8 @@ class WorldFolderIntegrationTest {
         var next = data(send(token, "GET", "/api/v1/worlds?size=1&beforeId=" + page.get("nextBeforeId").asLong(), null), 200);
         assertThat(next.at("/items/0/worldId").asLong()).isEqualTo(id);
         assertThat(next.get("hasNext").asBoolean()).isFalse();
+        var renamed = data(send(token, "PATCH", path(id), Map.of("name", "새 폴더", "revision", 0)), 200);
+        assertThat(renamed.get("revision").asLong()).isEqualTo(1);
     }
 
     @ParameterizedTest @NullSource @ValueSource(strings = {"", " ", "\t\n", "\u00a0\u3000"})
@@ -83,6 +85,15 @@ class WorldFolderIntegrationTest {
         assertThat(folders.create(user, "  밤의 꿈  ").name()).isEqualTo("  밤의 꿈  ");
     }
 
+    @Test
+    void noOpMutationsPreserveVersionButOldRevisionAlwaysConflicts() {
+        var folder = folders.create(user, "꿈");
+        var before = folders.get(user, folder.worldId());
+        assertThat(folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("꿈", 0L))).isEqualTo(before);
+        var renamed = folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("다른 꿈", 0L));
+        assertThat(renamed.revision()).isEqualTo(1);
+        error(() -> folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("꿈", 0L)), WorldFolderErrorCode.VERSION_CONFLICT);
+    }
 
     @Test
     void hidesForeignFoldersAndDreamsAndRejectsIncompleteRecords() {
@@ -90,6 +101,7 @@ class WorldFolderIntegrationTest {
         var other = newUser();
         for (long id : List.of(folder.worldId(), Long.MAX_VALUE)) {
             error(() -> folders.get(other, id), WorldFolderErrorCode.NOT_FOUND);
+            error(() -> folders.rename(other, id, new WorldFolderUpdateRequest("변경", 0L)), WorldFolderErrorCode.NOT_FOUND);
         }
         assertThat(folders.list(other, null, 20).items()).isEmpty();
     }
@@ -102,6 +114,7 @@ class WorldFolderIntegrationTest {
         var newcomer = tokens.login(users.saveAndFlush(User.register(UUID.randomUUID() + "@test.com")).getId()).response();
         assertThat(send(newcomer, "GET", "/api/v1/worlds", null).statusCode()).isEqualTo(403);
         assertThat(send(token, "GET", path(-1L), null).statusCode()).isEqualTo(400);
+        assertThat(send(token, "PATCH", path(id), Map.of("name", "이름")).statusCode()).isEqualTo(400);
         for (String query : List.of("size=0", "size=51", "beforeId=0", "size=x"))
             assertThat(send(token, "GET", "/api/v1/worlds?" + query, null).statusCode()).isEqualTo(400);
     }

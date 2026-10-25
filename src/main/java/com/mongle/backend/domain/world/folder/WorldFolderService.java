@@ -39,6 +39,14 @@ public class WorldFolderService {
     }
 
 
+    @Transactional
+    public WorldFolderResponse rename(Long userId, Long worldId, WorldFolderUpdateRequest request) {
+        lockUser(userId);
+        var folder = owned(userId, worldId);
+        folder.checkRevision(request.revision());
+        folder.rename(request.name());
+        return response(folder);
+    }
 
 
 

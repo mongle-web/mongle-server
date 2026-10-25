@@ -37,6 +37,11 @@ public class WorldFolderController implements WorldFolderApi {
         return ok(folders.get(userId(jwt), worldId));
     }
 
+    @Override @PatchMapping("/{worldId}")
+    public ResponseEntity<ApiResponse<WorldFolderResponse>> rename(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive Long worldId, @Valid @RequestBody WorldFolderUpdateRequest request) {
+        return ok(folders.rename(userId(jwt), worldId, request));
+    }
 
 
 

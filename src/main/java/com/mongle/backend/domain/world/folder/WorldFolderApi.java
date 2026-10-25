@@ -42,6 +42,9 @@ public interface WorldFolderApi {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공", useReturnTypeSchema = true)
     ResponseEntity<ApiResponse<WorldFolderResponse>> get(@Parameter(hidden = true) Jwt jwt, @Positive Long worldId);
 
+    @Operation(summary = "세계관 폴더 이름 수정", description = "최신 revision 필수. 이름은 최대 100 Unicode 코드포인트이며 앞뒤 공백을 보존합니다. 같은 이름이면 revision·수정 시각을 유지합니다. 이전 revision이면 같은 값도 409입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공", useReturnTypeSchema = true)
+    ResponseEntity<ApiResponse<WorldFolderResponse>> rename(@Parameter(hidden = true) Jwt jwt, @Positive Long worldId, @Valid WorldFolderUpdateRequest request);
 
 
 
