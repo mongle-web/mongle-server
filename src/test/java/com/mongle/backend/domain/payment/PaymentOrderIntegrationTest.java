@@ -45,6 +45,8 @@ class PaymentOrderIntegrationTest {
         }
     }
     @Autowired PaymentService payments;
+    @Autowired PaymentQueryService queries;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired PaymentTransactions transactions;
     @Autowired PaymentOrderRepository orders;
     @Autowired UserRepository users;
@@ -58,6 +60,26 @@ class PaymentOrderIntegrationTest {
     @BeforeEach void setup() { user=users.saveAndFlush(User.create(UUID.randomUUID()+"@payment.test","결제")).getId(); gateway.next=null; }
     PaymentOrderRequest request() { return new PaymentOrderRequest(UUID.randomUUID(),"pack","01012345678"); }
     PaymentOrderResponse create(PaymentOrderRequest r) throws Exception { return payments.create(user,r).get(10,TimeUnit.SECONDS); }
+    @Test void orderStatusIsOwnedNoStoreAndDoesNotExecuteProvider() throws Exception {
+        var created=create(request()); int calls=gateway.count.get();
+        assertThat(queries.get(user,created.orderId())).isEqualTo(created);
+        Long other=users.saveAndFlush(User.create(UUID.randomUUID()+"@payment.test","다른계정")).getId();
+        assertThatThrownBy(() -> queries.get(other,created.orderId())).isInstanceOf(BusinessException.class);
+        try(var client=HttpClient.newHttpClient()) {
+            var uri=URI.create("http://localhost:"+port+"/api/v1/payments/orders/"+created.orderId());
+            var response=client.send(HttpRequest.newBuilder(uri).header("Authorization","Bearer "+tokens.login(user).response().accessToken()).GET().build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).isEqualTo(200); assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
+            assertThat(client.send(HttpRequest.newBuilder(uri).header("Authorization","Bearer "+tokens.login(other).response().accessToken()).GET().build(),HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(404);
+        }
+        assertThat(gateway.count.get()).isEqualTo(calls);
+    }
+    @Test void abandonedRequestIsReportedAsUnknownWithoutResending() throws Exception {
+        var created=create(request()); int calls=gateway.count.get();
+        jdbc.update("update payment_orders set state='REQUESTING',request_deadline=? where public_id=?",java.sql.Timestamp.from(Instant.now().minusSeconds(60)),created.orderId());
+        var response=queries.get(user,created.orderId());
+        assertThat(response.state()).isEqualTo(PaymentOrder.State.UNKNOWN); assertThat(response.paymentUrl()).isNull();
+        assertThat(gateway.count.get()).isEqualTo(calls); assertThat(credits.balance(user).total()).isZero();
+    }
     @Test void persistsServerPriceAndDoesNotGrantOnPaymentUrl() throws Exception {
         var result=create(request());
         assertThat(result.price()).isEqualTo(1000); assertThat(result.credits()).isEqualTo(7);
