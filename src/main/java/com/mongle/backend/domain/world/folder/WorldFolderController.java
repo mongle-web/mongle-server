@@ -25,7 +25,17 @@ public class WorldFolderController implements WorldFolderApi {
                 .cacheControl(CacheControl.noStore()).body(ApiResponse.success(folder));
     }
 
+    @Override @GetMapping
+    public ResponseEntity<ApiResponse<WorldFolderPage>> list(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "20") int size) {
+        return ok(folders.list(userId(jwt), beforeId, size));
+    }
 
+    @Override @GetMapping("/{worldId}")
+    public ResponseEntity<ApiResponse<WorldFolderResponse>> get(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive Long worldId) {
+        return ok(folders.get(userId(jwt), worldId));
+    }
 
 
 

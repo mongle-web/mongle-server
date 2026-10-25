@@ -63,6 +63,11 @@ class WorldFolderIntegrationTest {
         var created = send(token, "POST", "/api/v1/worlds", Map.of("name", "바다"));
         assertThat(created.headers().firstValue("Location")).hasValue("/api/v1/worlds/" + data(created, 201).get("worldId").asLong());
         assertThat(created.headers().firstValue("Cache-Control")).hasValue("no-store");
+        var page = data(send(token, "GET", "/api/v1/worlds?size=1", null), 200);
+        assertThat(page.get("hasNext").asBoolean()).isTrue();
+        var next = data(send(token, "GET", "/api/v1/worlds?size=1&beforeId=" + page.get("nextBeforeId").asLong(), null), 200);
+        assertThat(next.at("/items/0/worldId").asLong()).isEqualTo(id);
+        assertThat(next.get("hasNext").asBoolean()).isFalse();
     }
 
     @ParameterizedTest @NullSource @ValueSource(strings = {"", " ", "\t\n", "\u00a0\u3000"})
@@ -79,7 +84,27 @@ class WorldFolderIntegrationTest {
     }
 
 
+    @Test
+    void hidesForeignFoldersAndDreamsAndRejectsIncompleteRecords() {
+        var folder = folders.create(user, "내 폴더");
+        var other = newUser();
+        for (long id : List.of(folder.worldId(), Long.MAX_VALUE)) {
+            error(() -> folders.get(other, id), WorldFolderErrorCode.NOT_FOUND);
+        }
+        assertThat(folders.list(other, null, 20).items()).isEmpty();
+    }
 
+    @Test
+    void httpRejectsUnauthenticatedUnonboardedInvalidIdsAndMissingRevisions() throws Exception {
+        var token = tokens.login(user).response();
+        var id = folders.create(user, "폴더").worldId();
+        assertThat(send(null, "GET", "/api/v1/worlds", null).statusCode()).isEqualTo(401);
+        var newcomer = tokens.login(users.saveAndFlush(User.register(UUID.randomUUID() + "@test.com")).getId()).response();
+        assertThat(send(newcomer, "GET", "/api/v1/worlds", null).statusCode()).isEqualTo(403);
+        assertThat(send(token, "GET", path(-1L), null).statusCode()).isEqualTo(400);
+        for (String query : List.of("size=0", "size=51", "beforeId=0", "size=x"))
+            assertThat(send(token, "GET", "/api/v1/worlds?" + query, null).statusCode()).isEqualTo(400);
+    }
 
 
 

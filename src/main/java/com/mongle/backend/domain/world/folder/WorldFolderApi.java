@@ -34,7 +34,13 @@ public interface WorldFolderApi {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "생성 성공", useReturnTypeSchema = true)
     ResponseEntity<ApiResponse<WorldFolderResponse>> create(@Parameter(hidden = true) Jwt jwt, @Valid WorldFolderRequest request);
 
+    @Operation(summary = "내 세계관 폴더 목록", description = "폴더 ID 내림차순. 기본 size=20, 최대 50. hasNext이면 nextBeforeId를 beforeId에 전달합니다. 선택 수는 전체 선택 목록을 로딩하지 않고 반환합니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공", useReturnTypeSchema = true)
+    ResponseEntity<ApiResponse<WorldFolderPage>> list(@Parameter(hidden = true) Jwt jwt, Long beforeId, int size);
 
+    @Operation(summary = "세계관 폴더 상세", description = "메타데이터·선택 수·최신 revision을 반환합니다. 선택한 꿈은 별도 페이지 API로 조회합니다. 선택 수가 0~1개여도 유지합니다. 없는 ID와 타인 ID는 동일한 404입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공", useReturnTypeSchema = true)
+    ResponseEntity<ApiResponse<WorldFolderResponse>> get(@Parameter(hidden = true) Jwt jwt, @Positive Long worldId);
 
 
 

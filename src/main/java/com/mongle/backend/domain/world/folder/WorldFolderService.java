@@ -26,7 +26,17 @@ public class WorldFolderService {
         return response(folders.save(WorldFolder.create(lockUser(userId), name)));
     }
 
+    public WorldFolderResponse get(Long userId, Long worldId) {
+        return WorldFolderResponse.from(owned(userId, worldId));
+    }
 
+    public WorldFolderPage list(Long userId, Long beforeId, int size) {
+        validatePage(beforeId, size);
+        var rows = folders.page(userId, beforeId, PageRequest.of(0, size + 1));
+        boolean hasNext = rows.size() > size;
+        var items = rows.stream().limit(size).map(WorldFolderResponse::from).toList();
+        return new WorldFolderPage(items, hasNext, hasNext ? items.getLast().worldId() : null);
+    }
 
 
 
@@ -38,6 +48,10 @@ public class WorldFolderService {
         return WorldFolderResponse.from(folder);
     }
 
+    private WorldFolder owned(Long userId, Long worldId) {
+        return folders.findByIdAndUserId(worldId, userId)
+                .orElseThrow(() -> new BusinessException(WorldFolderErrorCode.NOT_FOUND));
+    }
 
 
     private User lockUser(Long userId) {
@@ -47,4 +61,8 @@ public class WorldFolderService {
         return user;
     }
 
+    private void validatePage(Long beforeId, int size) {
+        if (size < 1 || size > 50 || (beforeId != null && beforeId < 1))
+            throw new BusinessException(WorldFolderErrorCode.INVALID_PAGE);
+    }
 }
