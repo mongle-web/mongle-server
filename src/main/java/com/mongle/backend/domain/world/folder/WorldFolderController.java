@@ -44,6 +44,12 @@ public class WorldFolderController implements WorldFolderApi {
     }
 
 
+    @Override @GetMapping("/{worldId}/dreams")
+    public ResponseEntity<ApiResponse<SelectedDreamPage>> selectedDreams(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive Long worldId, @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size) {
+        return ok(folders.selectedDreams(userId(jwt), worldId, cursor, size));
+    }
 
     @Override @PutMapping("/{worldId}/dreams/{dreamId}")
     public ResponseEntity<ApiResponse<WorldFolderResponse>> select(@AuthenticationPrincipal Jwt jwt,

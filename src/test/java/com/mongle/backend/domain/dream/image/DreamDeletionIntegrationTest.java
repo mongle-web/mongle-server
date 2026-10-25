@@ -156,6 +156,7 @@ class DreamDeletionIntegrationTest {
             assertThat(count("dream_generation_jobs", "dream_id", b.dream.dreamId())).isEqualTo(1);
             assertThat(count("image_cleanup_requests", "dream_id", b.dream.dreamId())).isZero();
             assertThat(folders.get(user, folder.worldId())).isEqualTo(before);
+            assertThat(folders.selectedDreams(user, folder.worldId(), null, 20).items()).hasSize(1);
         } finally { jdbc.execute("alter table image_cleanup_requests drop constraint reject_test_cleanup"); }
         dreams.delete(user, b.dream.dreamId(), b.dream.revision());
         assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();

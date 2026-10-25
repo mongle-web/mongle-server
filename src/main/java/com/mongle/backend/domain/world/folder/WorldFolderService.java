@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class WorldFolderService {
     private final WorldFolderRepository folders;
     private final WorldSelectionRepository selections;
+    private final WorldSelectionQueryRepository queries;
     private final UserRepository users;
     private final DreamRepository dreams;
 
@@ -40,6 +41,17 @@ public class WorldFolderService {
         return new WorldFolderPage(items, hasNext, hasNext ? items.getLast().worldId() : null);
     }
 
+    @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
+    public SelectedDreamPage selectedDreams(Long userId, Long worldId, String cursor, int size) {
+        validatePage(null, size);
+        var folder = owned(userId, worldId);
+        var position = WorldSelectionCursor.parse(cursor, folder);
+        var rows = queries.page(userId, worldId, position, size);
+        boolean hasNext = rows.size() > size;
+        var items = rows.stream().limit(size).toList();
+        return new SelectedDreamPage(worldId, folder.getRevision(), folder.getSelectedDreamCount(), items,
+                hasNext, hasNext ? WorldSelectionCursor.after(folder, items.getLast()) : null);
+    }
 
     @Transactional
     public WorldFolderResponse rename(Long userId, Long worldId, WorldFolderUpdateRequest request) {
