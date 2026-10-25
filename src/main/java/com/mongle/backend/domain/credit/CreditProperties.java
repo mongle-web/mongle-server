@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties("mongle.credit")
 public record CreditProperties(@DefaultValue("false") boolean enabled,
-        @DefaultValue("UNDECIDED") ExpiryPolicy expiryPolicy, Long signupAmount,
+        @DefaultValue("NO_EXPIRY") ExpiryPolicy expiryPolicy, Long signupAmount,
         Long dreamImageGeneration, Long dreamImageRegeneration,
         Long worldImageGeneration, Long worldImageRegeneration) {
     public enum ExpiryPolicy { UNDECIDED, NO_EXPIRY }

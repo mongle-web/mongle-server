@@ -36,9 +36,13 @@ logging:
 
 
 mongle:
+  payment:
+    enabled: ${MONGLE_PAYMENT_ENABLED:false}
+    # 상품 목록은 운영 설정으로 공급한다. 임의 가격/지급량을 기본 제공하지 않는다.
+    products: []
   credit:
     enabled: ${MONGLE_CREDIT_ENABLED:false}
-    expiry-policy: ${MONGLE_CREDIT_EXPIRY_POLICY:UNDECIDED}
+    expiry-policy: ${MONGLE_CREDIT_EXPIRY_POLICY:NO_EXPIRY}
     signup-amount: ${MONGLE_CREDIT_SIGNUP_AMOUNT:}
     dream-image-generation: ${MONGLE_CREDIT_DREAM_IMAGE_GENERATION:}
     dream-image-regeneration: ${MONGLE_CREDIT_DREAM_IMAGE_REGENERATION:}
