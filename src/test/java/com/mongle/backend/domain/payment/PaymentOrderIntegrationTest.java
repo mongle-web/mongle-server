@@ -80,6 +80,26 @@ class PaymentOrderIntegrationTest {
         assertThat(response.state()).isEqualTo(PaymentOrder.State.UNKNOWN); assertThat(response.paymentUrl()).isNull();
         assertThat(gateway.count.get()).isEqualTo(calls); assertThat(credits.balance(user).total()).isZero();
     }
+    @Test void orderHistoryUsesOwnedKeysetPaginationAndValidatesBounds() throws Exception {
+        var first=create(request()); var second=create(request()); var third=create(request());
+        Long other=users.saveAndFlush(User.create(UUID.randomUUID()+"@payment.test","다른계정")).getId();
+        payments.create(other,request()).get(5,TimeUnit.SECONDS);
+        var page=queries.page(user,null,2);
+        assertThat(page.items()).extracting(PaymentOrderResponse::orderId).containsExactly(third.orderId(),second.orderId());
+        assertThat(page.hasNext()).isTrue();
+        var rest=queries.page(user,page.nextBeforeId(),2);
+        assertThat(rest.items()).extracting(PaymentOrderResponse::orderId).containsExactly(first.orderId());
+        assertThat(rest.hasNext()).isFalse(); assertThat(rest.nextBeforeId()).isNull();
+        try(var client=HttpClient.newHttpClient()) {
+            String token=tokens.login(user).response().accessToken();
+            for(String query:List.of("size=0","size=51","beforeId=0")) {
+                var uri=URI.create("http://localhost:"+port+"/api/v1/payments/orders?"+query);
+                assertThat(client.send(HttpRequest.newBuilder(uri).header("Authorization","Bearer "+token).GET().build(),HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(400);
+            }
+            var spec=client.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/v3/api-docs")).GET().build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(json.readTree(spec.body()).get("paths").get("/api/v1/payments/orders").get("get").get("responses").get("200").toString()).contains("PaymentOrderPage");
+        }
+    }
     @Test void persistsServerPriceAndDoesNotGrantOnPaymentUrl() throws Exception {
         var result=create(request());
         assertThat(result.price()).isEqualTo(1000); assertThat(result.credits()).isEqualTo(7);

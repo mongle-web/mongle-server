@@ -12,6 +12,9 @@ import java.util.List;
 @Tag(name = "Payment", description = "크레딧 단건 충전 상품과 본인 주문")
 @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
 public interface PaymentApi {
+    @Operation(summary="내 크레딧 구매 주문 내역",description="본인의 주문만 주문 ID 내림차순으로 조회합니다. 기본 size=20, 최대50. hasNext이면 nextBeforeId를 beforeId에 전달합니다. 요청 중·미확정·취소·결제 완료 상태를 구분합니다.")
+    ResponseEntity<ApiResponse<PaymentOrderPage>> page(@Parameter(hidden=true) Jwt jwt,Long beforeId,int size);
+
     @Operation(summary="내 결제 주문 상태 조회",description="결제창 복귀 뒤 이 API로 확인합니다. 타인 주문과 없는 주문은 동일한404입니다. 오래된 REQUESTING은 UNKNOWN으로 표시하며 조회로 결제 요청·지급을 실행하지 않습니다.")
     ResponseEntity<ApiResponse<PaymentOrderResponse>> get(@Parameter(hidden=true) Jwt jwt,String orderId);
 

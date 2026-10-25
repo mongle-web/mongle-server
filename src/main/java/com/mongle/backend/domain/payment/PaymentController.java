@@ -14,6 +14,12 @@ import java.util.List;
 public class PaymentController implements PaymentApi {
     private final PaymentCatalog catalog;
     private final PaymentQueryService queries;
+    @Override @GetMapping("/orders")
+    public ResponseEntity<ApiResponse<PaymentOrderPage>> page(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required=false) Long beforeId,@RequestParam(defaultValue="20") int size) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(queries.page(Long.valueOf(jwt.getSubject()),beforeId,size)));
+    }
+
     @Override @GetMapping("/orders/{orderId}")
     public ResponseEntity<ApiResponse<PaymentOrderResponse>> get(@AuthenticationPrincipal Jwt jwt,@PathVariable String orderId) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(queries.get(Long.valueOf(jwt.getSubject()),orderId)));
