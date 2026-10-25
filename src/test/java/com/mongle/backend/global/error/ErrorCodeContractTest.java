@@ -70,6 +70,7 @@ class ErrorCodeContractTest {
                 new Family("STORY", StoryErrorCode.values()),
                 new Family("IMAGE", ImageErrorCode.values()),
                 new Family("BRIDGE", BridgeErrorCode.values()),
+                new Family("WORLD", com.mongle.backend.domain.world.folder.WorldFolderErrorCode.values()),
                 new Family("AI", AiGatewayErrorCode.values()));
     }
 

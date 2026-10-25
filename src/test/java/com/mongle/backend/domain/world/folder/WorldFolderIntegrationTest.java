@@ -1,0 +1,143 @@
+package com.mongle.backend.domain.world.folder;
+
+import static org.assertj.core.api.Assertions.*;
+
+import com.mongle.backend.domain.auth.dto.TokenResponse;
+import com.mongle.backend.domain.auth.service.TokenService;
+import com.mongle.backend.domain.dream.entity.*;
+import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.repository.DreamRepository;
+import com.mongle.backend.domain.dream.service.DreamService;
+import com.mongle.backend.domain.user.entity.User;
+import com.mongle.backend.domain.user.repository.UserRepository;
+import com.mongle.backend.global.error.BusinessException;
+import com.mongle.backend.global.error.ErrorCode;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.net.URI;
+import java.net.http.*;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.*;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "spring.datasource.url=jdbc:h2:mem:world-folders;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
+        "spring.jpa.properties.hibernate.generate_statistics=true"})
+@ActiveProfiles("test")
+class WorldFolderIntegrationTest {
+    @Autowired WorldFolderService folders;
+    @Autowired UserRepository users;
+    @Autowired DreamRepository dreams;
+    @Autowired DreamService dreamService;
+    @Autowired TokenService tokens;
+    @Autowired JdbcTemplate jdbc;
+    @Autowired TransactionTemplate transactions;
+    @Autowired EntityManagerFactory emf;
+    @Value("${local.server.port}") int port;
+    final JsonMapper json = JsonMapper.builder().build();
+    Long user;
+
+    @BeforeEach
+    void setup() { user = newUser(); }
+
+    @Test
+    void httpLifecycleAndPagingPreserveEmptyFolderAndSourceRecords() throws Exception {
+        var token = tokens.login(user).response();
+        var a = data(send(token, "POST", "/api/v1/worlds", Map.of("name", "바다")), 201);
+        long id = a.get("worldId").asLong();
+        assertThat(a.get("revision").asLong()).isZero();
+        assertThat(a.get("selectedDreamCount").asLong()).isZero();
+        var created = send(token, "POST", "/api/v1/worlds", Map.of("name", "바다"));
+        assertThat(created.headers().firstValue("Location")).hasValue("/api/v1/worlds/" + data(created, 201).get("worldId").asLong());
+        assertThat(created.headers().firstValue("Cache-Control")).hasValue("no-store");
+    }
+
+    @ParameterizedTest @NullSource @ValueSource(strings = {"", " ", "\t\n", "\u00a0\u3000"})
+    void rejectsMissingOrUnicodeBlankName(String name) {
+        error(() -> folders.create(user, name), WorldFolderErrorCode.INVALID_NAME);
+    }
+
+    @Test
+    void countsSupplementaryUnicodeCharactersAndPreservesInput() {
+        var name = "🌙".repeat(100);
+        assertThat(folders.create(user, name).name()).isEqualTo(name);
+        error(() -> folders.create(user, name + "🌙"), WorldFolderErrorCode.INVALID_NAME);
+        assertThat(folders.create(user, "  밤의 꿈  ").name()).isEqualTo("  밤의 꿈  ");
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    Long newUser() { return users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "폴더검증")).getId(); }
+
+    Long completed(Long owner, int daysAgo) {
+        return transactions.execute(s -> {
+            var dream = Dream.create(users.findById(owner).orElseThrow(), "바다의 꿈", LocalDate.now().minusDays(daysAgo));
+            dream.complete(List.of(DreamEmotion.HAPPY));
+            return dreams.saveAndFlush(dream).getId();
+        });
+    }
+
+    void error(Runnable call, ErrorCode expected) {
+        assertThatThrownBy(call::run).isInstanceOfSatisfying(BusinessException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(expected));
+    }
+
+    List<String> race(Runnable a, Runnable b) throws Exception {
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var ready = new CountDownLatch(2);
+            var start = new CountDownLatch(1);
+            var tasks = new ArrayList<Future<String>>();
+            for (var action : List.of(a, b)) tasks.add(executor.submit(() -> {
+                ready.countDown();
+                if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("경합 시작 실패");
+                try { action.run(); return "OK"; }
+                catch (BusinessException e) { return e.getErrorCode().getCode(); }
+            }));
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            return List.of(tasks.getFirst().get(15, TimeUnit.SECONDS), tasks.getLast().get(15, TimeUnit.SECONDS));
+        }
+    }
+
+    String path(Long id) { return "/api/v1/worlds/" + id; }
+
+    JsonNode data(HttpResponse<String> response, int status) {
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(status);
+        return json.readTree(response.body()).get("data");
+    }
+
+    HttpResponse<String> send(TokenResponse token, String method, String path, Object body) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path)).timeout(Duration.ofSeconds(15));
+        if (token != null) request.header("Authorization", "Bearer " + token.accessToken());
+        if (body != null) request.header("Content-Type", "application/json");
+        try (var client = HttpClient.newHttpClient()) {
+            return client.send(request.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
+                    : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofString());
+        }
+    }
+}

@@ -20,6 +20,22 @@ class InitialSchemaValidationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
+    void createsWorldFolderTablesFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_folders");
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var migration = new org.springframework.core.io.ClassPathResource("db/migrations/20261025-world-folders.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            return null;
+        });
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema='public' and table_name='world_folders'
+                """, String.class)).containsExactlyInAnyOrder(
+                "id", "user_id", "name", "selected_dream_count", "revision", "created_at", "updated_at");
+    }
+
+    @Test
     void createsCleanupRequestTableFromMigrationAndAllowsRerun() throws Exception {
         jdbcTemplate.execute("drop table image_cleanup_requests");
         jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
