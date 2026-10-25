@@ -22,6 +22,16 @@ public class CreditService {
         return accounts.findById(userId).map(CreditBalance::from).orElseGet(CreditBalance::zero);
     }
 
+    public CreditTransactionPage transactions(Long userId, Long beforeId, int size) {
+        if (size < 1 || size > 50 || (beforeId != null && beforeId < 1))
+            throw new BusinessException(CreditErrorCode.INVALID_PAGE);
+        requireUser(userId, false);
+        var rows = ledger.page(userId, beforeId, org.springframework.data.domain.PageRequest.of(0, size + 1));
+        boolean hasNext = rows.size() > size;
+        var items = rows.stream().limit(size).map(CreditTransaction::from).toList();
+        return new CreditTransactionPage(items, hasNext, hasNext ? items.getLast().transactionId() : null);
+    }
+
     /** 결제 상태 저장과 같은 트랜잭션에 참여한다. 외부 결제 요청 중 호출하지 않는다. */
     @Transactional
     public CreditGrantReceipt grant(Long userId, CreditSource source, String sourceKey, long amount) {

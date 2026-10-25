@@ -17,4 +17,11 @@ public class CreditController implements CreditApi {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(ApiResponse.success(credits.balance(Long.valueOf(jwt.getSubject()))));
     }
+
+    @Override @GetMapping("/transactions")
+    public ResponseEntity<ApiResponse<CreditTransactionPage>> transactions(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(ApiResponse.success(credits.transactions(Long.valueOf(jwt.getSubject()), beforeId, size)));
+    }
 }

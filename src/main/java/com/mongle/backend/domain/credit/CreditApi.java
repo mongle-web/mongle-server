@@ -21,4 +21,9 @@ public interface CreditApi {
     @Operation(summary = "내 크레딧 잔액", description = "사용 가능·예약 중·총 잔액을 조회합니다. 계정에 지급 내역이 없으면 모두 0이며 조회로 지급이나 계정 생성이 발생하지 않습니다. 크레딧 기능 비활성 상태에서도 조회할 수 있습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공", useReturnTypeSchema = true)
     ResponseEntity<ApiResponse<CreditBalance>> balance(@Parameter(hidden = true) Jwt jwt);
+
+    @Operation(summary = "내 크레딧 이용 내역", description = "원장 ID 내림차순. 기본 size=20, 최대50. hasNext이면 nextBeforeId를 beforeId에 전달합니다. 지급·예약·사용 확정·예약 해제를 구분하며 내부 요청 식별자는 반환하지 않습니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공", useReturnTypeSchema = true)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "CREDIT_400_2 조회 개수/커서 오류", content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    ResponseEntity<ApiResponse<CreditTransactionPage>> transactions(@Parameter(hidden = true) Jwt jwt, Long beforeId, int size);
 }

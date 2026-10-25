@@ -91,6 +91,34 @@ class CreditIntegrationTest {
         assertThat(op.at("/responses/200/content/application~1json/schema/$ref").asString()).contains("CreditBalance");
         assertThat(op.get("security").size()).isPositive();
     }
+    @Test void transactionsPageNewestFirstExcludesOtherUsersAndKeepsSnapshotBalances() {
+        credits.grant(user,CreditSource.PAYMENT,"page-1",10);
+        credits.grant(user,CreditSource.PROMOTION,"page-2",5);
+        credits.grant(newUser(),CreditSource.PAYMENT,"page-other",100);
+        credits.grant(user,CreditSource.PAYMENT,"page-3",20);
+        var page=credits.transactions(user,null,2);
+        assertThat(page.items()).extracting(CreditTransaction::availableAfter).containsExactly(35L,15L);
+        assertThat(page.items()).extracting(CreditTransaction::createdAt).doesNotContainNull();
+        assertThat(page.hasNext()).isTrue();
+        var rest=credits.transactions(user,page.nextBeforeId(),2);
+        assertThat(rest.items()).extracting(CreditTransaction::availableAfter).containsExactly(10L);
+        assertThat(rest.hasNext()).isFalse(); assertThat(rest.nextBeforeId()).isNull();
+        assertThat(credits.transactions(newUser(),null,20).items()).isEmpty();
+    }
+    @Test void transactionsHttpValidatesPageAndDoesNotExposeProviderKeys() throws Exception {
+        credits.grant(user,CreditSource.PAYMENT,"private-order",5);
+        String token=tokens.login(user).response().accessToken();
+        var response=send(token,"GET","/api/v1/credits/transactions?size=1");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).doesNotContain("private-order","sourceKey","sourceHash");
+        assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
+        for(String query:List.of("size=0","size=51","beforeId=0","beforeId=-1"))
+            assertThat(send(token,"GET","/api/v1/credits/transactions?"+query).statusCode()).isEqualTo(400);
+        assertThat(send(null,"GET","/api/v1/credits/transactions").statusCode()).isEqualTo(401);
+        var spec=json.readTree(send(null,"GET","/v3/api-docs").body());
+        var op=spec.get("paths").get("/api/v1/credits/transactions").get("get");
+        assertThat(op.at("/responses/200/content/application~1json/schema/$ref").asString()).contains("CreditTransactionPage");
+    }
     Long newUser() { return users.saveAndFlush(User.create(UUID.randomUUID()+"@credit.test","크레딧")).getId(); }
     void error(Runnable r, ErrorCode code) {
         assertThatThrownBy(r::run).isInstanceOfSatisfying(BusinessException.class,e -> assertThat(e.getErrorCode()).isEqualTo(code));
