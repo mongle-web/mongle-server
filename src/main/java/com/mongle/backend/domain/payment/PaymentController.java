@@ -13,6 +13,14 @@ import java.util.List;
 @RequestMapping(value = "/api/v1/payments", produces = MediaType.APPLICATION_JSON_VALUE)
 public class PaymentController implements PaymentApi {
     private final PaymentCatalog catalog;
+    private final PaymentService payments;
+    @Override @PostMapping(value="/orders",consumes=MediaType.APPLICATION_JSON_VALUE)
+    public java.util.concurrent.CompletableFuture<ResponseEntity<ApiResponse<PaymentOrderResponse>>> create(
+            @AuthenticationPrincipal Jwt jwt,@jakarta.validation.Valid @RequestBody PaymentOrderRequest request) {
+        return payments.create(Long.valueOf(jwt.getSubject()),request).thenApply(result ->
+                ResponseEntity.status(result.state()==PaymentOrder.State.REQUESTING?202:200).cacheControl(CacheControl.noStore()).body(ApiResponse.success(result)));
+    }
+
     @Override @GetMapping("/products")
     public ResponseEntity<ApiResponse<List<CreditProduct>>> products(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(catalog.products()));
