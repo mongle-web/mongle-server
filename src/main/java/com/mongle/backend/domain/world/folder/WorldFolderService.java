@@ -19,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class WorldFolderService {
     private final WorldFolderRepository folders;
+    private final WorldSelectionRepository selections;
     private final UserRepository users;
+    private final DreamRepository dreams;
 
     @Transactional
     public WorldFolderResponse create(Long userId, String name) {
@@ -48,6 +50,18 @@ public class WorldFolderService {
         return response(folder);
     }
 
+    @Transactional
+    public WorldFolderResponse select(Long userId, Long worldId, Long dreamId, Long revision) {
+        lockUser(userId);
+        var folder = owned(userId, worldId);
+        folder.checkRevision(revision);
+        var dream = completedDream(userId, dreamId);
+        if (!selections.existsByFolderIdAndDreamId(worldId, dreamId)) {
+            selections.save(WorldSelection.create(folder, dream));
+            folder.selected();
+        }
+        return response(folder);
+    }
 
 
 
@@ -61,6 +75,13 @@ public class WorldFolderService {
                 .orElseThrow(() -> new BusinessException(WorldFolderErrorCode.NOT_FOUND));
     }
 
+    private Dream completedDream(Long userId, Long dreamId) {
+        var dream = dreams.findByIdAndUserId(dreamId, userId)
+                .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        if (dream.getRecordStatus() != DreamRecordStatus.COMPLETED)
+            throw new BusinessException(WorldFolderErrorCode.DREAM_NOT_COMPLETED);
+        return dream;
+    }
 
     private User lockUser(Long userId) {
         var user = users.findByIdForUpdate(userId)

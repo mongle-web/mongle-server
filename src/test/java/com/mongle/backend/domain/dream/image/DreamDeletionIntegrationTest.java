@@ -38,6 +38,7 @@ class DreamDeletionIntegrationTest {
     @Autowired ImageTransactions imageTransactions;
     @Autowired ImageCleanupTransactions cleanupTransactions;
     @Autowired BridgeTransactions bridges;
+    @Autowired com.mongle.backend.domain.world.folder.WorldFolderService folders;
     @Autowired UserRepository users;
     @Autowired JdbcTemplate jdbc;
     @Autowired PlatformTransactionManager manager;
@@ -140,6 +141,9 @@ class DreamDeletionIntegrationTest {
         var b = ready(user, today);
         var edge = bridges.begin(user, new BridgeRequest(version(a), version(b)), true);
         bridges.finish(edge.input(), "연결");
+        var folder = folders.create(user, "삭제 롤백");
+        folders.select(user, folder.worldId(), b.dream.dreamId(), folder.revision());
+        var before = folders.get(user, folder.worldId());
         jdbc.execute("alter table image_cleanup_requests add constraint reject_test_cleanup check(dream_id is null or dream_id<>"+ b.dream.dreamId()+")");
         try {
             assertThatThrownBy(() -> dreams.delete(user, b.dream.dreamId(), b.dream.revision())).isInstanceOf(RuntimeException.class);
@@ -151,9 +155,13 @@ class DreamDeletionIntegrationTest {
             assertThat(count("dream_story_versions", "story_id", b.story.storyId())).isEqualTo(1);
             assertThat(count("dream_generation_jobs", "dream_id", b.dream.dreamId())).isEqualTo(1);
             assertThat(count("image_cleanup_requests", "dream_id", b.dream.dreamId())).isZero();
+            assertThat(folders.get(user, folder.worldId())).isEqualTo(before);
         } finally { jdbc.execute("alter table image_cleanup_requests drop constraint reject_test_cleanup"); }
         dreams.delete(user, b.dream.dreamId(), b.dream.revision());
+        assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();
+        assertThat(folders.get(user, folder.worldId()).revision()).isEqualTo(before.revision() + 1);
     }
+
 
     @Test
     void outerRollbackRestoresDeletedRowsAndRemovesCleanupRequest() {

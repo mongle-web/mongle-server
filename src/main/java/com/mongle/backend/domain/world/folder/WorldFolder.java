@@ -57,4 +57,8 @@ public class WorldFolder extends BaseEntity {
 
     public void selected() { selectedDreamCount++; }
 
+    public void excluded() {
+        if (selectedDreamCount < 1) throw new IllegalStateException("폴더의 선택 수가 올바르지 않습니다.");
+        selectedDreamCount--;
+    }
 }

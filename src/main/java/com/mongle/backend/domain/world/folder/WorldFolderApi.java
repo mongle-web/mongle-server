@@ -48,5 +48,8 @@ public interface WorldFolderApi {
 
 
 
+    @Operation(summary = "세계관에 꿈 선택", description = "내 COMPLETED 기록만 추가합니다. AI 결과 성공 여부와 무관하며 AI 생성 중에도 선택할 수 있습니다. 최신 폴더 revision을 JSON으로 전달합니다. 이미 선택했으면 같은 revision을 유지합니다. 이전 revision은 409입니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "선택 성공", useReturnTypeSchema = true)
+    ResponseEntity<ApiResponse<WorldFolderResponse>> select(@Parameter(hidden = true) Jwt jwt, @Positive Long worldId, @Positive Long dreamId, @Valid WorldRevisionRequest request);
 
 }

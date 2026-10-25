@@ -45,6 +45,12 @@ public class WorldFolderController implements WorldFolderApi {
 
 
 
+    @Override @PutMapping("/{worldId}/dreams/{dreamId}")
+    public ResponseEntity<ApiResponse<WorldFolderResponse>> select(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive Long worldId, @PathVariable @Positive Long dreamId,
+            @Valid @RequestBody WorldRevisionRequest request) {
+        return ok(folders.select(userId(jwt), worldId, dreamId, request.revision()));
+    }
 
 
     private Long userId(Jwt jwt) { return Long.valueOf(jwt.getSubject()); }

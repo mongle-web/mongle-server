@@ -70,6 +70,9 @@ class WorldFolderIntegrationTest {
         assertThat(next.get("hasNext").asBoolean()).isFalse();
         var renamed = data(send(token, "PATCH", path(id), Map.of("name", "새 폴더", "revision", 0)), 200);
         assertThat(renamed.get("revision").asLong()).isEqualTo(1);
+        var dream = completed(user, 0);
+        var selected = data(send(token, "PUT", path(id) + "/dreams/" + dream, Map.of("revision", 1)), 200);
+        assertThat(selected.get("selectedDreamCount").asLong()).isEqualTo(1);
     }
 
     @ParameterizedTest @NullSource @ValueSource(strings = {"", " ", "\t\n", "\u00a0\u3000"})
@@ -88,10 +91,12 @@ class WorldFolderIntegrationTest {
     @Test
     void noOpMutationsPreserveVersionButOldRevisionAlwaysConflicts() {
         var folder = folders.create(user, "꿈");
+        var dream = completed(user, 0);
+        var selected = folders.select(user, folder.worldId(), dream, 0L);
         var before = folders.get(user, folder.worldId());
-        assertThat(folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("꿈", 0L))).isEqualTo(before);
-        var renamed = folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("다른 꿈", 0L));
-        assertThat(renamed.revision()).isEqualTo(1);
+        assertThat(folders.select(user, folder.worldId(), dream, selected.revision())).isEqualTo(before);
+        assertThat(folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("꿈", selected.revision()))).isEqualTo(before);
+        error(() -> folders.select(user, folder.worldId(), dream, 0L), WorldFolderErrorCode.VERSION_CONFLICT);
         error(() -> folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("꿈", 0L)), WorldFolderErrorCode.VERSION_CONFLICT);
     }
 
@@ -102,7 +107,19 @@ class WorldFolderIntegrationTest {
         for (long id : List.of(folder.worldId(), Long.MAX_VALUE)) {
             error(() -> folders.get(other, id), WorldFolderErrorCode.NOT_FOUND);
             error(() -> folders.rename(other, id, new WorldFolderUpdateRequest("변경", 0L)), WorldFolderErrorCode.NOT_FOUND);
+            error(() -> folders.select(other, id, 1L, 0L), WorldFolderErrorCode.NOT_FOUND);
         }
+        var foreign = completed(other, 0);
+        for (long dream : List.of(foreign, Long.MAX_VALUE)) {
+            error(() -> folders.select(user, folder.worldId(), dream, 0L), DreamErrorCode.NOT_FOUND);
+        }
+        for (boolean draft : List.of(true, false)) {
+            var incomplete = transactions.execute(s -> dreams.saveAndFlush(draft
+                    ? Dream.draft(users.findById(user).orElseThrow(), "", LocalDate.of(2020, 1, draft ? 1 : 2))
+                    : Dream.create(users.findById(user).orElseThrow(), "원문", LocalDate.of(2020, 1, 2))).getId());
+            error(() -> folders.select(user, folder.worldId(), incomplete, 0L), WorldFolderErrorCode.DREAM_NOT_COMPLETED);
+        }
+        assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();
         assertThat(folders.list(other, null, 20).items()).isEmpty();
     }
 
@@ -115,6 +132,7 @@ class WorldFolderIntegrationTest {
         assertThat(send(newcomer, "GET", "/api/v1/worlds", null).statusCode()).isEqualTo(403);
         assertThat(send(token, "GET", path(-1L), null).statusCode()).isEqualTo(400);
         assertThat(send(token, "PATCH", path(id), Map.of("name", "이름")).statusCode()).isEqualTo(400);
+        assertThat(send(token, "PUT", path(id) + "/dreams/1", Map.of()).statusCode()).isEqualTo(400);
         for (String query : List.of("size=0", "size=51", "beforeId=0", "size=x"))
             assertThat(send(token, "GET", "/api/v1/worlds?" + query, null).statusCode()).isEqualTo(400);
     }
@@ -122,11 +140,83 @@ class WorldFolderIntegrationTest {
 
 
 
+    @Test
+    void deletingDreamUpdatesOnlyRelatedFoldersAndInvalidatesCursor() {
+        long a = completed(user, 1), b = completed(user, 0);
+        var first = folders.create(user, "A");
+        var second = folders.create(user, "B");
+        var untouched = folders.create(user, "빈 폴더");
+        folders.select(user, first.worldId(), a, 0L);
+        folders.select(user, first.worldId(), b, 1L);
+        folders.select(user, second.worldId(), a, 0L);
+        dreamService.delete(user, a, 0L);
+        assertThat(folders.get(user, first.worldId()).selectedDreamCount()).isEqualTo(1);
+        assertThat(folders.get(user, first.worldId()).revision()).isEqualTo(3);
+        assertThat(folders.get(user, second.worldId()).selectedDreamCount()).isZero();
+        assertThat(folders.get(user, second.worldId()).revision()).isEqualTo(2);
+        assertThat(folders.get(user, untouched.worldId()).revision()).isZero();
+        assertThat(dreams.existsById(b)).isTrue();
+    }
 
+    @Test
+    void rollbackRestoresDreamAndSelectionsCountsAndRevisions() {
+        long dream = completed(user, 0);
+        var folder = folders.create(user, "보존");
+        folders.select(user, folder.worldId(), dream, 0L);
+        var before = folders.get(user, folder.worldId());
+        transactions.executeWithoutResult(status -> {
+            dreamService.delete(user, dream, 0L);
+            assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();
+            status.setRollbackOnly();
+        });
+        assertThat(folders.get(user, folder.worldId())).isEqualTo(before);
+        assertThat(dreams.existsById(dream)).isTrue();
+    }
 
+    @Test
+    void selectionInsertFailureRollsBackCountAndRevision() {
+        var folder = folders.create(user, "실패");
+        long dream = completed(user, 0);
+        jdbc.execute("alter table world_selections add constraint reject_world_selection check(dream_id<>" + dream + ")");
+        try {
+            assertThatThrownBy(() -> folders.select(user, folder.worldId(), dream, 0L)).isInstanceOf(RuntimeException.class);
+            assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();
+            assertThat(folders.get(user, folder.worldId()).revision()).isZero();
+        } finally { jdbc.execute("alter table world_selections drop constraint reject_world_selection"); }
+    }
 
+    @Test
+    void concurrentDuplicateSelectionHasOneSuccessAndOneRevisionConflict() throws Exception {
+        var folder = folders.create(user, "경합");
+        var dream = completed(user, 0);
+        var outcomes = race(() -> folders.select(user, folder.worldId(), dream, 0L),
+                () -> folders.select(user, folder.worldId(), dream, 0L));
+        assertThat(outcomes).containsExactlyInAnyOrder("OK", WorldFolderErrorCode.VERSION_CONFLICT.getCode());
+        assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isEqualTo(1);
+    }
 
+    @Test
+    void concurrentRenameAndSelectionCannotOverwriteEachOther() throws Exception {
+        var folder = folders.create(user, "경합");
+        var dream = completed(user, 0);
+        var outcomes = race(() -> folders.rename(user, folder.worldId(), new WorldFolderUpdateRequest("새 이름", 0L)),
+                () -> folders.select(user, folder.worldId(), dream, 0L));
+        assertThat(outcomes).containsExactlyInAnyOrder("OK", WorldFolderErrorCode.VERSION_CONFLICT.getCode());
+        var result = folders.get(user, folder.worldId());
+        assertThat(result.revision()).isEqualTo(1);
+        assertThat(result.name().equals("새 이름") ? result.selectedDreamCount() : 1L - result.selectedDreamCount()).isZero();
+    }
 
+    @Test
+    void concurrentDreamDeleteAndSelectionNeverLeaveDanglingRelation() throws Exception {
+        var folder = folders.create(user, "경합");
+        var dream = completed(user, 0);
+        var outcomes = race(() -> dreamService.delete(user, dream, 0L),
+                () -> folders.select(user, folder.worldId(), dream, 0L));
+        assertThat(outcomes).allMatch(s -> s.equals("OK") || s.equals(DreamErrorCode.NOT_FOUND.getCode()));
+        assertThat(dreams.existsById(dream)).isFalse();
+        assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();
+    }
 
 
 
@@ -177,32 +267,5 @@ class WorldFolderIntegrationTest {
             return client.send(request.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                     : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofString());
         }
-    }
-    @Test
-    void dreamDeletionRemovesStoredSelectionsAtomically() {
-        long dream = completed(user, 0), remaining = completed(user, 1);
-        var first = folders.create(user, "첫 폴더");
-        var second = folders.create(user, "다른 폴더");
-        for (var folder : List.of(first, second)) {
-            jdbc.update("insert into world_selections(world_id,dream_id,dreamed_at,created_at) values(?,?,?,CURRENT_TIMESTAMP)",
-                    folder.worldId(), dream, LocalDate.now());
-            jdbc.update("update world_folders set selected_dream_count=1,revision=1 where id=?", folder.worldId());
-        }
-        var before = folders.get(user, first.worldId());
-        transactions.executeWithoutResult(status -> {
-            dreamService.delete(user, dream, 0L);
-            assertThat(folders.get(user, first.worldId()).selectedDreamCount()).isZero();
-            status.setRollbackOnly();
-        });
-        assertThat(folders.get(user, first.worldId())).isEqualTo(before);
-        assertThat(dreams.existsById(dream)).isTrue();
-        assertThat(jdbc.queryForObject("select count(*) from world_selections where dream_id=?", Long.class, dream)).isEqualTo(2);
-        dreamService.delete(user, dream, 0L);
-        for (var folder : List.of(first, second)) {
-            assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();
-            assertThat(folders.get(user, folder.worldId()).revision()).isEqualTo(2);
-        }
-        assertThat(jdbc.queryForObject("select count(*) from world_selections where dream_id=?", Long.class, dream)).isZero();
-        assertThat(dreams.existsById(remaining)).isTrue();
     }
 }
