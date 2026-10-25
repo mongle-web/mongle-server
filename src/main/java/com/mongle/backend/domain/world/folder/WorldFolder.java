@@ -55,5 +55,6 @@ public class WorldFolder extends BaseEntity {
             throw new BusinessException(WorldFolderErrorCode.VERSION_CONFLICT);
     }
 
+    public void selected() { selectedDreamCount++; }
 
 }

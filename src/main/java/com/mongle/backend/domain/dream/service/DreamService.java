@@ -15,6 +15,7 @@ import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.domain.world.bridge.BridgeResultRepository;
+import com.mongle.backend.domain.world.folder.WorldSelectionDeletion;
 import com.mongle.backend.global.error.BusinessException;
 
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class DreamService {
     private final DreamGenerationGuard generationGuard;
     private final DreamGenerationTransactions generationTransactions;
     private final BridgeResultRepository bridges;
+    private final WorldSelectionDeletion worldSelections;
 
     @Transactional
     public DreamResponse create(Long userId, DreamCreateRequest request) {
@@ -144,6 +146,8 @@ public class DreamService {
         // 연결 결과를 먼저 제거한다. 같은 사용자 잠금으로 늦은 완료 저장과 직렬화한다.
         // 새로 인접한 꿈 사이의 연결 문장은 생성하지 않는다.
         bridges.deleteForDream(userId, id);
+
+        worldSelections.deleteForDream(userId, id);
 
         derivedDataDeletion.delete(userId, id);
 

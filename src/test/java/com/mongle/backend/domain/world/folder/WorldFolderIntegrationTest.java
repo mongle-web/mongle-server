@@ -178,4 +178,31 @@ class WorldFolderIntegrationTest {
                     : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofString());
         }
     }
+    @Test
+    void dreamDeletionRemovesStoredSelectionsAtomically() {
+        long dream = completed(user, 0), remaining = completed(user, 1);
+        var first = folders.create(user, "첫 폴더");
+        var second = folders.create(user, "다른 폴더");
+        for (var folder : List.of(first, second)) {
+            jdbc.update("insert into world_selections(world_id,dream_id,dreamed_at,created_at) values(?,?,?,CURRENT_TIMESTAMP)",
+                    folder.worldId(), dream, LocalDate.now());
+            jdbc.update("update world_folders set selected_dream_count=1,revision=1 where id=?", folder.worldId());
+        }
+        var before = folders.get(user, first.worldId());
+        transactions.executeWithoutResult(status -> {
+            dreamService.delete(user, dream, 0L);
+            assertThat(folders.get(user, first.worldId()).selectedDreamCount()).isZero();
+            status.setRollbackOnly();
+        });
+        assertThat(folders.get(user, first.worldId())).isEqualTo(before);
+        assertThat(dreams.existsById(dream)).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from world_selections where dream_id=?", Long.class, dream)).isEqualTo(2);
+        dreamService.delete(user, dream, 0L);
+        for (var folder : List.of(first, second)) {
+            assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();
+            assertThat(folders.get(user, folder.worldId()).revision()).isEqualTo(2);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from world_selections where dream_id=?", Long.class, dream)).isZero();
+        assertThat(dreams.existsById(remaining)).isTrue();
+    }
 }

@@ -21,6 +21,7 @@ class InitialSchemaValidationTest {
 
     @Test
     void createsWorldFolderTablesFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_selections");
         jdbcTemplate.execute("drop table world_folders");
         jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
             var migration = new org.springframework.core.io.ClassPathResource("db/migrations/20261025-world-folders.sql");
@@ -33,6 +34,14 @@ class InitialSchemaValidationTest {
                 where table_schema='public' and table_name='world_folders'
                 """, String.class)).containsExactlyInAnyOrder(
                 "id", "user_id", "name", "selected_dream_count", "revision", "created_at", "updated_at");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema='public' and table_name='world_selections'
+                """, String.class)).containsExactlyInAnyOrder("id", "world_id", "dream_id", "dreamed_at", "created_at");
+        assertThat(jdbcTemplate.queryForList("""
+                select index_name from information_schema.indexes
+                where table_schema='public' and table_name='world_selections'
+                """, String.class)).contains("idx_world_selection_date", "idx_world_selection_dream");
     }
 
     @Test

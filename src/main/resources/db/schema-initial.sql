@@ -364,3 +364,17 @@ CREATE TABLE IF NOT EXISTS world_folders (
     INDEX idx_world_folder_user_id (user_id, id),
     CONSTRAINT fk_world_folder_user FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS world_selections (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    world_id BIGINT NOT NULL,
+    dream_id BIGINT NOT NULL,
+    dreamed_at DATE NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_world_selection_dream UNIQUE (world_id, dream_id),
+    INDEX idx_world_selection_date (world_id, dreamed_at, dream_id),
+    INDEX idx_world_selection_dream (dream_id),
+    CONSTRAINT fk_world_selection_folder FOREIGN KEY (world_id) REFERENCES world_folders(id),
+    CONSTRAINT fk_world_selection_dream FOREIGN KEY (dream_id) REFERENCES dreams(id)
+);
