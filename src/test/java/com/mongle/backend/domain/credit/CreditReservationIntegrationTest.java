@@ -128,6 +128,19 @@ class CreditReservationIntegrationTest {
         error(()->reservations.release(other,r.reservationId(),CreditReservation.ReleaseReason.CANCELLED),CreditErrorCode.NOT_FOUND);
         error(()->reservations.release(user,r.reservationId(),CreditReservation.ReleaseReason.EXPIRED),CreditErrorCode.STATE_CONFLICT);
     }
+    @Test void staleOuterTransactionCannotOverwriteNewlyGrantedBalance() throws Exception {
+        credits.grant(user,CreditSource.PAYMENT,"stale-initial:"+user,20);
+        assertThatThrownBy(()->transaction.execute(s->{
+            credits.balance(user);
+            try(var pool=Executors.newSingleThreadExecutor()) {
+                pool.submit(()->credits.grant(user,CreditSource.PAYMENT,"stale-new:"+user,10)).get(10,TimeUnit.SECONDS);
+            } catch(Exception e) { throw new AssertionError(e); }
+            reserve("stale-attempt");
+            return null;
+        })).isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        assertThat(credits.balance(user)).isEqualTo(new CreditBalance(30,0,30));
+        assertThat(jdbc.queryForObject("select count(*) from credit_reservations where user_id=?",Long.class,user)).isZero();
+    }
     Long newUser(){return users.saveAndFlush(User.create(UUID.randomUUID()+"@reserve.test","예약")).getId();}
     void error(Runnable r,ErrorCode e){assertThatThrownBy(r::run).isInstanceOfSatisfying(BusinessException.class,x->assertThat(x.getErrorCode()).isEqualTo(e));}
     List<String> race(Runnable a,Runnable b) throws Exception {

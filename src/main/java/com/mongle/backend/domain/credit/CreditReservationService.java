@@ -94,6 +94,17 @@ public class CreditReservationService {
         return releaseReserved(r, reason);
     }
 
+    /** 복구 스캔의 각 항목을 독립 처리하고 잠금 획득 뒤 상태·기한을 다시 확인한다. */
+    @Transactional
+    public boolean expire(Long userId, Long reservationId) {
+        credits.requireUser(userId, true);
+        var r = owned(userId, reservationId);
+        if (r.getState() != CreditReservation.State.RESERVED || r.getExpiresAt().isAfter(authClock.instant()))
+            return false;
+        releaseReserved(r, CreditReservation.ReleaseReason.EXPIRED);
+        return true;
+    }
+
     private CreditReservationReceipt releaseReserved(CreditReservation r, CreditReservation.ReleaseReason reason) {
         var account = credits.account(r.getUserId());
         account.release(r.getAmount());

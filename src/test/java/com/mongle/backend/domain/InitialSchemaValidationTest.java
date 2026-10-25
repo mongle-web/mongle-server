@@ -20,6 +20,24 @@ class InitialSchemaValidationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
+    void creditMigrationIsRepeatableAndKeepsReservationTrace() {
+        for (String table : java.util.List.of("credit_ledger", "credit_allocations", "credit_reservations", "credit_grants", "credit_accounts")) {
+            jdbcTemplate.execute("drop table " + table);
+        }
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var script = new org.springframework.core.io.ClassPathResource("db/migrations/20261026-credit-ledger.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, script);
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, script);
+            return null;
+        });
+        for (String table : java.util.List.of("credit_accounts", "credit_grants", "credit_reservations", "credit_allocations", "credit_ledger")) {
+            assertThat(jdbcTemplate.queryForObject("select count(*) from information_schema.tables where table_schema='public' and table_name=?", Long.class, table)).isEqualTo(1);
+        }
+        assertThat(jdbcTemplate.queryForList("select column_name from information_schema.columns where table_schema='public' and table_name='credit_grants'", String.class))
+                .contains("source_type", "source_key", "source_hash", "available", "reserved", "consumed", "version");
+    }
+
+    @Test
     void createsWorldFolderTablesFromMigrationAndAllowsRerun() {
         jdbcTemplate.execute("drop table world_selections");
         jdbcTemplate.execute("drop table world_folders");
