@@ -30,6 +30,8 @@ public class CreditReservation extends BaseEntity {
     @Column(name = "result_key", length = 128) private String resultKey;
     @Enumerated(EnumType.STRING) @Column(name = "release_reason", length = 20) private ReleaseReason releaseReason;
 
+    @Version @Column(nullable = false) private long version;
+
     static CreditReservation create(Long userId, String key, CreditUsage usage, String target, long amount, Instant expiresAt) {
         var r = new CreditReservation(); r.userId = userId; r.requestKey = key; r.requestHash = CreditRules.hash(key);
         r.usage = usage; r.targetKey = target; r.targetHash = CreditRules.hash(target);

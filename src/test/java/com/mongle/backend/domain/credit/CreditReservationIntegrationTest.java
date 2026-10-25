@@ -80,6 +80,54 @@ class CreditReservationIntegrationTest {
         assertThat(race(()->reserve("race-same"),()->reserve("race-same"))).containsOnly("OK");
         assertThat(credits.balance(user)).isEqualTo(new CreditBalance(12,12,24));
     }
+    @Test void settlementConsumesReservedCreditsExactlyOnceAndConflictingResultIsRejected() {
+        var g=credits.grant(user,CreditSource.PAYMENT,"settle:"+user,20);
+        var r=reserve("settle");
+        var success=reservations.settle(user,r.reservationId(),"image-version:1");
+        assertThat(success.state()).isEqualTo(CreditReservation.State.SETTLED);
+        assertThat(reservations.settle(user,r.reservationId(),"image-version:1")).isEqualTo(success);
+        error(()->reservations.settle(user,r.reservationId(),"image-version:2"),CreditErrorCode.REQUEST_CONFLICT);
+        error(()->reservations.release(user,r.reservationId(),CreditReservation.ReleaseReason.FAILURE),CreditErrorCode.STATE_CONFLICT);
+        assertThat(credits.balance(user)).isEqualTo(new CreditBalance(8,0,8));
+        assertThat(grants.findById(g.grantId()).orElseThrow().getConsumed()).isEqualTo(12);
+        assertThat(credits.transactions(user,null,1).items().getFirst().reservedDelta()).isEqualTo(-12);
+    }
+    @Test void failureReleaseRestoresSameSourcesAndPreservesFirstReason() {
+        var g=credits.grant(user,CreditSource.PAYMENT,"release:"+user,20);
+        var r=reserve("release");
+        var released=reservations.release(user,r.reservationId(),CreditReservation.ReleaseReason.FAILURE);
+        assertThat(reservations.release(user,r.reservationId(),CreditReservation.ReleaseReason.CANCELLED)).isEqualTo(released);
+        error(()->reservations.settle(user,r.reservationId(),"late-result"),CreditErrorCode.STATE_CONFLICT);
+        assertThat(credits.balance(user)).isEqualTo(new CreditBalance(20,0,20));
+        var source=grants.findById(g.grantId()).orElseThrow();
+        assertThat(source.getAvailable()).isEqualTo(20);assertThat(source.getConsumed()).isZero();assertThat(source.getReserved()).isZero();
+        assertThat(reserve("release")).isEqualTo(released);
+    }
+    @Test void settlementAndReleaseRollBackWithResultTransaction() {
+        credits.grant(user,CreditSource.PAYMENT,"result-rollback:"+user,20);
+        var r=reserve("result-rollback");
+        assertThatThrownBy(()->transaction.execute(s->{reservations.settle(user,r.reservationId(),"image:1");throw new IllegalStateException();})).isInstanceOf(IllegalStateException.class);
+        assertThat(credits.balance(user)).isEqualTo(new CreditBalance(8,12,20));
+        assertThat(reservations.get(user,r.reservationId()).state()).isEqualTo(CreditReservation.State.RESERVED);
+        assertThatThrownBy(()->transaction.execute(s->{reservations.release(user,r.reservationId(),CreditReservation.ReleaseReason.FAILURE);throw new IllegalStateException();})).isInstanceOf(IllegalStateException.class);
+        assertThat(credits.balance(user)).isEqualTo(new CreditBalance(8,12,20));
+    }
+    @Test void concurrentSettlementAndFailureCannotBothWin() throws Exception {
+        credits.grant(user,CreditSource.PAYMENT,"completion-race:"+user,20);
+        var r=reserve("completion-race");
+        assertThat(race(()->reservations.settle(user,r.reservationId(),"image:1"),
+                ()->reservations.release(user,r.reservationId(),CreditReservation.ReleaseReason.FAILURE)))
+                .containsExactlyInAnyOrder("OK",CreditErrorCode.STATE_CONFLICT.getCode());
+        var state=reservations.get(user,r.reservationId()).state();
+        assertThat(credits.balance(user)).isEqualTo(state==CreditReservation.State.SETTLED
+                ?new CreditBalance(8,0,8):new CreditBalance(20,0,20));
+    }
+    @Test void cannotSettleOrReleaseAnotherUsersReservation() {
+        credits.grant(user,CreditSource.PAYMENT,"ownership:"+user,20);var r=reserve("ownership");Long other=newUser();
+        error(()->reservations.settle(other,r.reservationId(),"image:1"),CreditErrorCode.NOT_FOUND);
+        error(()->reservations.release(other,r.reservationId(),CreditReservation.ReleaseReason.CANCELLED),CreditErrorCode.NOT_FOUND);
+        error(()->reservations.release(user,r.reservationId(),CreditReservation.ReleaseReason.EXPIRED),CreditErrorCode.STATE_CONFLICT);
+    }
     Long newUser(){return users.saveAndFlush(User.create(UUID.randomUUID()+"@reserve.test","예약")).getId();}
     void error(Runnable r,ErrorCode e){assertThatThrownBy(r::run).isInstanceOfSatisfying(BusinessException.class,x->assertThat(x.getErrorCode()).isEqualTo(e));}
     List<String> race(Runnable a,Runnable b) throws Exception {

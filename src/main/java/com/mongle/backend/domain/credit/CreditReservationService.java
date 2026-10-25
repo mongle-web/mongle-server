@@ -60,6 +60,61 @@ public class CreditReservationService {
         return CreditReservationReceipt.from(reservation);
     }
 
+    /** 성공 결과 저장과 동일한 트랜잭션에서 실행한다. 만료/해제된 예약으로 결과를 공개하면 안 된다. */
+    @Transactional
+    public CreditReservationReceipt settle(Long userId, Long reservationId, String resultKey) {
+        CreditRules.key(resultKey);
+        credits.requireUser(userId, true);
+        var r = owned(userId, reservationId);
+        if (r.getState() == CreditReservation.State.SETTLED) {
+            if (!resultKey.equals(r.getResultKey())) throw new BusinessException(CreditErrorCode.REQUEST_CONFLICT);
+            return CreditReservationReceipt.from(r);
+        }
+        if (r.getState() != CreditReservation.State.RESERVED || !r.getExpiresAt().isAfter(authClock.instant()))
+            throw new BusinessException(CreditErrorCode.STATE_CONFLICT);
+        var account = credits.account(userId);
+        account.settle(r.getAmount());
+        for (var allocation : checkedAllocations(r)) allocation.getGrant().settle(allocation.getAmount());
+        r.settle(resultKey);
+        ledger.save(CreditLedger.entry(account, CreditLedger.Kind.SETTLE, null, r.getId(), null, r.getUsage(), 0, -r.getAmount()));
+        ledger.flush();
+        return CreditReservationReceipt.from(r);
+    }
+
+    /** 생성 실패/취소에 대한 예약 해제이며 구매 결제 환불과는 별개다. 최초 해제 사유를 보존한다. */
+    @Transactional
+    public CreditReservationReceipt release(Long userId, Long reservationId, CreditReservation.ReleaseReason reason) {
+        if (reason == null) throw new BusinessException(CreditErrorCode.INVALID_INPUT);
+        credits.requireUser(userId, true);
+        var r = owned(userId, reservationId);
+        if (r.getState() == CreditReservation.State.RELEASED) return CreditReservationReceipt.from(r);
+        if (r.getState() != CreditReservation.State.RESERVED) throw new BusinessException(CreditErrorCode.STATE_CONFLICT);
+        if (reason == CreditReservation.ReleaseReason.EXPIRED && r.getExpiresAt().isAfter(authClock.instant()))
+            throw new BusinessException(CreditErrorCode.STATE_CONFLICT);
+        return releaseReserved(r, reason);
+    }
+
+    private CreditReservationReceipt releaseReserved(CreditReservation r, CreditReservation.ReleaseReason reason) {
+        var account = credits.account(r.getUserId());
+        account.release(r.getAmount());
+        for (var allocation : checkedAllocations(r)) allocation.getGrant().release(allocation.getAmount());
+        r.release(reason);
+        ledger.save(CreditLedger.entry(account, CreditLedger.Kind.RELEASE, null, r.getId(), null, r.getUsage(), r.getAmount(), -r.getAmount()));
+        ledger.flush();
+        return CreditReservationReceipt.from(r);
+    }
+
+    private java.util.List<CreditAllocation> checkedAllocations(CreditReservation r) {
+        var rows = allocations.forReservation(r.getId());
+        long sum = 0;
+        for (var row : rows) {
+            if (!row.getGrant().getUserId().equals(r.getUserId())) throw new IllegalStateException("크레딧 지급 출처 소유권 불일치");
+            sum = CreditRules.add(sum, row.getAmount());
+        }
+        if (sum != r.getAmount()) throw new IllegalStateException("크레딧 예약 배분 불일치");
+        return rows;
+    }
+
     public CreditReservationReceipt get(Long userId, Long reservationId) {
         credits.requireUser(userId, false);
         return CreditReservationReceipt.from(owned(userId, reservationId));

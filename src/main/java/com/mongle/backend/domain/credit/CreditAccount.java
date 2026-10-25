@@ -14,6 +14,8 @@ public class CreditAccount extends BaseEntity {
     @Column(nullable = false) private long available;
     @Column(nullable = false) private long reserved;
 
+    @Version @Column(nullable = false) private long version;
+
     static CreditAccount create(Long userId) {
         var a = new CreditAccount(); a.userId = userId; return a;
     }

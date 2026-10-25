@@ -21,6 +21,8 @@ public class CreditGrant extends BaseCreatedEntity {
     @Column(nullable = false) private long reserved;
     @Column(nullable = false) private long consumed;
 
+    @Version @Column(nullable = false) private long version;
+
     static CreditGrant create(Long userId, CreditSource type, String key, long amount) {
         var g = new CreditGrant(); g.userId = userId; g.sourceType = type;
         g.sourceKey = CreditRules.key(key); g.sourceHash = CreditRules.hash(key);
