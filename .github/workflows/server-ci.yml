@@ -41,7 +41,10 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
       - name: Test and build executable JAR
-        run: ./gradlew --no-daemon test bootJar
+        run: |
+          ./gradlew --no-daemon test bootJar
+          echo 'Intentional #73 CI failure-path verification'
+          exit 1
 
       - name: Upload test reports
         if: ${{ always() && !cancelled() }}
