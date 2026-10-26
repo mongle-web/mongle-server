@@ -34,6 +34,7 @@ public interface ImageApi {
                     regenerate=true일 때 조회한 imageVersion도 전달합니다. 오래된 요청은 409입니다.
                     새 작업의 인스턴스 처리 한도 초과는 IMAGE_503_2입니다. 기존 결과 재사용은 한도와 무관합니다.
                     Provider/스토리지/스타일 미설정은 503입니다. 처리 실패는 status=FAILED와 failureCode로 표시합니다.
+                    Provider 실패는 인증/요청 제한/시간 초과/연결 불가/요청 거절로 분류하며 자동 재호출하지 않습니다.
                     재생성 실패 시 이전 성공 결과를 유지합니다. 결제·크레딧 차감은 포함하지 않습니다.
                     """)
     CompletableFuture<ResponseEntity<ApiResponse<ImageResponse>>> generate(

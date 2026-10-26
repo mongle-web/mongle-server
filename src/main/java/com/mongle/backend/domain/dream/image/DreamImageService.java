@@ -61,7 +61,8 @@ public class DreamImageService {
                     ? runtime : new IllegalStateException("이미지 제공자 호출 실패", failure);
             String code = original instanceof BusinessException business
                     && business.getErrorCode() == ImageErrorCode.INVALID_OUTPUT
-                    ? "INVALID_OUTPUT" : "CALL_FAILED";
+                    ? "INVALID_OUTPUT" : original instanceof ImageProviderException provider
+                            ? provider.failureCode() : "CALL_FAILED";
             return fail(input, code, original);
         }
         ImagePayload payload;
