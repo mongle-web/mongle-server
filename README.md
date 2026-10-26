@@ -55,7 +55,7 @@ Java 21을 사용한다. 프로필 미지정 시 `local`이 적용된다.
 
 - `local`: H2 메모리 DB(MySQL 모드), `ddl-auto=create-drop`. 재시작하면 데이터가 사라진다.
 - `test`: 별도 H2 메모리 DB. 테스트 클래스에서 명시적으로 활성화한다.
-- `mysql`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` 환경변수로 외부 MySQL에 연결한다.
+- `mysql`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_TRUSTSTORE_URL`, `DB_TRUSTSTORE_PASSWORD` 환경변수로 외부 MySQL에 연결한다.
   공통 설정의 `ddl-auto=validate`를 사용하며 테이블을 자동 변경하지 않는다.
 
 외부 DB를 새로 준비할 때는 `src/main/resources/db/schema-initial.sql`을 먼저 적용한다.
@@ -63,9 +63,10 @@ Java 21을 사용한다. 프로필 미지정 시 `local`이 적용된다.
 셸에 다음 환경변수를 설정한 뒤 실행한다(`.env` 파일은 자동으로 로드되지 않는다).
 
 ```sh
-export DB_URL='jdbc:mysql://localhost:3306/mongle'
-export DB_USERNAME='mongle'
-export DB_PASSWORD='your-local-password'
+export DB_URL='jdbc:mysql://<RDS-endpoint>:3306/mongle'
+export DB_USERNAME='mongle_app'
+export DB_TRUSTSTORE_URL='file:/etc/mongle/rds-truststore.p12'
+# Supply DB_PASSWORD, DB_TRUSTSTORE_PASSWORD and MONGLE_AUTH_SECRET securely.
 ./gradlew bootRun --args='--spring.profiles.active=mysql'
 ```
 
@@ -158,3 +159,5 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 - [OpenAI 비동기 이미지 Provider 설정과 검증](docs/image-openai.md)
 
 - [크레딧 잔액·원장·예약 및 운영 설정](docs/credits.md)
+
+MySQL 8.4 / RDS TLS, existing-schema upgrade and native regression instructions: [deployment guide](docs/mysql-rds-deployment.md).
