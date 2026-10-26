@@ -30,11 +30,14 @@ public final class OAuthProviderGuard extends OncePerRequestFilter {
             throws ServletException, IOException {
         String path = request.getServletPath();
         for (String prefix : new String[] {"/oauth2/authorization/", "/login/oauth2/code/"}) {
-            if (path.startsWith(prefix)
-                    && registrations.findByRegistrationId(path.substring(prefix.length()))
-                            == null) {
-                responses.failure(response, AuthErrorCode.UNSUPPORTED_PROVIDER);
-                return;
+            if (path.startsWith(prefix)) {
+                String provider = path.substring(prefix.length());
+                if (provider.isBlank()
+                        || provider.contains("/")
+                        || registrations.findByRegistrationId(provider) == null) {
+                    responses.failure(response, AuthErrorCode.UNSUPPORTED_PROVIDER);
+                    return;
+                }
             }
         }
         chain.doFilter(request, response);
