@@ -32,6 +32,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
         "spring.datasource.url=jdbc:h2:mem:mutation-guards;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "mongle.image.styles[0]=test-style"
 })
@@ -57,6 +58,7 @@ class DreamGenerationGuardIntegrationTest {
         }
     }
 
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired DreamService dreams;
     @Autowired DreamStructureService analyses;
     @Autowired DreamStoryService stories;
@@ -75,6 +77,7 @@ class DreamGenerationGuardIntegrationTest {
     @BeforeEach
     void setup() {
         user = users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "몽글")).getId();
+        credits.grant(user,com.mongle.backend.domain.credit.CreditSource.SIGNUP,"guard-image:"+user,1000);
         a = ready(1);
         b = ready(2);
         c = ready(3);

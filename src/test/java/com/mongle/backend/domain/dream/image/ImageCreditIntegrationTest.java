@@ -23,7 +23,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-@SpringBootTest(properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
     "spring.datasource.url=jdbc:h2:mem:image-credits;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
     "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2",
     "mongle.credit.dream-image-regeneration=3", "mongle.image.styles[0]=test-style"})
@@ -31,6 +31,8 @@ import java.util.concurrent.*;
 @Import(DreamImageIntegrationTest.Config.class)
 class ImageCreditIntegrationTest {
     @Autowired UserRepository users;
+    @Autowired com.mongle.backend.domain.auth.service.TokenService tokens;
+    @org.springframework.beans.factory.annotation.Value("${local.server.port}") int port;
     @Autowired DreamService dreams;
     @Autowired DreamStructureService analyses;
     @Autowired DreamStoryService stories;
@@ -230,6 +232,36 @@ class ImageCreditIntegrationTest {
         expireCredit(orphan.reservationId()); recovery.recoverExpired();
         assertThat(credits.balance(user).reserved()).isZero(); assertThat(credits.balance(user).available()).isEqualTo(10);
         assertThat(count("RELEASE")).isEqualTo(1);
+    }
+
+    java.net.http.HttpResponse<String> post(DreamResponse dream,String access) throws Exception {
+        var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:"+port+"/api/v1/dreams/"+dream.dreamId()+"/image"))
+            .header("Content-Type","application/json").header("Authorization","Bearer "+access)
+            .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"revision\":"+dream.revision()+",\"style\":\"test-style\"}")).build();
+        return java.net.http.HttpClient.newHttpClient().send(request,java.net.http.HttpResponse.BodyHandlers.ofString());
+    }
+    @Test void httpReportsInsufficientAndUnconfiguredCostBeforeProviderCall() throws Exception {
+        var dream=ready(); String access=tokens.login(user).response().accessToken();
+        var insufficient=post(dream,access);
+        assertThat(insufficient.statusCode()).isEqualTo(409); assertThat(insufficient.body()).contains("CREDIT_409_1");
+        fund(10);
+        org.mockito.Mockito.doThrow(new BusinessException(CreditErrorCode.UNAVAILABLE))
+            .when(creditProperties).cost(CreditUsage.DREAM_IMAGE_GENERATION);
+        var unavailable=post(dream,access);
+        assertThat(unavailable.statusCode()).isEqualTo(503); assertThat(unavailable.body()).contains("CREDIT_503_1");
+        assertThat(generator.calls).hasValue(0); assertThat(credits.balance(user).reserved()).isZero();
+    }
+    @Test void httpAndOpenApiPreserveSuccessSchemaAndChargingErrors() throws Exception {
+        fund(10); var dream=ready(); String access=tokens.login(user).response().accessToken();
+        var response=post(dream,access); assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("COMPLETED").doesNotContain("creditReservationId","storageKey");
+        var docs=java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:"+port+"/v3/api-docs")).GET().build(),java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(docs.statusCode()).isEqualTo(200);
+        var json=new tools.jackson.databind.ObjectMapper().readTree(docs.body());
+        var operation=json.path("paths").path("/api/v1/dreams/{dreamId}/image").path("post");
+        assertThat(operation.path("responses").path("200").path("content").path("application/json").path("schema").toString()).contains("$ref");
+        assertThat(operation.path("responses").path("409").path("description").asText()).contains("CREDIT_409_1","CREDIT_409_5");
+        assertThat(operation.path("responses").path("503").path("description").asText()).contains("CREDIT_503_1");
     }
 
 }
