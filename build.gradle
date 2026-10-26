@@ -55,3 +55,28 @@ tasks.named('test') {
 	maxHeapSize = '1g'
 	useJUnitPlatform()
 }
+
+// Opt-in native MySQL regressions; fixtures are created by scripts/mysql84-test.py.
+sourceSets {
+    mysqlTest {
+        compileClasspath += sourceSets.main.output + sourceSets.test.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+    }
+}
+configurations {
+    mysqlTestImplementation.extendsFrom testImplementation
+    mysqlTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+tasks.register('mysqlTest', Test) {
+    description = 'Runs against the disposable native MySQL 8.4 fixture (use scripts/mysql84-test.py).'
+    group = 'verification'
+    testClassesDirs = sourceSets.mysqlTest.output.classesDirs
+    classpath = sourceSets.mysqlTest.runtimeClasspath
+    maxHeapSize = '1g'
+    useJUnitPlatform()
+    doFirst {
+        if (!System.getenv('MONGLE_MYSQL_TEST_PORT')) {
+            throw new GradleException('Run python3 scripts/mysql84-test.py first; no external DB is accepted.')
+        }
+    }
+}
