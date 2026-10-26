@@ -161,3 +161,5 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 - [크레딧 잔액·원장·예약 및 운영 설정](docs/credits.md)
 
 MySQL 8.4 / RDS TLS, existing-schema upgrade and native regression instructions: [deployment guide](docs/mysql-rds-deployment.md).
+
+- [세계관 전체 이미지 생성·재생성 및 크레딧 과금](docs/world-image.md)

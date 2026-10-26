@@ -37,6 +37,9 @@ logging:
 
 mongle:
   world:
+    image:
+      enabled: ${MONGLE_WORLD_IMAGE_ENABLED:true}
+      max-input-characters: ${MONGLE_WORLD_IMAGE_MAX_INPUT_CHARACTERS:24000}
     composition:
       enabled: ${MONGLE_WORLD_COMPOSITION_ENABLED:true}
       worker-enabled: ${MONGLE_WORLD_COMPOSITION_WORKER_ENABLED:true}

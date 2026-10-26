@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 
 /** 동기 IO는 기존 이미지 완료 풀/정리 실행기에서만 실행한다. 소유권은 도메인이 검사한다. */
 public final class S3ImageAssetStore implements ImageAssetStore, AutoCloseable {
-    private static final Pattern KEY = Pattern.compile("dream-images/[1-9][0-9]{0,18}/[1-9][0-9]{0,18}/"
+    private static final Pattern KEY = Pattern.compile("(?:dream-images|world-images)/[1-9][0-9]{0,18}/[1-9][0-9]{0,18}/"
             + "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(png|jpg)");
     private final S3Client client;
     private final S3Presigner presigner;

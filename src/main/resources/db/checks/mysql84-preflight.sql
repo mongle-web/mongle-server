@@ -26,7 +26,7 @@ ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;
 SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA=DATABASE()
-  AND TABLE_NAME IN ('world_compositions','world_composition_entries')
+  AND TABLE_NAME IN ('world_compositions','world_composition_entries','world_images','world_image_sources')
 ORDER BY TABLE_NAME, ORDINAL_POSITION;
 
 -- Exact counts for credit/payment data. Do not infer all data is empty from TABLE_ROWS estimates.
