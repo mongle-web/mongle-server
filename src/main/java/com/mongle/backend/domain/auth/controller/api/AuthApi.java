@@ -10,12 +10,12 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
 
-@Tag(name = "Auth", description = "토큰 재발급 및 로그아웃")
+@Tag(name = "Auth", description = "카카오 웹 로그인은 /oauth2/authorization/kakao로 브라우저 전체 이동합니다. 완료 화면에서 쿠키를 포함해 CSRF 조회 후 Refresh를 한 번 호출합니다. OAuth 시작/Callback은 보안 필터가 처리합니다.")
 public interface AuthApi {
     @Operation(summary = "CSRF 토큰 조회", description = "쿠키를 유지하고 반환된 headerName과 token을 재발급·로그아웃 요청 헤더에 넣습니다.")
     ResponseEntity<ApiResponse<CsrfResponse>> csrf(@Parameter(hidden = true) CsrfToken token);
 
-    @Operation(summary = "인증 토큰 재발급", description = "HttpOnly Refresh 쿠키와 CSRF 헤더가 필요합니다. 성공 시 Refresh 쿠키가 교체되며 이전 값은 사용할 수 없습니다.")
+    @Operation(summary = "인증 토큰 재발급", description = "HttpOnly Refresh 쿠키와 CSRF 헤더가 필요합니다. 성공 시 Refresh 쿠키가 교체되며 이전 값은 사용할 수 없습니다. credentials를 포함하고 동시 갱신 요청을 하나로 합쳐야 합니다. 응답 user.onboardingCompleted로 온보딩을 분기합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "새 Access Token 및 사용자 정보")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Refresh 쿠키가 없거나 만료·변조됨")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "CSRF 검증 실패")
