@@ -3,6 +3,7 @@ package com.mongle.backend.domain.dream.image;
 import com.mongle.backend.domain.dream.analysis.StoredAnalysisRepository;
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.generation.DreamGenerationGuard;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.dream.story.*;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
@@ -30,8 +31,12 @@ public class ImageTransactions {
     private final DreamStoryRepository stories;
     private final StoryValidator storyValidator;
     private final DreamImageRepository images;
+    private final ImageCleanupRequestRepository cleanupRequests;
     private final ImageOptions options;
     private final Clock authClock;
+    private final DreamGenerationGuard generationGuard;
+    private final ImageCreditTransactions credits;
+    private final ImageCleanupRegistration cleanupRegistration;
 
     public record Reservation(ImageResponse response, ImageGenerator.Input input) {}
 
@@ -58,18 +63,10 @@ public class ImageTransactions {
                         .orElseThrow(() -> new BusinessException(ImageErrorCode.STORY_REQUIRED));
         var story =
                 stories.findByAnalysisIdAndUserId(analysis.getId(), userId)
-                        .filter(
-                                s ->
-                                        s.getStatus() == GenerationStatus.COMPLETED
-                                                && s.getResultJson() != null
-                                                && Objects.equals(
-                                                        s.getResultRevision(),
-                                                        dream.getSourceRevision())
-                                                && analysis.getStatus()
-                                                        == GenerationStatus.COMPLETED
-                                                && analysis.getObservedRevision()
-                                                        == dream.getSourceRevision())
                         .orElseThrow(() -> new BusinessException(ImageErrorCode.STORY_REQUIRED));
+        if (!Objects.equals(story.getResultRevision(), dream.getSourceRevision())
+                || analysis.visibleRevision() != dream.getSourceRevision())
+            throw new BusinessException(ImageErrorCode.STORY_REQUIRED);
         options.requireAllowed(request.style(), request.mood());
         String hash = hash(story.getResultJson());
         var prior = images.findByAnalysisIdAndUserId(analysis.getId(), userId);
@@ -110,15 +107,25 @@ public class ImageTransactions {
                         || request.imageVersion() == null
                         || request.imageVersion() != prior.get().getVersion()))
             throw new BusinessException(ImageErrorCode.VERSION_CONFLICT);
+        generationGuard.requireNarrativeAvailable(userId, dreamId);
+        if (story.getStatus() != GenerationStatus.COMPLETED
+                || story.getResultJson() == null
+                || !Objects.equals(story.getResultRevision(), dream.getSourceRevision())
+                || analysis.getStatus() != GenerationStatus.COMPLETED
+                || analysis.getObservedRevision() != dream.getSourceRevision())
+            throw new BusinessException(ImageErrorCode.STORY_REQUIRED);
         if (!available) throw new BusinessException(ImageErrorCode.UNAVAILABLE);
         admit.run();
         var image = prior.orElseGet(() -> DreamImage.create(analysis));
+        credits.release(image);
+        cleanupRegistration.registerAttempt(image);
         image.start(
                 dream.getSourceRevision(),
                 hash,
                 request.style(),
                 request.mood(),
                 authClock.instant());
+        credits.reserve(image, request.regenerate());
         images.saveAndFlush(image);
         var input =
                 new ImageGenerator.Input(
@@ -136,11 +143,25 @@ public class ImageTransactions {
     public Completion finish(ImageGenerator.Input input, String key, ImagePayload payload) {
         lock(input.userId());
         var image = owned(input.userId(), input.imageId());
-        if (!image.accepts(input.attemptId())) return new Completion(response(image), false);
+        if (!image.accepts(input.attemptId()))
+            return new Completion(response(image), Objects.equals(image.getStorageKey(), key));
+        // 워커가 삭제를 시작한 키는 IO 종료/재등록 이후에도 다시 채택하지 않는다.
+        if (cleanupRequests.existsByStorageKeyAndDeletionStartedAtIsNotNull(key)) {
+            credits.release(image);
+            image.fail("ASSET_DISCARDED");
+            images.flush();
+            return new Completion(response(image), false);
+        }
         String failure = sourceFailure(image);
-        if (failure != null) image.fail(failure);
-        else if (!image.active(authClock.instant())) image.fail("ATTEMPT_EXPIRED");
-        else image.finish(key, payload);
+        if (failure == null && !image.active(authClock.instant())) failure = "ATTEMPT_EXPIRED";
+        if (failure == null) failure = credits.settlementFailure(image);
+        if (failure != null) {
+            credits.release(image);
+            image.fail(failure);
+        } else {
+            credits.settle(image, key);
+            image.finish(key, payload);
+        }
         images.flush();
         return new Completion(response(image), image.getStatus() == GenerationStatus.COMPLETED);
     }
@@ -151,9 +172,26 @@ public class ImageTransactions {
         var image = owned(input.userId(), input.imageId());
         if (!image.accepts(input.attemptId())) return response(image);
         String failure = sourceFailure(image);
+        credits.release(image);
         image.fail(failure == null ? code : failure);
         images.flush();
         return response(image);
+    }
+
+    /** 재시작 후에도 사용자 잠금 획득 뒤 최신 상태와 기한을 다시 확인한다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public boolean expire(Long userId, Long imageId) {
+        lock(userId);
+        var found = images.findByIdAndUserId(imageId, userId);
+        if (found.isEmpty()) return false;
+        var image = found.get();
+        if (image.getStatus() != GenerationStatus.PROCESSING
+                || image.getLeaseUntil() != null && image.getLeaseUntil().isAfter(authClock.instant())) return false;
+        credits.release(image);
+        cleanupRegistration.registerAttempt(image);
+        image.fail("ATTEMPT_EXPIRED");
+        images.flush();
+        return true;
     }
 
     public ImageResponse get(Long userId, Long imageId) {

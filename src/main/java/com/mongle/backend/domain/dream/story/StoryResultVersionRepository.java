@@ -9,6 +9,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface StoryResultVersionRepository extends JpaRepository<StoryResultVersion, Long> {
+    @Query("select v from StoryResultVersion v join fetch v.story s join fetch s.analysis a"
+            + " join fetch a.dream d where v.id=:id and a.user.id=:userId and d.user.id=:userId")
+    Optional<StoryResultVersion> findOwnedLive(@Param("id") Long id, @Param("userId") Long userId);
+
     @Query("select v.id from StoryResultVersion v where v.story.id=:storyId order by v.id desc")
     List<Long> findLatestId(@Param("storyId") Long storyId, Pageable pageable);
 

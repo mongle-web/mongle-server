@@ -29,6 +29,7 @@ class AnalysisRecordIntegrationTest {
     @Autowired DreamService dreams;
     @Autowired UserRepository users;
     @Autowired AnalysisRecordService records;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired DreamAnalysisIntegrationTest.FakeGenerator generator;
     Long user;
     LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
@@ -52,17 +53,16 @@ class AnalysisRecordIntegrationTest {
     }
 
     @Test
-    void keywordsCountDreamsAndPreserveDeletedAnalysisButNotEmotions() {
+    void keywordsAndEmotionsExcludeDeletedDreams() {
         var first = analyzed(today);
         dreams.delete(user, first.dreamId(), first.revision());
         var preserved = records.monthly(user, YearMonth.from(today));
-        assertThat(preserved.analyzedDreamCount()).isEqualTo(1);
-        assertThat(preserved.keywords())
-                .containsExactly(new AnalysisRecordService.Keyword("바다", 1));
+        assertThat(preserved.analyzedDreamCount()).isZero();
+        assertThat(preserved.keywords()).isEmpty();
         assertThat(preserved.emotions()).isEmpty();
         analyzed(today);
         var both = records.monthly(user, YearMonth.from(today));
-        assertThat(both.keywords()).containsExactly(new AnalysisRecordService.Keyword("바다", 2));
+        assertThat(both.keywords()).containsExactly(new AnalysisRecordService.Keyword("바다", 1));
         assertThat(both.emotions())
                 .containsExactly(new AnalysisRecordService.Emotion(DreamEmotion.HAPPY, 1));
     }
@@ -101,4 +101,25 @@ class AnalysisRecordIntegrationTest {
         assertThat(records.monthly(Long.MAX_VALUE, YearMonth.from(today)).keywords()).isEmpty();
         assertThat(records.recent(Long.MAX_VALUE).dreams()).isEmpty();
     }
+    @Test
+    void legacyDetachedAnalysisIsExcludedWithoutPurgingStoredData() {
+        var first = analyzed(today);
+        // 이전 배포의 보존 형태를 재현한다. sourceDreamId는 남지만 dream FK는 없다.
+        jdbc.update("update dream_scenes set dream_id=null where dream_id=?", first.dreamId());
+        jdbc.update("update dream_entities set dream_id=null where dream_id=?", first.dreamId());
+        jdbc.update("update dream_analyses set dream_id=null where source_dream_id=?", first.dreamId());
+        jdbc.update("delete from dream_emotions where dream_id=?", first.dreamId());
+        jdbc.update("delete from dreams where id=?", first.dreamId());
+        assertThat(records.monthly(user, YearMonth.from(today)).analyzedDreamCount()).isZero();
+        assertThat(records.monthly(user, YearMonth.from(today)).keywords()).isEmpty();
+        assertThat(records.recent(user).dreams()).isEmpty();
+        assertThat(jdbc.queryForObject("select count(*) from dream_analyses where source_dream_id=?",
+                Long.class, first.dreamId())).isEqualTo(1);
+        analyzed(today);
+        assertThat(records.monthly(user, YearMonth.from(today)).analyzedDreamCount()).isEqualTo(1);
+        assertThat(records.monthly(user, YearMonth.from(today)).keywords())
+                .containsExactly(new AnalysisRecordService.Keyword("바다", 1));
+        assertThat(records.recent(user).dreams()).hasSize(1);
+    }
+
 }

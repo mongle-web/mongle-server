@@ -464,7 +464,7 @@ class DreamApiIntegrationTest {
     }
 
     @Test
-    void deletesRawDreamAndEmotionsButPreservesOwnedAnalysisGraph() throws Exception {
+    void deletesRawDreamEmotionsAndLegacyAnalysisGraph() throws Exception {
         var token = login();
         try (var client = HttpClient.newHttpClient()) {
             var dream = complete(client, token, create(client, token));
@@ -503,38 +503,12 @@ class DreamApiIntegrationTest {
                                     Long.class,
                                     id))
                     .isZero();
-            assertThat(
-                            jdbc.queryForObject(
-                                    "select content from dream_scenes where id = ?",
-                                    String.class,
-                                    graph.getFirst()))
-                    .isEqualTo("분석된 장면");
-            assertThat(
-                            jdbc.queryForObject(
-                                    "select dream_id from dream_scenes where id = ?",
-                                    Long.class,
-                                    graph.getFirst()))
-                    .isNull();
-            assertThat(
-                            jdbc.queryForObject(
-                                    "select user_id from dream_scenes where id = ?",
-                                    Long.class,
-                                    graph.getFirst()))
-                    .isEqualTo(token.user().userId());
-            assertThat(
-                            jdbc.queryForObject(
-                                    "select dream_id from dream_entities where id = ?",
-                                    Long.class,
-                                    graph.getLast()))
-                    .isNull();
-            assertThat(
-                            jdbc.queryForObject(
-                                    "select count(*) from dream_scene_entities where dream_scene_id"
-                                        + " = ? and dream_entity_id = ?",
-                                    Long.class,
-                                    graph.getFirst(),
-                                    graph.getLast()))
-                    .isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from dream_scenes where id=?",
+                    Long.class, graph.getFirst())).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from dream_entities where id=?",
+                    Long.class, graph.getLast())).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from dream_scene_entities where dream_scene_id=?",
+                    Long.class, graph.getFirst())).isZero();
             assertThat(
                             send(
                                             client,

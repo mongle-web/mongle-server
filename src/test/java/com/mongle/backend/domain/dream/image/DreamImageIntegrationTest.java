@@ -36,6 +36,7 @@ import java.util.function.Function;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
             "spring.datasource.url=jdbc:h2:mem:mongle-image;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
             // 두 진행 요청으로 슬롯을 채우는 경계 테스트는 운영 기본값과 분리한다.
             "mongle.image.execution.max-concurrent-calls=2",
@@ -98,6 +99,7 @@ class DreamImageIntegrationTest {
         final AtomicInteger calls = new AtomicInteger();
         volatile boolean enabled = true;
         volatile CompletableFuture<byte[]> pending;
+        volatile Input last;
         volatile Function<Input, byte[]> action = input -> ImagePayloadTest.png();
 
         @Override
@@ -109,6 +111,7 @@ class DreamImageIntegrationTest {
         public CompletableFuture<byte[]> generate(Input input) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             assertThat(input.sections()).hasSize(1);
+            last = input;
             calls.incrementAndGet();
             return pending == null ? CompletableFuture.completedFuture(action.apply(input)) : pending;
         }
@@ -117,7 +120,8 @@ class DreamImageIntegrationTest {
     static class FakeStore implements ImageAssetStore {
         final Map<String, byte[]> stored = new ConcurrentHashMap<>();
         final Set<String> deleted = ConcurrentHashMap.newKeySet();
-        volatile boolean enabled = true, failPut = false;
+        volatile boolean enabled = true, failPut = false, failDelete = false;
+        volatile java.util.function.Consumer<String> afterPut = key -> {};
 
         @Override
         public boolean available() {
@@ -129,11 +133,13 @@ class DreamImageIntegrationTest {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             stored.put(key, payload.bytes());
             if (failPut) throw new IllegalStateException("partial upload");
+            afterPut.accept(key);
         }
 
         @Override
         public void delete(String key) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            if (failDelete) throw new IllegalStateException("test cleanup failure");
             stored.remove(key);
             deleted.add(key);
         }
@@ -146,6 +152,7 @@ class DreamImageIntegrationTest {
         }
     }
 
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired DreamImageService service;
     @Autowired ImageTransactions transactions;
     @Autowired DreamService dreams;
@@ -167,14 +174,18 @@ class DreamImageIntegrationTest {
     @BeforeEach
     void setup() {
         userId = users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "테스터")).getId();
+        credits.grant(userId, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+userId, 1000);
         generator.calls.set(0);
         generator.enabled = true;
         generator.pending = null;
+        generator.last = null;
         generator.action = input -> ImagePayloadTest.png();
         storage.stored.clear();
         storage.deleted.clear();
         storage.enabled = true;
         storage.failPut = false;
+        storage.failDelete = false;
+        storage.afterPut = key -> {};
         storyteller.output = STORY;
     }
 
@@ -442,6 +453,7 @@ class DreamImageIntegrationTest {
         assertThat(storage.stored).isEmpty();
         assertThat(storage.deleted).hasSize(1);
         storage.failPut = false;
+        storage.failDelete = false;
         assertThat(generate(dream).status()).isEqualTo(GenerationStatus.COMPLETED);
     }
 
@@ -476,14 +488,16 @@ class DreamImageIntegrationTest {
     }
 
     @Test
-    void preservesResultsAfterDeletionAndHidesForeignOwnership() {
+    void removesResultsAfterDeletionAndHidesForeignOwnership() {
         var dream = ready();
         var result = generate(dream);
         dreams.delete(userId, dream.dreamId(), dream.revision());
-        var preserved = transactions.get(userId, result.imageId());
-        assertThat(preserved.sourceDeleted()).isTrue();
-        assertThat(preserved.status()).isEqualTo(GenerationStatus.COMPLETED);
-        assertThat(service.downloadUrl(userId, result.imageId()).url()).startsWith("https://");
+        assertThatThrownBy(() -> transactions.get(userId, result.imageId()))
+                .isInstanceOf(BusinessException.class).extracting("errorCode")
+                .isEqualTo(ImageErrorCode.NOT_FOUND);
+        assertThatThrownBy(() -> service.downloadUrl(userId, result.imageId()))
+                .isInstanceOf(BusinessException.class).extracting("errorCode")
+                .isEqualTo(ImageErrorCode.NOT_FOUND);
         var other = users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "다른사용자"));
         assertThatThrownBy(() -> transactions.get(other.getId(), result.imageId()))
                 .isInstanceOf(BusinessException.class);
@@ -492,14 +506,16 @@ class DreamImageIntegrationTest {
     }
 
     @Test
-    void discardsSourceEditsAndKeepsTitleOnlyEdits() {
+    void blocksTitleEditsAndDiscardsSourceEditsAfterExpiry() {
         var dream = ready();
         generator.action =
                 input -> {
                     var edit = new DreamUpdateRequest();
                     edit.setRevision(dream.revision());
                     edit.setTitle("새 제목");
-                    dreams.update(userId, dream.dreamId(), edit);
+                    assertThatThrownBy(() -> dreams.update(userId, dream.dreamId(), edit))
+                            .isInstanceOf(BusinessException.class).extracting("errorCode")
+                            .isEqualTo(com.mongle.backend.domain.dream.exception.DreamErrorCode.GENERATION_IN_PROGRESS);
                     return ImagePayloadTest.png();
                 };
         var first = generate(dream);
@@ -510,6 +526,8 @@ class DreamImageIntegrationTest {
                     var edit = new DreamUpdateRequest();
                     edit.setRevision(current.revision());
                     edit.setOriginalText("다른 원문");
+                    jdbc.update("update dream_images set lease_until=? where id=?",
+                            java.sql.Timestamp.from(Instant.EPOCH), input.imageId());
                     dreams.update(userId, current.dreamId(), edit);
                     return ImagePayloadTest.png();
                 };
@@ -534,12 +552,17 @@ class DreamImageIntegrationTest {
         var dream = ready();
         generator.action =
                 input -> {
+                    assertThatThrownBy(() -> dreams.delete(userId, dream.dreamId(), dream.revision()))
+                            .isInstanceOf(BusinessException.class).extracting("errorCode")
+                            .isEqualTo(com.mongle.backend.domain.dream.exception.DreamErrorCode.GENERATION_IN_PROGRESS);
+                    jdbc.update("update dream_images set lease_until=? where id=?",
+                            java.sql.Timestamp.from(Instant.EPOCH), input.imageId());
                     dreams.delete(userId, dream.dreamId(), dream.revision());
                     return ImagePayloadTest.png();
                 };
-        var failed = generate(dream);
-        assertThat(failed.failureCode()).isEqualTo("SOURCE_DELETED");
-        assertThat(failed.sourceDeleted()).isTrue();
+        assertThatThrownBy(() -> generate(dream)).isInstanceOf(BusinessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from dream_images where user_id=?",
+                Long.class, userId)).isZero();
         assertThat(storage.stored).isEmpty();
         assertThat(storage.deleted).hasSize(1);
     }
@@ -564,6 +587,8 @@ class DreamImageIntegrationTest {
                 input -> {
                     var latest = storyTransactions.latest(userId, dream.dreamId());
                     storyteller.output = STORY;
+                    jdbc.update("update dream_images set lease_until=? where id=?",
+                            java.sql.Timestamp.from(Instant.EPOCH), input.imageId());
                     await(
                             stories.generate(
                                     userId,

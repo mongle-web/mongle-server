@@ -4,3 +4,11 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      data-source-properties:
+        # Fail closed: verify both the RDS CA and its endpoint hostname.
+        sslMode: VERIFY_IDENTITY
+        trustCertificateKeyStoreUrl: ${DB_TRUSTSTORE_URL}
+        trustCertificateKeyStoreType: PKCS12
+        trustCertificateKeyStorePassword: ${DB_TRUSTSTORE_PASSWORD}
+        fallbackToSystemTrustStore: false

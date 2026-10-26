@@ -69,6 +69,8 @@ public class DreamStoryService {
         try {
             return transactions.finish(input, result);
         } catch (RuntimeException ex) {
+            if (ex instanceof BusinessException b && b.getErrorCode() == StoryErrorCode.NOT_FOUND)
+                throw ex; // 삭제된 결과를 다시 만들거나 실패 상태로 복구하지 않는다.
             // finish 전체 롤백 후 실패 상태만 별도 트랜잭션으로 기록한다.
             try {
                 transactions.fail(input, "PERSISTENCE_FAILED");

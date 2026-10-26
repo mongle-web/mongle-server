@@ -55,6 +55,8 @@ import java.util.concurrent.*;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DreamAiGatewayIntegrationTest {
 
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Queue<Reply> REPLIES = new ConcurrentLinkedQueue<>();
     private static final Queue<JsonNode> RECEIVED = new ConcurrentLinkedQueue<>();
@@ -262,11 +264,17 @@ class DreamAiGatewayIntegrationTest {
         } finally {
             release.countDown();
         }
-        var failed = result(pending.get(10, TimeUnit.SECONDS), 200);
-        assertThat(failed.path("status").asString()).isEqualTo("FAILED");
-        assertThat(failed.path("failureCode").asString())
-                .isEqualTo(delete ? "SOURCE_DELETED" : "SOURCE_CHANGED");
-        assertThat(failed.path(kind.equals("analysis") ? "scenes" : "sections").size()).isZero();
+        var response = pending.get(10, TimeUnit.SECONDS);
+        if (delete) {
+            assertThat(response.statusCode()).isEqualTo(404);
+            assertThat(jdbc.queryForObject("select count(*) from dream_analyses where source_dream_id=?",
+                    Long.class, dream.dreamId())).isZero();
+        } else {
+            var failed = result(response, 200);
+            assertThat(failed.path("status").asString()).isEqualTo("FAILED");
+            assertThat(failed.path("failureCode").asString()).isEqualTo("SOURCE_CHANGED");
+            assertThat(failed.path(kind.equals("analysis") ? "scenes" : "sections").size()).isZero();
+        }
         assertExternalCallContext();
     }
 

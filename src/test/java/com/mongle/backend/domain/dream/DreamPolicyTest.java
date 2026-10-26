@@ -4,12 +4,12 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.mongle.backend.domain.dream.dto.DreamCreateRequest;
-import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
 import com.mongle.backend.domain.dream.repository.*;
 import com.mongle.backend.domain.dream.service.DreamService;
-import com.mongle.backend.domain.dream.story.DreamStoryRepository;
+import com.mongle.backend.domain.dream.repository.DreamDerivedDataDeletion;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.error.BusinessException;
@@ -92,11 +92,16 @@ class DreamPolicyTest {
                         dreams,
                         users,
                         mock(DreamAnalysisRepository.class),
-                        mock(DreamStoryRepository.class),
+                        mock(DreamDerivedDataDeletion.class),
                         Clock.fixed(Instant.parse("2026-10-01T15:00:00Z"), ZoneOffset.UTC),
                         mock(DreamGenerationJobRepository.class),
                         mock(com.mongle.backend.domain.dream.generation.DreamGenerationGuard.class),
-                        mock(com.mongle.backend.domain.dream.generation.DreamGenerationTransactions.class));
+                        mock(
+                                com.mongle.backend.domain.dream.generation
+                                        .DreamGenerationTransactions.class),
+                        mock(com.mongle.backend.domain.world.bridge.BridgeResultRepository.class),
+                        mock(com.mongle.backend.domain.world.folder.WorldSelectionDeletion.class),
+                        mock(com.mongle.backend.domain.world.composition.WorldCompositionDeletion.class));
         assertThat(
                         service.create(
                                         1L,
@@ -115,11 +120,16 @@ class DreamPolicyTest {
                         mock(DreamRepository.class),
                         users,
                         mock(DreamAnalysisRepository.class),
-                        mock(DreamStoryRepository.class),
+                        mock(DreamDerivedDataDeletion.class),
                         Clock.fixed(Instant.parse("2026-10-01T14:59:59Z"), ZoneOffset.UTC),
                         mock(DreamGenerationJobRepository.class),
                         mock(com.mongle.backend.domain.dream.generation.DreamGenerationGuard.class),
-                        mock(com.mongle.backend.domain.dream.generation.DreamGenerationTransactions.class));
+                        mock(
+                                com.mongle.backend.domain.dream.generation
+                                        .DreamGenerationTransactions.class),
+                        mock(com.mongle.backend.domain.world.bridge.BridgeResultRepository.class),
+                        mock(com.mongle.backend.domain.world.folder.WorldSelectionDeletion.class),
+                        mock(com.mongle.backend.domain.world.composition.WorldCompositionDeletion.class));
         assertThatThrownBy(
                         () ->
                                 service.create(

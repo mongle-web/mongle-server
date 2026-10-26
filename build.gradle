@@ -18,6 +18,16 @@ repositories {
 }
 
 dependencies {
+	implementation platform('software.amazon.awssdk:bom:2.57.2')
+	implementation('software.amazon.awssdk:s3') {
+		exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+		exclude group: 'software.amazon.awssdk', module: 'apache-client'
+	}
+	implementation 'software.amazon.awssdk:apache5-client'
+	implementation('software.amazon.awssdk:sts') {
+		exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+		exclude group: 'software.amazon.awssdk', module: 'apache-client'
+	}
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
@@ -41,5 +51,32 @@ dependencies {
 }
 
 tasks.named('test') {
+	// Full integration suite retains multiple Spring/JPA contexts. Production heap is configured separately.
+	maxHeapSize = '1g'
 	useJUnitPlatform()
+}
+
+// Opt-in native MySQL regressions; fixtures are created by scripts/mysql84-test.py.
+sourceSets {
+    mysqlTest {
+        compileClasspath += sourceSets.main.output + sourceSets.test.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+    }
+}
+configurations {
+    mysqlTestImplementation.extendsFrom testImplementation
+    mysqlTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+tasks.register('mysqlTest', Test) {
+    description = 'Runs against the disposable native MySQL 8.4 fixture (use scripts/mysql84-test.py).'
+    group = 'verification'
+    testClassesDirs = sourceSets.mysqlTest.output.classesDirs
+    classpath = sourceSets.mysqlTest.runtimeClasspath
+    maxHeapSize = '1g'
+    useJUnitPlatform()
+    doFirst {
+        if (!System.getenv('MONGLE_MYSQL_TEST_PORT')) {
+            throw new GradleException('Run python3 scripts/mysql84-test.py first; no external DB is accepted.')
+        }
+    }
 }

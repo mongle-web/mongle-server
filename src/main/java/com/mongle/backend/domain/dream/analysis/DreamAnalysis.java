@@ -73,7 +73,7 @@ public class DreamAnalysis extends BaseEntity {
     @Column(name = "failure_code", length = 50)
     private String failureCode;
 
-    // 기존 scene-v1 분석은 null/빈 목록으로 유지한다. 원문 삭제 후에도 분석에 보존한다.
+    // 기존 scene-v1 분석은 null/빈 목록으로 유지한다. 꿈이 존재하는 동안 분석에 보존한다.
     // H2는 보조 평면 문자를 UTF-16 두 단위로 센다. API 제한은 20 코드포인트다.
     @Column(name = "generated_title", length = 40)
     private String generatedTitle;

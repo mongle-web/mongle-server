@@ -5,20 +5,29 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.mongle.backend.domain.dream.image.s3.ImageS3Properties;
+import com.mongle.backend.domain.dream.image.openai.OpenAiImageProperties;
+import com.mongle.backend.domain.dream.image.openai.OpenAiImageGenerator;
+import com.mongle.backend.domain.dream.image.s3.S3ImageAssetStore;
+
+import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 
 @Configuration
-@EnableConfigurationProperties({ImageOptions.class, ImageExecutionProperties.class})
+@EnableConfigurationProperties({ImageOptions.class, ImageExecutionProperties.class, ImageS3Properties.class, OpenAiImageProperties.class})
 public class ImageConfiguration {
     @Bean(destroyMethod = "close")
-    ImageGenerationResources imageGenerationResources(ImageExecutionProperties properties) {
+    ImageGenerationResources imageGenerationResources(ImageExecutionProperties properties, ImageAssetStore storage) {
+        // 종료 순서: Provider 통신 → 완료 풀 → 저장소. 진행 중 완료 처리보다 저장소를 먼저 닫지 않는다.
         return new ImageGenerationResources(properties.maxConcurrentCalls(), properties.resultThreads());
     }
 
     @Bean
     @ConditionalOnMissingBean(ImageGenerator.class)
-    ImageGenerator unavailableImageGenerator() {
+    ImageGenerator imageGenerator(OpenAiImageProperties properties, ImageOptions options,
+            ImageExecutionProperties execution, ImageS3Properties storage, ImageGenerationResources completionResources) {
+        if (properties.enabled()) return OpenAiImageGenerator.open(properties, options, execution, storage);
         return new ImageGenerator() {
             @Override
             public boolean available() {
@@ -34,7 +43,9 @@ public class ImageConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(ImageAssetStore.class)
-    ImageAssetStore unavailableImageAssetStore() {
+    ImageAssetStore imageAssetStore(ImageS3Properties properties, ImageCleanupProperties cleanup,
+            ImageExecutionProperties execution, Clock authClock) {
+        if (properties.enabled()) return S3ImageAssetStore.open(properties, cleanup, execution, authClock);
         return new ImageAssetStore() {
             @Override
             public boolean available() {

@@ -20,6 +20,7 @@ class DreamImageServiceTest {
     ImageAssetStore storage;
     DreamImageService service;
     ImageGenerationResources resources;
+    ImageCleanupTransactions cleanupTransactions;
     ImageGenerator.Input input;
     ImageRequest request = new ImageRequest(0L, "test-style", null, false, null);
     Instant now = Instant.parse("2026-10-06T00:00:00Z");
@@ -30,9 +31,10 @@ class DreamImageServiceTest {
         generator = mock(ImageGenerator.class);
         storage = mock(ImageAssetStore.class);
         resources = new ImageGenerationResources(2);
+        cleanupTransactions = mock(ImageCleanupTransactions.class);
         service =
                 new DreamImageService(
-                        transactions, generator, storage, Clock.fixed(now, ZoneOffset.UTC), resources);
+                        transactions, generator, storage, cleanupTransactions, Clock.fixed(now, ZoneOffset.UTC), resources);
         input =
                 new ImageGenerator.Input(
                         1L, 2L, "attempt", "image-v1-story", "test-style", null, List.of());
@@ -75,6 +77,7 @@ class DreamImageServiceTest {
         assertThat(original.getSuppressed()).containsExactly(cleanup, recovery);
         verify(storage).delete("dream-images/1/2/attempt.png");
         verify(storage, never()).delete("prior-success.png");
+        verify(cleanupTransactions).recordDiscardedUpload(1L, 2L, "dream-images/1/2/attempt.png");
     }
 
     @Test
@@ -86,6 +89,19 @@ class DreamImageServiceTest {
         doThrow(new IllegalStateException("cleanup")).when(storage).delete(anyString());
         assertThat(await(service.generate(1L, 3L, request))).isSameAs(response);
         verify(transactions, never()).fail(any(), anyString());
+    }
+
+    @Test
+    void lateProviderFailureReturnsNotFoundForDeletedImageWithoutRecreatingState() {
+        when(generator.generate(input)).thenReturn(CompletableFuture.failedFuture(
+                new IllegalStateException("late provider failure")));
+        when(transactions.fail(input, "CALL_FAILED"))
+                .thenThrow(new BusinessException(ImageErrorCode.NOT_FOUND));
+        assertThatThrownBy(() -> await(service.generate(1L, 3L, request)))
+                .isInstanceOf(BusinessException.class).extracting("errorCode")
+                .isEqualTo(ImageErrorCode.NOT_FOUND);
+        verifyNoInteractions(cleanupTransactions);
+        verify(storage, never()).put(anyString(), any());
     }
 
     @Test

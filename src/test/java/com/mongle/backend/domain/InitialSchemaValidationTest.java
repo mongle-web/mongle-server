@@ -20,7 +20,90 @@ class InitialSchemaValidationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
+    void creditMigrationIsRepeatableAndKeepsReservationTrace() {
+        for (String table : java.util.List.of("credit_ledger", "credit_allocations", "credit_reservations", "credit_grants", "credit_accounts")) {
+            jdbcTemplate.execute("drop table " + table);
+        }
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var script = new org.springframework.core.io.ClassPathResource("db/migrations/20261026-credit-ledger.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, script);
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, script);
+            return null;
+        });
+        for (String table : java.util.List.of("credit_accounts", "credit_grants", "credit_reservations", "credit_allocations", "credit_ledger")) {
+            assertThat(jdbcTemplate.queryForObject("select count(*) from information_schema.tables where table_schema='public' and table_name=?", Long.class, table)).isEqualTo(1);
+        }
+        assertThat(jdbcTemplate.queryForList("select column_name from information_schema.columns where table_schema='public' and table_name='credit_grants'", String.class))
+                .contains("source_type", "source_key", "source_hash", "available", "reserved", "consumed", "version");
+    }
+
+    @Test
+    void createsWorldFolderTablesFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_composition_entries");
+        jdbcTemplate.execute("drop table world_compositions");
+        jdbcTemplate.execute("drop table world_selections");
+        jdbcTemplate.execute("drop table world_folders");
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var migration = new org.springframework.core.io.ClassPathResource("db/migrations/20261025-world-folders.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            return null;
+        });
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var script=new org.springframework.core.io.ClassPathResource("db/migrations/20261026-world-composition.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,script);
+            return null;
+        });
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema='public' and table_name='world_folders'
+                """, String.class)).containsExactlyInAnyOrder(
+                "id", "user_id", "name", "selected_dream_count", "revision", "created_at", "updated_at");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema='public' and table_name='world_selections'
+                """, String.class)).containsExactlyInAnyOrder("id", "world_id", "dream_id", "dreamed_at", "created_at");
+        assertThat(jdbcTemplate.queryForList("""
+                select index_name from information_schema.indexes
+                where table_schema='public' and table_name='world_selections'
+                """, String.class)).contains("idx_world_selection_date", "idx_world_selection_dream");
+    }
+
+    @Test
+    void createsCleanupRequestTableFromMigrationAndAllowsRerun() throws Exception {
+        jdbcTemplate.execute("drop table image_cleanup_requests");
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var migration = new org.springframework.core.io.ClassPathResource(
+                    "db/migrations/20261014-image-cleanup-requests.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            return null;
+        });
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'image_cleanup_requests'
+                """, String.class)).containsExactlyInAnyOrder(
+                "id", "user_id", "dream_id", "image_id", "storage_key", "reason", "created_at");
+        // 구 테이블 생성 계약을 확인한 뒤 현재 초기 스키마로 복원한다.
+        jdbcTemplate.execute("drop table image_cleanup_requests");
+        String initial = new org.springframework.core.io.ClassPathResource("db/schema-initial.sql")
+                .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        var table = java.util.regex.Pattern.compile(
+                "CREATE TABLE IF NOT EXISTS image_cleanup_requests \\([\\s\\S]+?\\n\\);").matcher(initial);
+        assertThat(table.find()).isTrue();
+        jdbcTemplate.execute(table.group());
+        jdbcTemplate.execute("create index idx_cleanup_due on image_cleanup_requests(status,next_run_at,id)");
+        jdbcTemplate.execute("create index idx_cleanup_lease on image_cleanup_requests(status,lease_until,id)");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'image_cleanup_requests'
+                """, String.class)).contains("status", "attempt_count", "claim_token", "lease_until",
+                "next_run_at", "completed_at", "deletion_started_at", "failure_code", "requeue_requested", "version");
+    }
+
+    @Test
     void createsStoryVersionTableFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_bridge_results");
         jdbcTemplate.execute("drop table dream_story_versions");
         jdbcTemplate.execute(
                 (org.springframework.jdbc.core.ConnectionCallback<Void>)
@@ -49,6 +132,51 @@ class InitialSchemaValidationTest {
                         "prompt_version",
                         "result_json",
                         "created_at");
+        runBridgeMigration();
+    }
+
+    @Test
+    void createsBridgeTableFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_bridge_results");
+        runBridgeMigration();
+        runBridgeMigration();
+        assertThat(
+                        jdbcTemplate.queryForList(
+                                """
+                                select column_name from information_schema.columns
+                                where table_schema = 'public' and table_name = 'world_bridge_results'
+                                """,
+                                String.class))
+                .containsExactlyInAnyOrder(
+                        "id",
+                        "user_id",
+                        "before_dream_id",
+                        "after_dream_id",
+                        "before_version_id",
+                        "after_version_id",
+                        "prompt_version",
+                        "settings_json",
+                        "settings_hash",
+                        "status",
+                        "attempt_id",
+                        "lease_until",
+                        "failure_code",
+                        "content",
+                        "version",
+                        "created_at",
+                        "updated_at");
+    }
+
+    private void runBridgeMigration() {
+        jdbcTemplate.execute(
+                (org.springframework.jdbc.core.ConnectionCallback<Void>)
+                        connection -> {
+                            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(
+                                    connection,
+                                    new org.springframework.core.io.ClassPathResource(
+                                            "db/migrations/20261011-world-bridge-results.sql"));
+                            return null;
+                        });
     }
 
     @Test

@@ -250,6 +250,7 @@ CREATE TABLE dream_images (
     mood VARCHAR(50) NULL,
     status VARCHAR(30) NOT NULL,
     attempt_id VARCHAR(36) NOT NULL,
+    credit_reservation_id BIGINT NULL,
     lease_until DATETIME(6) NULL,
     failure_code VARCHAR(50) NULL,
     storage_key VARCHAR(255) NULL,
@@ -291,3 +292,272 @@ CREATE TABLE dream_generation_jobs (
 );
 CREATE INDEX idx_generation_job_due ON dream_generation_jobs(status,next_run_at,id);
 CREATE INDEX idx_generation_job_user ON dream_generation_jobs(user_id,status,lease_until);
+
+CREATE TABLE world_bridge_results (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    before_dream_id BIGINT NOT NULL,
+    after_dream_id BIGINT NOT NULL,
+    before_version_id BIGINT NOT NULL,
+    after_version_id BIGINT NOT NULL,
+    prompt_version VARCHAR(50) NOT NULL,
+    settings_json TEXT NOT NULL,
+    settings_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    attempt_id VARCHAR(36) NOT NULL,
+    lease_until DATETIME(6) NULL,
+    failure_code VARCHAR(50) NULL,
+    content TEXT NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_bridge_inputs UNIQUE (user_id, before_version_id, after_version_id, prompt_version, settings_hash),
+    INDEX idx_bridge_before_dream (before_dream_id),
+    INDEX idx_bridge_after_dream (after_dream_id),
+    CONSTRAINT fk_bridge_user FOREIGN KEY (user_id) REFERENCES users (id),
+    CONSTRAINT fk_bridge_before_dream FOREIGN KEY (before_dream_id) REFERENCES dreams (id),
+    CONSTRAINT fk_bridge_after_dream FOREIGN KEY (after_dream_id) REFERENCES dreams (id),
+    CONSTRAINT fk_bridge_before_version FOREIGN KEY (before_version_id) REFERENCES dream_story_versions (id),
+    CONSTRAINT fk_bridge_after_version FOREIGN KEY (after_version_id) REFERENCES dream_story_versions (id)
+);
+
+-- 꿈 삭제 커밋 이후 처리할 내부 파일 정리 대상. 삭제된 원본으로 향하는 FK는 두지 않는다.
+-- 정리 워커는 기본 비활성이다. 상태 COMPLETED만 멱등 삭제 성공을 뜻한다.
+CREATE TABLE IF NOT EXISTS image_cleanup_requests (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    dream_id BIGINT NULL,
+    image_id BIGINT NOT NULL,
+    storage_key VARCHAR(255) NOT NULL,
+    reason VARCHAR(30) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+    attempt_count INT NOT NULL DEFAULT 0,
+    claim_token VARCHAR(36) NULL,
+    lease_until DATETIME(6) NULL,
+    next_run_at DATETIME(6) NULL,
+    completed_at DATETIME(6) NULL,
+    deletion_started_at DATETIME(6) NULL,
+    failure_code VARCHAR(50) NULL,
+    requeue_requested BOOLEAN NOT NULL DEFAULT FALSE,
+    version BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_image_cleanup_key UNIQUE (storage_key)
+);
+CREATE INDEX idx_cleanup_due ON image_cleanup_requests(status,next_run_at,id);
+CREATE INDEX idx_cleanup_lease ON image_cleanup_requests(status,lease_until,id);
+CREATE INDEX idx_image_storage_key ON dream_images(storage_key);
+CREATE INDEX idx_image_attempt_expiry ON dream_images(status,lease_until,id);
+
+-- 기존 MySQL DB에 수동 적용. 적용 전 백업 및 대상 DB를 확인한다.
+-- 신규 DB에는 schema-initial.sql을 사용한다. 회원·꿈·AI 결과를 변경하지 않는다.
+-- MySQL 연결·DB 문자 집합은 utf8mb4여야 이모지를 100 코드포인트까지 저장할 수 있다.
+CREATE TABLE IF NOT EXISTS world_folders (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    selected_dream_count BIGINT NOT NULL DEFAULT 0,
+    revision BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT ck_world_folder_selection_count CHECK (selected_dream_count >= 0),
+    INDEX idx_world_folder_user_id (user_id, id),
+    CONSTRAINT fk_world_folder_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS world_selections (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    world_id BIGINT NOT NULL,
+    dream_id BIGINT NOT NULL,
+    dreamed_at DATE NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_world_selection_dream UNIQUE (world_id, dream_id),
+    INDEX idx_world_selection_date (world_id, dreamed_at, dream_id),
+    INDEX idx_world_selection_dream (dream_id),
+    CONSTRAINT fk_world_selection_folder FOREIGN KEY (world_id) REFERENCES world_folders(id),
+    CONSTRAINT fk_world_selection_dream FOREIGN KEY (dream_id) REFERENCES dreams(id)
+);
+
+-- 크레딧 기반. 금액이 아닌 정수 크레딧 수량이며 앱 시작 시 자동 적용하지 않는다.
+CREATE TABLE IF NOT EXISTS credit_accounts (
+ user_id BIGINT NOT NULL PRIMARY KEY,
+ available BIGINT NOT NULL,
+ reserved BIGINT NOT NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ updated_at DATETIME NOT NULL,
+ CONSTRAINT fk_credit_account_user FOREIGN KEY (user_id) REFERENCES users(id),
+ CONSTRAINT ck_credit_account_balance CHECK (available >= 0 AND reserved >= 0)
+);
+CREATE TABLE IF NOT EXISTS credit_grants (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ source_type VARCHAR(20) NOT NULL,
+ source_key VARCHAR(128) NOT NULL,
+ source_hash VARCHAR(64) NOT NULL,
+ amount BIGINT NOT NULL,
+ available BIGINT NOT NULL,
+ reserved BIGINT NOT NULL,
+ consumed BIGINT NOT NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ INDEX idx_credit_grant_available (user_id,id),
+ CONSTRAINT uk_credit_grant_source UNIQUE (source_type, source_hash),
+ CONSTRAINT fk_credit_grant_user FOREIGN KEY (user_id) REFERENCES users(id),
+ CONSTRAINT ck_credit_grant_balance CHECK (amount > 0 AND available >= 0 AND reserved >= 0 AND consumed >= 0)
+);
+CREATE TABLE IF NOT EXISTS credit_reservations (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ request_key VARCHAR(128) NOT NULL,
+ request_hash VARCHAR(64) NOT NULL,
+ `usage` VARCHAR(40) NOT NULL,
+ target_key VARCHAR(128) NOT NULL,
+ target_hash VARCHAR(64) NOT NULL,
+ amount BIGINT NOT NULL,
+ state VARCHAR(20) NOT NULL,
+ expires_at DATETIME(6) NOT NULL,
+ result_key VARCHAR(128) NULL,
+ release_reason VARCHAR(20) NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ updated_at DATETIME NOT NULL,
+ INDEX idx_credit_reservation_expiry (state,expires_at,id),
+ CONSTRAINT uk_credit_reservation_request UNIQUE (user_id,request_hash),
+ CONSTRAINT uk_credit_reservation_target UNIQUE (user_id,`usage`,target_hash),
+ CONSTRAINT fk_credit_reservation_user FOREIGN KEY (user_id) REFERENCES users(id),
+ CONSTRAINT ck_credit_reservation_amount CHECK (amount > 0)
+);
+CREATE TABLE IF NOT EXISTS credit_allocations (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ reservation_id BIGINT NOT NULL,
+ grant_id BIGINT NOT NULL,
+ amount BIGINT NOT NULL,
+ created_at DATETIME NOT NULL,
+ INDEX idx_credit_allocation_grant (grant_id),
+ CONSTRAINT uk_credit_allocation_source UNIQUE (reservation_id,grant_id),
+ CONSTRAINT fk_credit_allocation_reservation FOREIGN KEY (reservation_id) REFERENCES credit_reservations(id),
+ CONSTRAINT fk_credit_allocation_grant FOREIGN KEY (grant_id) REFERENCES credit_grants(id),
+ CONSTRAINT ck_credit_allocation_amount CHECK (amount > 0)
+);
+CREATE TABLE IF NOT EXISTS credit_ledger (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ entry_key VARCHAR(80) NOT NULL,
+ kind VARCHAR(20) NOT NULL,
+ source_type VARCHAR(20) NULL,
+ `usage` VARCHAR(40) NULL,
+ grant_id BIGINT NULL,
+ reservation_id BIGINT NULL,
+ available_delta BIGINT NOT NULL,
+ reserved_delta BIGINT NOT NULL,
+ available_after BIGINT NOT NULL,
+ reserved_after BIGINT NOT NULL,
+ created_at DATETIME NOT NULL,
+ INDEX idx_credit_ledger_user_id (user_id,id),
+ CONSTRAINT uk_credit_ledger_entry UNIQUE (entry_key),
+ CONSTRAINT fk_credit_ledger_user FOREIGN KEY (user_id) REFERENCES users(id),
+ CONSTRAINT fk_credit_ledger_reservation FOREIGN KEY (reservation_id) REFERENCES credit_reservations(id),
+ CONSTRAINT fk_credit_ledger_grant FOREIGN KEY (grant_id) REFERENCES credit_grants(id),
+ CONSTRAINT ck_credit_ledger_balance CHECK (available_after >= 0 AND reserved_after >= 0)
+);
+
+-- 페이앱 크레딧 충전 주문
+CREATE TABLE IF NOT EXISTS payment_orders (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ public_id VARCHAR(36) NOT NULL,
+ user_id BIGINT NOT NULL,
+ request_id VARCHAR(36) NOT NULL,
+ input_hash VARCHAR(64) NOT NULL,
+ notification_token VARCHAR(36) NOT NULL,
+ product_id VARCHAR(50) NOT NULL,
+ product_name VARCHAR(160) NOT NULL,
+ price BIGINT NOT NULL,
+ currency VARCHAR(3) NOT NULL,
+ credits BIGINT NOT NULL,
+ state VARCHAR(24) NOT NULL,
+ provider_transaction VARCHAR(40) NULL,
+ payment_url VARCHAR(2048) NULL,
+ credit_grant_id BIGINT NULL,
+ request_deadline DATETIME(6) NOT NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ updated_at DATETIME NOT NULL,
+ CONSTRAINT uk_payment_order_public UNIQUE(public_id),
+ CONSTRAINT uk_payment_order_request UNIQUE(user_id,request_id),
+ INDEX idx_payment_order_user(user_id,id),
+ CONSTRAINT fk_payment_order_user FOREIGN KEY(user_id) REFERENCES users(id),
+ CONSTRAINT ck_payment_order_amount CHECK(price>=1000 AND credits>0)
+);
+CREATE TABLE IF NOT EXISTS payment_transaction_bindings (
+ transaction_id VARCHAR(40) NOT NULL PRIMARY KEY,
+ order_id BIGINT NOT NULL,
+ INDEX idx_payment_binding_order(order_id),
+ CONSTRAINT fk_payment_binding_order FOREIGN KEY(order_id) REFERENCES payment_orders(id)
+);
+
+CREATE TABLE IF NOT EXISTS payment_notifications (
+ event_hash VARCHAR(64) NOT NULL PRIMARY KEY,
+ order_id BIGINT NOT NULL,
+ provider_transaction VARCHAR(40) NOT NULL,
+ state_code INT NOT NULL,
+ amount BIGINT NOT NULL,
+ responded_at DATETIME(6) NOT NULL,
+ created_at DATETIME NOT NULL,
+ INDEX idx_payment_notification_order(order_id),
+ CONSTRAINT fk_payment_notification_order FOREIGN KEY(order_id) REFERENCES payment_orders(id),
+ CONSTRAINT ck_payment_notification_amount CHECK(amount>0)
+);
+CREATE TABLE IF NOT EXISTS credit_payment_holds (
+ grant_id BIGINT NOT NULL PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ created_at DATETIME NOT NULL,
+ INDEX idx_credit_payment_hold_user(user_id),
+ CONSTRAINT fk_credit_payment_hold_user FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- Existing DB: stop app/workers and back up before applying. Requires world folders and successful story versions.
+CREATE TABLE IF NOT EXISTS world_compositions (
+ world_id BIGINT NOT NULL PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ composition_revision BIGINT NOT NULL DEFAULT 0,
+ has_result BOOLEAN NOT NULL DEFAULT FALSE,
+ status VARCHAR(30) NOT NULL,
+ attempt_id VARCHAR(36) NULL,
+ folder_revision BIGINT NOT NULL DEFAULT 0,
+ base_revision BIGINT NOT NULL DEFAULT 0,
+ request_type VARCHAR(10) NULL,
+ target_dream_id BIGINT NULL,
+ target_version_id BIGINT NULL,
+ settings_json TEXT NULL,
+ prompt_version VARCHAR(50) NULL,
+ retrying BOOLEAN NOT NULL DEFAULT FALSE,
+ lease_until DATETIME(6) NULL,
+ claim_token VARCHAR(36) NULL,
+ claim_until DATETIME(6) NULL,
+ failure_code VARCHAR(50) NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ updated_at DATETIME NOT NULL,
+ INDEX idx_composition_work(status,world_id),
+ CONSTRAINT fk_composition_world FOREIGN KEY(world_id) REFERENCES world_folders(id),
+ CONSTRAINT fk_composition_user FOREIGN KEY(user_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS world_composition_entries (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ world_id BIGINT NOT NULL,
+ user_id BIGINT NOT NULL,
+ candidate BOOLEAN NOT NULL,
+ position BIGINT NOT NULL,
+ dream_id BIGINT NOT NULL,
+ story_version_id BIGINT NOT NULL,
+ bridge_id BIGINT NULL,
+ needs_bridge BOOLEAN NOT NULL,
+ created_at DATETIME NOT NULL,
+ CONSTRAINT uk_composition_position UNIQUE(world_id,candidate,position),
+ INDEX idx_composition_dream(dream_id,world_id),
+ CONSTRAINT fk_composition_entry_world FOREIGN KEY(world_id) REFERENCES world_compositions(world_id)
+);

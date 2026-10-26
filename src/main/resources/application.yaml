@@ -36,7 +36,68 @@ logging:
 
 
 mongle:
+  world:
+    composition:
+      enabled: ${MONGLE_WORLD_COMPOSITION_ENABLED:true}
+      worker-enabled: ${MONGLE_WORLD_COMPOSITION_WORKER_ENABLED:true}
+      poll-interval: ${MONGLE_WORLD_COMPOSITION_POLL_INTERVAL:2s}
+      batch-size: ${MONGLE_WORLD_COMPOSITION_BATCH_SIZE:20}
+      max-concurrent-calls: ${MONGLE_WORLD_COMPOSITION_MAX_CONCURRENT_CALLS:2}
+  payment:
+    enabled: ${MONGLE_PAYMENT_ENABLED:false}
+    # 상품 목록은 운영 설정으로 공급한다. 임의 가격/지급량을 기본 제공하지 않는다.
+    products: []
+    payapp:
+      enabled: ${MONGLE_PAYAPP_ENABLED:false}
+      seller-id: ${PAYAPP_SELLER_ID:}
+      link-key: ${PAYAPP_LINK_KEY:}
+      link-value: ${PAYAPP_LINK_VALUE:}
+      request-key: ${PAYAPP_REQUEST_KEY:}
+      feedback-url: ${PAYAPP_FEEDBACK_URL:}
+      return-url: ${PAYAPP_RETURN_URL:}
+      connect-timeout: ${PAYAPP_CONNECT_TIMEOUT:3s}
+      total-timeout: ${PAYAPP_TOTAL_TIMEOUT:30s}
+  credit:
+    enabled: ${MONGLE_CREDIT_ENABLED:false}
+    expiry-policy: ${MONGLE_CREDIT_EXPIRY_POLICY:NO_EXPIRY}
+    signup-amount: ${MONGLE_CREDIT_SIGNUP_AMOUNT:}
+    dream-image-generation: ${MONGLE_CREDIT_DREAM_IMAGE_GENERATION:}
+    dream-image-regeneration: ${MONGLE_CREDIT_DREAM_IMAGE_REGENERATION:}
+    world-image-generation: ${MONGLE_CREDIT_WORLD_IMAGE_GENERATION:}
+    world-image-regeneration: ${MONGLE_CREDIT_WORLD_IMAGE_REGENERATION:}
   image:
+    openai:
+      enabled: ${MONGLE_IMAGE_OPENAI_ENABLED:false}
+      api-key: ${OPENAI_API_KEY:}
+      model: ${MONGLE_IMAGE_OPENAI_MODEL:}
+      size: ${MONGLE_IMAGE_OPENAI_SIZE:}
+      quality: ${MONGLE_IMAGE_OPENAI_QUALITY:}
+      output-format: ${MONGLE_IMAGE_OPENAI_OUTPUT_FORMAT:png}
+      connect-timeout: ${MONGLE_IMAGE_OPENAI_CONNECT_TIMEOUT:3s}
+      total-timeout: ${MONGLE_IMAGE_OPENAI_TOTAL_TIMEOUT:60s}
+      response-threads: ${MONGLE_IMAGE_OPENAI_RESPONSE_THREADS:2}
+    s3:
+      enabled: ${MONGLE_IMAGE_S3_ENABLED:false}
+      bucket: ${MONGLE_IMAGE_S3_BUCKET:}
+      region: ${MONGLE_IMAGE_S3_REGION:}
+      connect-timeout: ${MONGLE_IMAGE_S3_CONNECT_TIMEOUT:2s}
+      attempt-timeout: ${MONGLE_IMAGE_S3_ATTEMPT_TIMEOUT:4s}
+      total-timeout: ${MONGLE_IMAGE_S3_TOTAL_TIMEOUT:10s}
+      max-attempts: ${MONGLE_IMAGE_S3_MAX_ATTEMPTS:2}
+    cleanup:
+      enabled: ${MONGLE_IMAGE_CLEANUP_ENABLED:false}
+      poll-interval: ${MONGLE_IMAGE_CLEANUP_POLL_INTERVAL:2s}
+      batch-size: ${MONGLE_IMAGE_CLEANUP_BATCH_SIZE:20}
+      max-concurrent-calls: ${MONGLE_IMAGE_CLEANUP_MAX_CONCURRENT_CALLS:2}
+      lease: ${MONGLE_IMAGE_CLEANUP_LEASE:2m}
+      retry-base-delay: ${MONGLE_IMAGE_CLEANUP_RETRY_BASE_DELAY:30s}
+      retry-max-delay: ${MONGLE_IMAGE_CLEANUP_RETRY_MAX_DELAY:1h}
+      max-attempts: ${MONGLE_IMAGE_CLEANUP_MAX_ATTEMPTS:5}
+    recovery:
+      # 신규 생성·과금 비활성화 후에도 남은 예약은 복구한다.
+      enabled: ${MONGLE_IMAGE_RECOVERY_ENABLED:true}
+      poll-interval: ${MONGLE_IMAGE_RECOVERY_POLL_INTERVAL:30s}
+      batch-size: ${MONGLE_IMAGE_RECOVERY_BATCH_SIZE:20}
     execution:
       # 외부 응답 대기를 포함한 작업 수이며, 결과 처리 스레드 수와 별개다.
       max-concurrent-calls: ${MONGLE_IMAGE_MAX_CONCURRENT_CALLS:16}

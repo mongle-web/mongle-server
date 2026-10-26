@@ -46,7 +46,7 @@ public interface StoryApi {
             summary = "내 이야기 단건 조회",
             description =
                     """
-                    원문 삭제 후에도 소유자가 조회할 수 있습니다. 타인의 이야기와 없는 이야기는 모두 404입니다.
+                    꿈 삭제 시 이야기와 성공 버전도 제거합니다. 삭제·타인·없는 이야기는 모두 404입니다.
                     sourceChanged는 표시 중인 성공 결과(없으면 시도)의 원문 버전 변경 여부입니다.
                     hasPreviousResult=true이면 sections는 현재 시도가 아닌 이전 성공 결과입니다.
                     """)

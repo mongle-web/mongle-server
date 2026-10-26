@@ -11,6 +11,7 @@ public record ImageResponse(
         LocalDate dreamedAt,
         long imageVersion,
         GenerationStatus status,
+        @io.swagger.v3.oas.annotations.media.Schema(description = "실패 시 원인 코드. ATTEMPT_EXPIRED, CREDIT_RESERVATION_EXPIRED, CREDIT_RESERVATION_MISSING, CREDIT_PAYMENT_REVIEW 등을 포함. 실패해도 이전 성공 결과는 유지될 수 있습니다.")
         String failureCode,
         String style,
         String mood,

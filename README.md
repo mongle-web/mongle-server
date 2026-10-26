@@ -55,7 +55,7 @@ Java 21을 사용한다. 프로필 미지정 시 `local`이 적용된다.
 
 - `local`: H2 메모리 DB(MySQL 모드), `ddl-auto=create-drop`. 재시작하면 데이터가 사라진다.
 - `test`: 별도 H2 메모리 DB. 테스트 클래스에서 명시적으로 활성화한다.
-- `mysql`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` 환경변수로 외부 MySQL에 연결한다.
+- `mysql`: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DB_TRUSTSTORE_URL`, `DB_TRUSTSTORE_PASSWORD` 환경변수로 외부 MySQL에 연결한다.
   공통 설정의 `ddl-auto=validate`를 사용하며 테이블을 자동 변경하지 않는다.
 
 외부 DB를 새로 준비할 때는 `src/main/resources/db/schema-initial.sql`을 먼저 적용한다.
@@ -63,9 +63,10 @@ Java 21을 사용한다. 프로필 미지정 시 `local`이 적용된다.
 셸에 다음 환경변수를 설정한 뒤 실행한다(`.env` 파일은 자동으로 로드되지 않는다).
 
 ```sh
-export DB_URL='jdbc:mysql://localhost:3306/mongle'
-export DB_USERNAME='mongle'
-export DB_PASSWORD='your-local-password'
+export DB_URL='jdbc:mysql://<RDS-endpoint>:3306/mongle'
+export DB_USERNAME='mongle_app'
+export DB_TRUSTSTORE_URL='file:/etc/mongle/rds-truststore.p12'
+# Supply DB_PASSWORD, DB_TRUSTSTORE_PASSWORD and MONGLE_AUTH_SECRET securely.
 ./gradlew bootRun --args='--spring.profiles.active=mysql'
 ```
 
@@ -79,6 +80,8 @@ H2 콘솔은 `local`에서 [http://localhost:8080/h2-console](http://localhost:8
 Driver Class는 `org.h2.Driver`, JDBC URL은
 `jdbc:h2:mem:mongle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE`,
 사용자는 `sa`, 비밀번호는 비워둔다. Gradle 의존성을 새로고침하고 서버를 재시작해야 콘솔 모듈이 적용된다.
+
+세계관 폴더·꿈 선택 API의 revision·페이지·삭제 계약은 [폴더 API 문서](docs/world-folders.md)를 참고한다.
 
 초기 모델의 기준, 연관관계와 Swagger 작성 예시는 [도메인 초기 세팅 문서](docs/domain-setup.md)를 참고한다.
 LLM Gateway의 요청·응답·오류 계약과 테스트용 구현 사용법은 [Gateway 계약 문서](docs/ai-gateway-contract.md)를 참고한다.
@@ -142,3 +145,19 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 
 - [이야기 성공 버전과 세계관 참조 계약](docs/dream-story-versions.md)
 - [꿈 입력·생성 버전과 명시적 재생성](docs/dream-generation-versioning.md)
+
+- [이미지·브리지 생성 중 꿈 변경 보호](docs/dream-generation-guards.md)
+
+- [꿈 영구 삭제와 이미지 정리 요청](docs/dream-deletion.md)
+
+- [이미지 파일 정리 워커와 실패 복구](docs/image-cleanup-worker.md)
+
+- [비동기 이미지·생성 보호·삭제·정리 통합](docs/image-async-integration.md)
+
+- [비공개 S3 이미지 저장소 설정과 연동](docs/image-s3.md)
+
+- [OpenAI 비동기 이미지 Provider 설정과 검증](docs/image-openai.md)
+
+- [크레딧 잔액·원장·예약 및 운영 설정](docs/credits.md)
+
+MySQL 8.4 / RDS TLS, existing-schema upgrade and native regression instructions: [deployment guide](docs/mysql-rds-deployment.md).
