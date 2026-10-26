@@ -2,6 +2,8 @@ package com.mongle.backend.domain.dream.story.api;
 
 import com.mongle.backend.domain.dream.story.StoryRequest;
 import com.mongle.backend.domain.dream.story.StoryResponse;
+import com.mongle.backend.domain.dream.story.StoryVersionPage;
+import com.mongle.backend.domain.dream.story.StoryVersionResponse;
 import com.mongle.backend.global.config.SwaggerConfig;
 import com.mongle.backend.global.response.ApiResponse;
 
@@ -30,6 +32,7 @@ public interface StoryApi {
                     regenerate=true이면 조회한 storyVersion도 전달합니다. 오래된 재생성 요청은 409입니다.
                     진행 중 중복 요청은 202, 완료·실패 결과는 200, Gateway 키 미설정은 503입니다.
                     실패는 status와 failureCode로 구분하며 재생성 실패 시 이전 결과를 유지합니다.
+                    resultVersionId는 표시 중인 성공 결과의 고정 버전 ID입니다. 실패·진행 중에는 이전 성공 ID를 유지합니다.
                     SCENE은 AI가 다듬은 장면, AI_BRIDGE는 AI가 보완한 연결부입니다.
                     """)
     CompletableFuture<ResponseEntity<ApiResponse<StoryResponse>>> generate(
@@ -49,4 +52,23 @@ public interface StoryApi {
                     """)
     ResponseEntity<ApiResponse<StoryResponse>> get(
             @Parameter(hidden = true) Jwt jwt, @Positive Long storyId);
+
+    @Operation(
+            summary = "내 이야기의 성공 버전 목록",
+            description =
+                    "최신 버전부터 조회합니다. limit은 1~50(기본 20), 다음 요청의 before에는 nextCursor를 전달합니다. "
+                            + "실패/진행 중 시도는 포함하지 않습니다. storyVersion은 요청 충돌 검사용이며 versionId와 다릅니다.")
+    ResponseEntity<ApiResponse<StoryVersionPage>> versions(
+            @Parameter(hidden = true) Jwt jwt,
+            @Positive Long storyId,
+            @Positive Long before,
+            int limit);
+
+    @Operation(
+            summary = "내 이야기의 특정 성공 버전 조회",
+            description =
+                    "versionId로 생성 당시 내용을 조회합니다. 이후 재생성으로 내용은 바뀌지 않습니다. "
+                            + "다른 이야기의 버전/타인 소유/없는 버전은 404입니다. sourceChanged는 현재 입력과의 차이입니다.")
+    ResponseEntity<ApiResponse<StoryVersionResponse>> version(
+            @Parameter(hidden = true) Jwt jwt, @Positive Long storyId, @Positive Long versionId);
 }

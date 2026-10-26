@@ -4,7 +4,8 @@
 
 #35는 #33의 비동기 분석·서사화를 자동으로 연결한다. 분석 생성기·요소 추출·공통 Gateway를 새로 만들지 않는다.
 상준의 Archive(#34)는 아래 상태·결과 ID를 조회해서 화면에 연결할 수 있다.
-이미지 생성, 서비스 토큰 차감·환급, 원문 수정 후 재분석은 별도 작업이다.
+이미지 생성과 서비스 토큰 차감·환급은 별도 작업이다.
+원문 수정 후 명시적 분석·서사 재생성은 #42의 [버전 관리 계약](dream-generation-versioning.md)을 참고한다.
 
 1. 기존 감정 선택 완료 API에서 꿈을 `COMPLETED`로 바꾸고 같은 트랜잭션에 `dream_generation_jobs`를 저장한다.
 2. HTTP 응답은 저장 완료 직후 반환한다. AI 응답을 기다리지 않는다.
@@ -111,7 +112,7 @@ Archive에서 유료 생성 API를 조회용으로 호출하지 않는다.
 | `UNAVAILABLE` | 서버의 LINER 키/설정 확인 후 명시적 재시도 |
 | `CALL_FAILED` / `INVALID_OUTPUT` / `PERSISTENCE_FAILED` | 원문은 저장됨, 실패 단계를 재시도 |
 | `RECOVERY_REQUIRED` | 호출/로그 상태 확인 후 중복 비용 가능성을 알고 재시도 |
-| `SOURCE_CHANGED` | 현재 원문과 이전 결과 구분, 별도 재분석 기능 사용 예정 |
+| `SOURCE_CHANGED` | 현재 원문과 이전 결과 구분, 최신 입력으로 generation/regenerate 요청 |
 
 ## 설정과 DB 적용
 

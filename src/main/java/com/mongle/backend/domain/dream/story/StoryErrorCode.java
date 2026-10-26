@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 @Getter
 @RequiredArgsConstructor
 public enum StoryErrorCode implements ErrorCode {
+    INVALID_VERSION_PAGE(HttpStatus.BAD_REQUEST, "STORY_400_1", "이야기 버전 조회 범위가 올바르지 않습니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "STORY_404_1", "이야기를 찾을 수 없습니다."),
     ANALYSIS_REQUIRED(HttpStatus.CONFLICT, "STORY_409_1", "장면 분석이 완료되어야 합니다."),
     ANALYSIS_STALE(HttpStatus.CONFLICT, "STORY_409_2", "현재 원문과 장면 분석의 버전이 다릅니다."),

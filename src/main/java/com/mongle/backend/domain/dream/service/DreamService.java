@@ -1,10 +1,13 @@
 package com.mongle.backend.domain.dream.service;
 
+import com.mongle.backend.domain.dream.analysis.DreamAnalysis;
 import com.mongle.backend.domain.dream.dto.*;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.generation.DreamGenerationGuard;
 import com.mongle.backend.domain.dream.generation.DreamGenerationJob;
 import com.mongle.backend.domain.dream.generation.DreamGenerationJobRepository;
+import com.mongle.backend.domain.dream.generation.DreamGenerationTransactions;
 import com.mongle.backend.domain.dream.repository.DreamAnalysisRepository;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.dream.story.DreamStoryRepository;
@@ -36,6 +39,8 @@ public class DreamService {
     private final DreamStoryRepository stories;
     private final Clock authClock;
     private final DreamGenerationJobRepository generationJobs;
+    private final DreamGenerationGuard generationGuard;
+    private final DreamGenerationTransactions generationTransactions;
 
     @Transactional
     public DreamResponse create(Long userId, DreamCreateRequest request) {
@@ -107,6 +112,7 @@ public class DreamService {
         lockUser(userId);
         var dream = owned(userId, id);
         dream.checkRevision(request.getRevision());
+        generationGuard.requireMutable(userId, id);
         if (!request.isTextProvided()
                 && !request.isEmotionsProvided()
                 && !request.isTitleProvided()) {
@@ -127,6 +133,7 @@ public class DreamService {
         lockUser(userId);
         var dream = owned(userId, id);
         dream.checkRevision(revision);
+        generationGuard.requireMutable(userId, id);
 
         // 분석 FK를 해제하기 전에 생성 중 이야기를 실패 처리한다. 완료 결과는 보존한다.
         stories.failProcessingForDeletedDream(
@@ -150,15 +157,22 @@ public class DreamService {
             return DreamResponse.from(dream);
         }
 
-        return analyses.findDisplayMetadata(dream.getId(), dream.getUser().getId())
-                .filter(a -> a.getStatus() == GenerationStatus.COMPLETED)
-                .map(
-                        a ->
-                                DreamResponse.from(
-                                        dream,
-                                        a.getDisplayKeywords(),
-                                        dream.getSourceRevision() != a.getObservedRevision()))
-                .orElseGet(() -> DreamResponse.from(dream));
+        var analysis = analyses.findDisplayMetadata(dream.getId(), dream.getUser().getId());
+        var result =
+                analysis.filter(DreamAnalysis::hasResult)
+                        .map(
+                                a ->
+                                        DreamResponse.from(
+                                                dream,
+                                                a.getDisplayKeywords(),
+                                                dream.getSourceRevision() != a.visibleRevision()))
+                        .orElseGet(() -> DreamResponse.from(dream));
+        var job = generationJobs.findByDreamIdAndUserId(dream.getId(), dream.getUser().getId());
+        return result.withGeneration(
+                analysis.map(a -> a.getResultRevision()).orElse(null),
+                job.isEmpty()
+                        ? null
+                        : generationTransactions.get(dream.getUser().getId(), dream.getId()));
     }
 
     private Dream owned(Long userId, Long id) {

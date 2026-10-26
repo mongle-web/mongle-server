@@ -29,7 +29,8 @@ public enum DreamErrorCode implements ErrorCode {
             HttpStatus.CONFLICT,
             "DREAM_409_3",
             "꿈 기록이 변경되었습니다. 최신 기록을 불러온 뒤 다시 저장해주세요."),
-    EMPTY_UPDATE(HttpStatus.BAD_REQUEST, "DREAM_400_7", "수정할 항목을 전달해주세요.");
+    EMPTY_UPDATE(HttpStatus.BAD_REQUEST, "DREAM_400_7", "수정할 항목을 전달해주세요."),
+    GENERATION_IN_PROGRESS(HttpStatus.CONFLICT, "DREAM_409_4", "생성이 진행 중입니다. 완료 또는 실패 후 다시 시도해주세요.");
 
     private final HttpStatus httpStatus;
     private final String code;

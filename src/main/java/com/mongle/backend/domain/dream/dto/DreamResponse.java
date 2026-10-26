@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.dream.dto;
 
 import com.mongle.backend.domain.dream.entity.*;
+import com.mongle.backend.domain.dream.generation.DreamGenerationResponse;
 import com.mongle.backend.global.common.GenerationStatus;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -25,7 +26,30 @@ public record DreamResponse(
         @Schema(description = "수정 충돌 검사용 버전. 다음 수정·분석·서사화 요청의 revision에 전달") long revision,
         @Schema(description = "AI 입력 버전. 원문·감정이 실제로 변경되면 증가, 제목만 변경하면 유지") long sourceRevision,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt,
+        Long analysisResultRevision,
+        DreamGenerationResponse generation) {
+
+    public DreamResponse withGeneration(Long resultRevision, DreamGenerationResponse generation) {
+        return new DreamResponse(
+                dreamId,
+                dreamedAt,
+                originalText,
+                title,
+                displayKeywords,
+                analysisSourceChanged,
+                emotions,
+                recordStatus,
+                analysisStatus,
+                edited,
+                revision,
+                sourceRevision,
+                createdAt,
+                updatedAt,
+                resultRevision,
+                generation);
+    }
+
     public static DreamResponse from(Dream dream) {
         return from(dream, List.of(), false);
     }
@@ -45,6 +69,8 @@ public record DreamResponse(
                 dream.getRevision(),
                 dream.getSourceRevision(),
                 dream.getCreatedAt(),
-                dream.getUpdatedAt());
+                dream.getUpdatedAt(),
+                null,
+                null);
     }
 }

@@ -1,5 +1,6 @@
 package com.mongle.backend.domain.dream.generation;
 
+import com.mongle.backend.domain.dream.analysis.DreamAnalysis;
 import com.mongle.backend.domain.dream.analysis.StoredAnalysisRepository;
 import com.mongle.backend.domain.dream.entity.Dream;
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
@@ -48,7 +49,8 @@ public class DreamGenerationTransactions {
     public record Progress(GenerationStatus status, String failureCode, Instant leaseUntil) {}
 
     public List<Candidate> candidates() {
-        return jobs.due(
+        return jobs
+                .due(
                         authClock.instant(),
                         DreamGenerationJob.Status.QUEUED,
                         DreamGenerationJob.Status.PROCESSING,
@@ -86,8 +88,13 @@ public class DreamGenerationTransactions {
         job.claim(now);
         return Optional.of(
                 new Claim(
-                        job.getId(), job.getUserId(), job.getDreamId(), job.getSourceRevision(),
-                        job.getStage(), job.getClaimToken(), job.isRecovering()));
+                        job.getId(),
+                        job.getUserId(),
+                        job.getDreamId(),
+                        job.getSourceRevision(),
+                        job.getStage(),
+                        job.getClaimToken(),
+                        job.isRecovering()));
     }
 
     public Progress progress(Claim claim) {
@@ -97,18 +104,31 @@ public class DreamGenerationTransactions {
             return null;
         }
         if (analysis.getObservedRevision() != claim.sourceRevision()) {
+            if (claim.stage() == DreamGenerationJob.Stage.ANALYSIS
+                    && analysis.isRegenerating()
+                    && analysis.getStatus() == GenerationStatus.PENDING) {
+                return null;
+            }
             return new Progress(GenerationStatus.FAILED, "SOURCE_CHANGED", null);
         }
         if (claim.stage() == DreamGenerationJob.Stage.ANALYSIS) {
             return new Progress(
                     analysis.getStatus(), analysis.getFailureCode(), analysis.getLeaseUntil());
         }
-        var story = stories.findByAnalysisIdAndUserId(analysis.getId(), claim.userId()).orElse(null);
+        var story =
+                stories.findByAnalysisIdAndUserId(analysis.getId(), claim.userId()).orElse(null);
         if (story == null) {
             return null;
         }
         if (story.getSourceRevision() != claim.sourceRevision()) {
+            if (analysis.getPendingResultJson() != null) {
+                return null;
+            }
             return new Progress(GenerationStatus.FAILED, "SOURCE_CHANGED", null);
+        }
+        if (analysis.getPendingResultJson() != null
+                && story.getStatus() == GenerationStatus.COMPLETED) {
+            return null;
         }
         return new Progress(story.getStatus(), story.getFailureCode(), story.getLeaseUntil());
     }
@@ -140,9 +160,59 @@ public class DreamGenerationTransactions {
     }
 
     @Transactional
+    public DreamGenerationResponse regenerate(
+            Long userId, Long dreamId, DreamRegenerationRequest request) {
+        var user =
+                users.findByIdForUpdate(userId)
+                        .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        if (!user.isOnboardingCompleted()) {
+            throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+        }
+        var dream = owned(userId, dreamId);
+        dream.checkRevision(request.revision());
+        if (dream.getRecordStatus() != DreamRecordStatus.COMPLETED) {
+            throw new BusinessException(DreamErrorCode.INVALID_STATE);
+        }
+        var job = jobs.findByDreamIdAndUserId(dreamId, userId).orElse(null);
+        if (job != null && job.unfinished()) {
+            if (job.getSourceRevision() != dream.getSourceRevision()) {
+                throw new BusinessException(DreamErrorCode.GENERATION_IN_PROGRESS);
+            }
+            return response(job, dream);
+        }
+        if (job == null
+                ? request.generationVersion() != 0
+                : request.generationVersion() != job.getVersion()) {
+            throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
+        }
+        // 이미 진행 중인 개별 분석/서사 호출과도 겹치지 않는다.
+        var analysis = analyses.findBySourceDreamIdAndUserId(dreamId, userId).orElse(null);
+        if (analysis != null) {
+            var story = stories.findByAnalysisIdAndUserId(analysis.getId(), userId).orElse(null);
+            if (analysis.active(authClock.instant())
+                    || (story != null && story.active(authClock.instant()))) {
+                throw new BusinessException(DreamErrorCode.GENERATION_IN_PROGRESS);
+            }
+        }
+        if (analysis == null) {
+            analysis = DreamAnalysis.create(dream);
+        }
+        analysis.requestRegeneration();
+        analyses.save(analysis);
+        if (job == null) {
+            job = DreamGenerationJob.create(dream, authClock.instant());
+        }
+        job.regenerate(dream.getSourceRevision(), authClock.instant());
+        jobs.save(job);
+        jobs.flush();
+        return response(job, dream);
+    }
+
+    @Transactional
     public DreamGenerationResponse retry(Long userId, Long dreamId, Long revision) {
-        var user = users.findByIdForUpdate(userId)
-                .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
+        var user =
+                users.findByIdForUpdate(userId)
+                        .orElseThrow(() -> new BusinessException(DreamErrorCode.NOT_FOUND));
         if (!user.isOnboardingCompleted()) {
             throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
         }
@@ -164,7 +234,8 @@ public class DreamGenerationTransactions {
         // 사용자 잠금 안에서 명시적 재시도 때만 만료 시도를 종료한다.
         // 이전 attempt의 늦은 응답은 accepts 검사에서 거절하고, 유효한 시도는 건드리지 않는다.
         var analysis =
-                analyses.findBySourceDreamIdAndUserId(job.getDreamId(), job.getUserId()).orElse(null);
+                analyses.findBySourceDreamIdAndUserId(job.getDreamId(), job.getUserId())
+                        .orElse(null);
         if (analysis == null || analysis.getObservedRevision() != job.getSourceRevision()) {
             return;
         }
@@ -175,7 +246,8 @@ public class DreamGenerationTransactions {
             }
             return;
         }
-        var story = stories.findByAnalysisIdAndUserId(analysis.getId(), job.getUserId()).orElse(null);
+        var story =
+                stories.findByAnalysisIdAndUserId(analysis.getId(), job.getUserId()).orElse(null);
         if (story != null
                 && story.getSourceRevision() == job.getSourceRevision()
                 && story.getStatus() == GenerationStatus.PROCESSING
@@ -187,13 +259,21 @@ public class DreamGenerationTransactions {
     private DreamGenerationResponse response(DreamGenerationJob job, Dream dream) {
         var analysis =
                 analyses.findBySourceDreamIdAndUserId(dream.getId(), job.getUserId()).orElse(null);
-        var story = analysis == null ? null
-                : stories.findByAnalysisIdAndUserId(analysis.getId(), job.getUserId()).orElse(null);
+        var story =
+                analysis == null
+                        ? null
+                        : stories.findByAnalysisIdAndUserId(analysis.getId(), job.getUserId())
+                                .orElse(null);
         return new DreamGenerationResponse(
-                job.getDreamId(), job.getSourceRevision(),
-                job.getSourceRevision() != dream.getSourceRevision(), job.getStage(), job.getStatus(),
-                job.getFailureCode(), analysis == null ? null : analysis.getId(),
-                story == null ? null : story.getId());
+                job.getDreamId(),
+                job.getSourceRevision(),
+                job.getSourceRevision() != dream.getSourceRevision(),
+                job.getStage(),
+                job.getStatus(),
+                job.getFailureCode(),
+                analysis == null ? null : analysis.getId(),
+                story == null ? null : story.getId(),
+                job.getVersion());
     }
 
     private Dream owned(Long userId, Long dreamId) {

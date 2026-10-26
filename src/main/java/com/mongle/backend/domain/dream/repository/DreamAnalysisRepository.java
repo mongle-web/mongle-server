@@ -29,6 +29,12 @@ public class DreamAnalysisRepository {
     }
 
     public void detachFromDream(Long dreamId) {
+        // 새 버전에 저장한 원문·감정 스냅샷은 꿈 영구 삭제 후 남기지 않는다.
+        entityManager.createQuery("delete from StoryResultVersion v where v.story.analysis.dream.id=:id")
+                .setParameter("id", dreamId).executeUpdate();
+        entityManager.createQuery("update DreamAnalysis a set a.sourceText=null, a.sourceEmotions=null,"
+                + " a.pendingResultJson=null where a.dream.id=:id")
+                .setParameter("id", dreamId).executeUpdate();
         // FK 해제 전에 진행 중 이미지 시도를 차단한다. 완료 파일과 이전 성공 결과는 보존한다.
         entityManager
                 .createQuery(
@@ -66,5 +72,7 @@ public class DreamAnalysisRepository {
                 .createQuery("update DreamEntity e set e.dream = null where e.dream.id = :id")
                 .setParameter("id", dreamId)
                 .executeUpdate();
+        // Guard에서 로딩한 엔티티도 벌크 FK 해제 상태와 일치시킨다.
+        entityManager.clear();
     }
 }

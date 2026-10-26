@@ -20,6 +20,38 @@ class InitialSchemaValidationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
+    void createsStoryVersionTableFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table dream_story_versions");
+        jdbcTemplate.execute(
+                (org.springframework.jdbc.core.ConnectionCallback<Void>)
+                        connection -> {
+                            var migration =
+                                    new org.springframework.core.io.ClassPathResource(
+                                            "db/migrations/20261010-dream-story-versions.sql");
+                            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(
+                                    connection, migration);
+                            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(
+                                    connection, migration);
+                            return null;
+                        });
+        assertThat(
+                        jdbcTemplate.queryForList(
+                                """
+                                select column_name from information_schema.columns
+                                where table_schema = 'public' and table_name = 'dream_story_versions'
+                                """,
+                                String.class))
+                .containsExactlyInAnyOrder(
+                        "id",
+                        "story_id",
+                        "generation_key",
+                        "source_revision",
+                        "prompt_version",
+                        "result_json",
+                        "created_at");
+    }
+
+    @Test
     void createsAutoGenerationJobTableFromMigration() {
         jdbcTemplate.execute("drop table dream_generation_jobs");
         jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
@@ -106,7 +138,7 @@ class InitialSchemaValidationTest {
                 """, String.class)).containsExactlyInAnyOrder(
                 "id", "analysis_id", "user_id", "source_revision", "prompt_version", "status",
                 "attempt_id", "lease_until", "failure_code", "result_json", "result_revision",
-                "result_prompt_version", "version", "created_at", "updated_at");
+                "result_prompt_version", "generation_settings", "version", "created_at", "updated_at");
         assertThat(jdbcTemplate.queryForList("""
                 select column_name from information_schema.columns
                 where table_schema = 'public' and table_name = 'dream_analyses'

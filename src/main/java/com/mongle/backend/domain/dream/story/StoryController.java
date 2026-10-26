@@ -67,4 +67,33 @@ public class StoryController implements StoryApi {
                 .cacheControl(CacheControl.noStore())
                 .body(ApiResponse.success(result));
     }
+
+    @Override
+    @GetMapping("/stories/{storyId}/versions")
+    public ResponseEntity<ApiResponse<StoryVersionPage>> versions(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive Long storyId,
+            @RequestParam(required = false) @Positive Long before,
+            @RequestParam(defaultValue = "20") int limit) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(
+                        ApiResponse.success(
+                                transactions.versions(
+                                        Long.valueOf(jwt.getSubject()), storyId, before, limit)));
+    }
+
+    @Override
+    @GetMapping("/stories/{storyId}/versions/{versionId}")
+    public ResponseEntity<ApiResponse<StoryVersionResponse>> version(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable @Positive Long storyId,
+            @PathVariable @Positive Long versionId) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(
+                        ApiResponse.success(
+                                transactions.version(
+                                        Long.valueOf(jwt.getSubject()), storyId, versionId)));
+    }
 }

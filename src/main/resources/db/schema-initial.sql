@@ -81,6 +81,12 @@ CREATE TABLE dream_analyses (
  dreamed_at DATE NOT NULL,
  source_revision BIGINT NOT NULL,
  observed_revision BIGINT NOT NULL,
+ result_revision BIGINT NULL,
+ source_text TEXT NULL,
+ source_emotions VARCHAR(100) NULL,
+ generation_settings TEXT NULL,
+ pending_result_json TEXT NULL,
+ regenerating BOOLEAN NOT NULL DEFAULT FALSE,
  generated_title VARCHAR(40) NULL,
  prompt_version VARCHAR(50) NOT NULL,
  status VARCHAR(30) NOT NULL,
@@ -203,6 +209,7 @@ CREATE TABLE dream_stories (
     result_json TEXT NULL,
     result_revision BIGINT NULL,
     result_prompt_version VARCHAR(50) NULL,
+    generation_settings TEXT NULL,
     version BIGINT NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
@@ -212,6 +219,26 @@ CREATE TABLE dream_stories (
     CONSTRAINT fk_story_user FOREIGN KEY (user_id) REFERENCES users (id)
 );
 CREATE INDEX idx_story_user_status ON dream_stories (user_id, status);
+
+CREATE TABLE dream_story_versions (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    story_id BIGINT NOT NULL,
+    generation_key VARCHAR(36) NOT NULL,
+    source_revision BIGINT NOT NULL,
+    prompt_version VARCHAR(50) NOT NULL,
+    result_json TEXT NOT NULL,
+    source_text TEXT NULL,
+    source_emotions VARCHAR(100) NULL,
+    analysis_json TEXT NULL,
+    analysis_prompt_version VARCHAR(50) NULL,
+    analysis_settings TEXT NULL,
+    story_settings TEXT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_story_version_generation UNIQUE (story_id, generation_key),
+    INDEX idx_story_version_story_id (story_id, id),
+    CONSTRAINT fk_story_version_story FOREIGN KEY (story_id) REFERENCES dream_stories (id)
+);
 
 CREATE TABLE dream_images (
     id BIGINT NOT NULL AUTO_INCREMENT,
@@ -254,6 +281,7 @@ CREATE TABLE dream_generation_jobs (
     lease_until DATETIME(6) NULL,
     next_run_at DATETIME(6) NOT NULL,
     recovering BOOLEAN NOT NULL DEFAULT FALSE,
+    regeneration BOOLEAN NOT NULL DEFAULT FALSE,
     failure_code VARCHAR(50) NULL,
     version BIGINT NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL,

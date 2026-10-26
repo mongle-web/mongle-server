@@ -21,6 +21,15 @@ public class DreamGenerationController implements DreamGenerationApi {
     private final DreamGenerationTransactions transactions;
 
     @Override
+    @PostMapping("/regenerate")
+    public ResponseEntity<ApiResponse<DreamGenerationResponse>> regenerate(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable @Positive Long dreamId,
+            @Valid @RequestBody DreamRegenerationRequest request) {
+        return ResponseEntity.accepted().cacheControl(CacheControl.noStore())
+                .body(ApiResponse.success(transactions.regenerate(Long.valueOf(jwt.getSubject()), dreamId, request)));
+    }
+
+    @Override
     @GetMapping
     public ResponseEntity<ApiResponse<DreamGenerationResponse>> get(
             @AuthenticationPrincipal Jwt jwt, @PathVariable @Positive Long dreamId) {

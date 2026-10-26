@@ -42,7 +42,7 @@ import java.util.function.Function;
 @Import(DreamStoryIntegrationTest.Config.class)
 class DreamStoryIntegrationTest {
     private static final String STRUCTURE =
-            """
+"""
 {"generatedTitle":"바다에서 숲으로","displayKeywords":["바다","숲길"],"elements":[],"scenes":[
   {"sequence":1,"content":"바다 위를 날았다","disconnectedFromPrevious":false,"elementKeys":[]},
   {"sequence":2,"content":"숲길을 걸었다","disconnectedFromPrevious":true,"elementKeys":[]}
@@ -347,14 +347,15 @@ class DreamStoryIntegrationTest {
     }
 
     @Test
-    void deletionDuringGenerationFailsAttemptAndPreservesCompletedStory() {
+    void regenerationBlocksDeletionAndFailurePreservesCompletedStory() {
         var dream = completed(true);
         var first = await(service.generate(userId, dream.dreamId(), request(dream)));
         generator.action =
                 input -> {
-                    dreams.delete(userId, dream.dreamId(), dream.revision());
-
-                    return StoryValidatorTest.VALID;
+                    assertError(
+                            () -> dreams.delete(userId, dream.dreamId(), dream.revision()),
+                            DreamErrorCode.GENERATION_IN_PROGRESS);
+                    throw new IllegalStateException("AI 호출 실패");
                 };
 
         var failed =
@@ -365,14 +366,21 @@ class DreamStoryIntegrationTest {
                                 new StoryRequest(dream.revision(), true, first.storyVersion())));
 
         assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
-        assertThat(failed.failureCode()).isEqualTo("SOURCE_DELETED");
-        assertThat(failed.sourceDeleted()).isTrue();
-        assertThat(failed.dreamId()).isNull();
+        assertThat(failed.failureCode()).isEqualTo("CALL_FAILED");
+        assertThat(failed.sourceDeleted()).isFalse();
+        assertThat(failed.dreamId()).isEqualTo(dream.dreamId());
         assertThat(failed.hasPreviousResult()).isTrue();
         assertThat(failed.sections()).isEqualTo(first.sections());
         assertThat(transactions.get(userId, failed.storyId()).sections())
                 .isEqualTo(first.sections());
+        dreams.delete(userId, dream.dreamId(), dreams.get(userId, dream.dreamId()).revision());
         assertError(() -> transactions.latest(userId, dream.dreamId()), DreamErrorCode.NOT_FOUND);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT COUNT(*) FROM dream_story_versions WHERE story_id = ?",
+                                Long.class,
+                                first.storyId()))
+                .isZero();
 
         var replacement = completed(true);
         generator.action = input -> StoryValidatorTest.VALID;
@@ -490,6 +498,7 @@ class DreamStoryIntegrationTest {
             assertThat(failed.failureCode()).isEqualTo("PERSISTENCE_FAILED");
             assertThat(failed.sections()).isEqualTo(first.sections());
             assertThat(failed.hasPreviousResult()).isTrue();
+            assertThat(transactions.versions(userId, first.storyId(), null, 50).items()).hasSize(1);
         } finally {
             jdbc.execute("alter table dream_stories drop constraint ck_story_test_result");
         }
@@ -503,7 +512,7 @@ class DreamStoryIntegrationTest {
         assertThatThrownBy(
                         () ->
                                 jdbc.update(
-                                        """
+"""
 insert into dream_stories (analysis_id,user_id,source_revision,prompt_version,status,attempt_id,version,created_at,updated_at)
 values (?,?,?,'story-v1','PROCESSING','duplicate',0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
 """,
@@ -600,6 +609,212 @@ values (?,?,?,'story-v1','PROCESSING','duplicate',0,CURRENT_TIMESTAMP,CURRENT_TI
             assertThat(generator.calls).hasValue(0);
             transactions.fail(reserved.input(), "CALL_FAILED");
         }
+    }
+
+    @Test
+    void successfulVersionsRemainStableAfterRegenerationAndEdits() {
+        var dream = completed(true);
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
+        assertThat(first.resultVersionId()).isNotNull();
+        var original = transactions.version(userId, first.storyId(), first.resultVersionId());
+        generator.action = input -> StoryValidatorTest.VALID.replace("바다 위를 날았다.", "바다 위로 날아올랐다.");
+        var next =
+                await(
+                        service.generate(
+                                userId,
+                                dream.dreamId(),
+                                new StoryRequest(dream.revision(), true, first.storyVersion())));
+        assertThat(next.resultVersionId()).isNotEqualTo(first.resultVersionId());
+        assertThat(transactions.version(userId, first.storyId(), first.resultVersionId()))
+                .isEqualTo(original);
+        assertThat(transactions.version(userId, next.storyId(), next.resultVersionId()).sections())
+                .isEqualTo(next.sections());
+        var page = transactions.versions(userId, first.storyId(), null, 1);
+        assertThat(page.items())
+                .extracting(StoryVersionPage.Item::versionId)
+                .containsExactly(next.resultVersionId());
+        assertThat(page.nextCursor()).isEqualTo(next.resultVersionId());
+        var last = transactions.versions(userId, first.storyId(), page.nextCursor(), 1);
+        assertThat(last.items())
+                .extracting(StoryVersionPage.Item::versionId)
+                .containsExactly(first.resultVersionId());
+        assertThat(last.nextCursor()).isNull();
+        var edit = new DreamUpdateRequest();
+        edit.setRevision(dream.revision());
+        edit.setOriginalText("다른 꿈 내용");
+        dreams.update(userId, dream.dreamId(), edit);
+        var stale = transactions.version(userId, first.storyId(), first.resultVersionId());
+        assertThat(stale.sourceChanged()).isTrue();
+        assertThat(stale.sections()).isEqualTo(original.sections());
+        assertThat(stale.sourceRevision()).isEqualTo(original.sourceRevision());
+    }
+
+    @Test
+    void failureProcessingReuseAndRepeatedCompletionDoNotAppendVersions() {
+        var dream = completed(true);
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
+        var reservation =
+                transactions.begin(
+                        userId,
+                        dream.dreamId(),
+                        new StoryRequest(dream.revision(), true, first.storyVersion()),
+                        true);
+        assertThat(reservation.response().resultVersionId()).isEqualTo(first.resultVersionId());
+        var result =
+                new StoryValidator().parse(StoryValidatorTest.VALID, reservation.input().scenes());
+        var next = transactions.finish(reservation.input(), result);
+        assertThat(transactions.finish(reservation.input(), result)).isEqualTo(next);
+        assertThat(transactions.fail(reservation.input(), "CALL_FAILED")).isEqualTo(next);
+        generator.action = input -> "{}";
+        var failed =
+                await(
+                        service.generate(
+                                userId,
+                                dream.dreamId(),
+                                new StoryRequest(dream.revision(), true, next.storyVersion())));
+        assertThat(failed.resultVersionId()).isEqualTo(next.resultVersionId());
+        assertThat(transactions.versions(userId, first.storyId(), null, 50).items()).hasSize(2);
+        assertThat(
+                        transactions
+                                .version(userId, first.storyId(), first.resultVersionId())
+                                .sections())
+                .isEqualTo(first.sections());
+    }
+
+    @Test
+    void snapshotInsertFailureRollsBackVisibleResult() {
+        var dream = completed(true);
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
+        generator.action = input -> StoryValidatorTest.VALID.replace("바다 위를 날았다.", "금지된 새 결과");
+        jdbc.execute(
+                "alter table dream_story_versions add constraint ck_version_test_result "
+                        + "check (story_id <> "
+                        + first.storyId()
+                        + " or result_json not like '%금지된 새 결과%')");
+        try {
+            assertError(
+                    () ->
+                            await(
+                                    service.generate(
+                                            userId,
+                                            dream.dreamId(),
+                                            new StoryRequest(
+                                                    dream.revision(), true, first.storyVersion()))),
+                    StoryErrorCode.CALL_FAILED);
+            var kept = transactions.get(userId, first.storyId());
+            assertThat(kept.failureCode()).isEqualTo("PERSISTENCE_FAILED");
+            assertThat(kept.resultVersionId()).isEqualTo(first.resultVersionId());
+            assertThat(kept.sections()).isEqualTo(first.sections());
+            assertThat(transactions.versions(userId, first.storyId(), null, 50).items()).hasSize(1);
+        } finally {
+            jdbc.execute("alter table dream_story_versions drop constraint ck_version_test_result");
+        }
+    }
+
+    @Test
+    void invalidExpiredAndChangedOutputsHaveNoSuccessfulVersion() {
+        var dream = completed(true);
+        var reservation = transactions.begin(userId, dream.dreamId(), request(dream), true);
+        assertThat(reservation.response().resultVersionId()).isNull();
+        expire(reservation.input().storyId());
+        var result =
+                new StoryValidator().parse(StoryValidatorTest.VALID, reservation.input().scenes());
+        transactions.finish(reservation.input(), result);
+        var second = transactions.begin(userId, dream.dreamId(), request(dream), true);
+        var edit = new DreamUpdateRequest();
+        edit.setRevision(dream.revision());
+        edit.setOriginalText("바뀐 원문");
+        dreams.update(userId, dream.dreamId(), edit);
+        var changed = transactions.finish(second.input(), result);
+        assertThat(changed.failureCode()).isEqualTo("SOURCE_CHANGED");
+        assertThat(changed.resultVersionId()).isNull();
+        assertThat(transactions.versions(userId, second.input().storyId(), null, 20).items())
+                .isEmpty();
+    }
+
+    @Test
+    void versionApiEnforcesOwnershipStoryMembershipPagingAndNoStore() throws Exception {
+        var dream = completed(true);
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
+        var token = tokens.login(userId).response().accessToken();
+        var strangerId =
+                users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "타인")).getId();
+        var stranger = tokens.login(strangerId).response().accessToken();
+        var path = "/stories/" + first.storyId() + "/versions";
+        try (var client = HttpClient.newHttpClient()) {
+            assertStatus(send(client, path, null, null), 401);
+            assertStatus(send(client, path, stranger, null), 404);
+            assertStatus(send(client, path + "/" + first.resultVersionId(), stranger, null), 404);
+            assertStatus(send(client, path + "/" + Long.MAX_VALUE, token, null), 404);
+            var page = send(client, path, token, null);
+            assertStatus(page, 200);
+            assertThat(page.headers().firstValue("Cache-Control")).contains("no-store");
+            var detail = send(client, path + "/" + first.resultVersionId(), token, null);
+            assertStatus(detail, 200);
+            assertThat(detail.headers().firstValue("Cache-Control")).contains("no-store");
+            assertThat(detail.body())
+                    .contains("versionId", "sections", "sourceRevision")
+                    .contains("originalText", "sourceSnapshotAvailable")
+                    .doesNotContain("generationKey", "resultJson");
+            for (String query : List.of("?limit=0", "?limit=51", "?before=-1", "?limit=oops")) {
+                assertStatus(send(client, path + query, token, null), 400);
+            }
+        }
+        var otherDream =
+                dreams.create(
+                        userId, new DreamCreateRequest(today.minusDays(1), "바다 위를 날다가 숲길을 걸었다"));
+        otherDream =
+                dreams.complete(
+                        userId,
+                        otherDream.dreamId(),
+                        new DreamEmotionsRequest(
+                                otherDream.revision(), List.of(DreamEmotion.HAPPY)));
+        await(structure.analyze(userId, otherDream.dreamId(), otherDream.revision()));
+        otherDream = dreams.get(userId, otherDream.dreamId());
+        var otherStory = await(service.generate(userId, otherDream.dreamId(), request(otherDream)));
+        assertError(
+                () -> transactions.version(userId, otherStory.storyId(), first.resultVersionId()),
+                StoryErrorCode.NOT_FOUND);
+    }
+
+    @Test
+    void migrationImportsLastSuccessAndDoesNotDuplicateNewOrImportedVersions() {
+        var dream = completed(true);
+        var first = await(service.generate(userId, dream.dreamId(), request(dream)));
+        runVersionMigration();
+        assertThat(transactions.versions(userId, first.storyId(), null, 50).items()).hasSize(1);
+        generator.action = input -> "{}";
+        var failed =
+                await(
+                        service.generate(
+                                userId,
+                                dream.dreamId(),
+                                new StoryRequest(dream.revision(), true, first.storyVersion())));
+        jdbc.update("delete from dream_story_versions where story_id=?", first.storyId());
+        runVersionMigration();
+        runVersionMigration();
+        var imported = transactions.versions(userId, first.storyId(), null, 50);
+        assertThat(imported.items()).hasSize(1);
+        assertThat(imported.items().getFirst().imported()).isTrue();
+        var preserved =
+                transactions.version(
+                        userId, first.storyId(), imported.items().getFirst().versionId());
+        assertThat(preserved.sections()).isEqualTo(first.sections());
+        assertThat(preserved.sourceRevision()).isEqualTo(first.resultRevision());
+        assertThat(preserved.promptVersion()).isEqualTo(first.resultPromptVersion());
+        assertThat(transactions.get(userId, first.storyId()).status()).isEqualTo(failed.status());
+    }
+
+    private void runVersionMigration() {
+        jdbc.execute(
+                (org.springframework.jdbc.core.ConnectionCallback<Void>)
+                        connection -> {
+                            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(
+                                    connection,
+                                    new org.springframework.core.io.ClassPathResource(
+                                            "db/migrations/20261010-dream-story-versions.sql"));
+                            return null;
+                        });
     }
 
     private HttpResponse<String> send(HttpClient client, String path, String token, String body)

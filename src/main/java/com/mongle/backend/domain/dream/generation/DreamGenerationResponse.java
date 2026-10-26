@@ -8,4 +8,5 @@ public record DreamGenerationResponse(
         DreamGenerationJob.Status status,
         String failureCode,
         Long analysisId,
-        Long storyId) {}
+        Long storyId,
+        long generationVersion) {}
