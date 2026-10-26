@@ -62,4 +62,19 @@ class OAuthProviderConfigurationTest {
         assertThatThrownBy(() -> OAuthProviderConfiguration.baseUrl("http://localhost:8080", mysql))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void rejectsInsecureOAuthSessionCookiesInProduction() {
+        var environment =
+                new MockEnvironment().withProperty("server.servlet.session.cookie.secure", "false");
+        environment.setActiveProfiles("mysql", "oauth");
+        assertThatThrownBy(
+                        () ->
+                                config.clientRegistrationRepository(
+                                        new OAuthProviderProperties(
+                                                "https://api.mongle.art", kakao, null),
+                                        environment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Secure");
+    }
 }
