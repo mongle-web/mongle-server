@@ -193,14 +193,15 @@ class BridgeIntegrationTest {
     }
 
     @Test
-    void editingLiveDreamDuringGenerationKeepsSelectedImmutableNarrative() {
+    void editingIsBlockedDuringGenerationAndSelectedNarrativeRemainsImmutable() {
         var pending = new CompletableFuture<String>();
         generator.action = input -> pending;
         var result = service.generate(userId, pair());
         var edit = new DreamUpdateRequest();
         edit.setRevision(dreams.get(userId, a.dreamId()).revision());
         edit.setOriginalText("수정한 원문");
-        dreams.update(userId, a.dreamId(), edit);
+        assertError(() -> dreams.update(userId, a.dreamId(), edit),
+                com.mongle.backend.domain.dream.exception.DreamErrorCode.GENERATION_IN_PROGRESS);
         pending.complete("{\"content\":\"기존 서사 사이 연결\"}");
         assertThat(await(result).status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(generator.last.beforeStory()).isEqualTo("바다를 바라보았다.");
@@ -312,6 +313,9 @@ class BridgeIntegrationTest {
         generator.action = input -> pending;
         var call = service.generate(userId, pair());
         var input = generator.last;
+        assertError(() -> dreams.delete(userId, a.dreamId(), dreams.get(userId, a.dreamId()).revision()),
+                com.mongle.backend.domain.dream.exception.DreamErrorCode.GENERATION_IN_PROGRESS);
+        expire(service.get(userId, transactions.begin(userId, pair(), true).response().bridgeId()).bridgeId());
         dreams.delete(userId, a.dreamId(), dreams.get(userId, a.dreamId()).revision());
         pending.complete("{\"content\":\"삭제 후 늦은 결과\"}");
         assertError(() -> await(call), BridgeErrorCode.NOT_FOUND);

@@ -34,6 +34,7 @@ public class DreamGenerationTransactions {
     private final StoredAnalysisRepository analyses;
     private final DreamStoryRepository stories;
     private final Clock authClock;
+    private final DreamGenerationGuard generationGuard;
 
     public record Candidate(Long id, Long userId) {}
 
@@ -185,6 +186,7 @@ public class DreamGenerationTransactions {
                 : request.generationVersion() != job.getVersion()) {
             throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
         }
+        generationGuard.requireNoDerivedWork(userId, dreamId);
         // 이미 진행 중인 개별 분석/서사 호출과도 겹치지 않는다.
         var analysis = analyses.findBySourceDreamIdAndUserId(dreamId, userId).orElse(null);
         if (analysis != null) {
@@ -223,6 +225,7 @@ public class DreamGenerationTransactions {
             throw new BusinessException(DreamErrorCode.VERSION_CONFLICT);
         }
         if (job.getStatus() == DreamGenerationJob.Status.FAILED) {
+            generationGuard.requireNoDerivedWork(userId, dreamId);
             var now = authClock.instant();
             retireExpiredAttempt(job, dream, now);
             job.queue(now, false);

@@ -3,6 +3,7 @@ package com.mongle.backend.domain.dream.image;
 import com.mongle.backend.domain.dream.analysis.StoredAnalysisRepository;
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
+import com.mongle.backend.domain.dream.generation.DreamGenerationGuard;
 import com.mongle.backend.domain.dream.repository.DreamRepository;
 import com.mongle.backend.domain.dream.story.*;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
@@ -32,6 +33,7 @@ public class ImageTransactions {
     private final DreamImageRepository images;
     private final ImageOptions options;
     private final Clock authClock;
+    private final DreamGenerationGuard generationGuard;
 
     public record Reservation(ImageResponse response, ImageGenerator.Input input) {}
 
@@ -51,18 +53,10 @@ public class ImageTransactions {
                         .orElseThrow(() -> new BusinessException(ImageErrorCode.STORY_REQUIRED));
         var story =
                 stories.findByAnalysisIdAndUserId(analysis.getId(), userId)
-                        .filter(
-                                s ->
-                                        s.getStatus() == GenerationStatus.COMPLETED
-                                                && s.getResultJson() != null
-                                                && Objects.equals(
-                                                        s.getResultRevision(),
-                                                        dream.getSourceRevision())
-                                                && analysis.getStatus()
-                                                        == GenerationStatus.COMPLETED
-                                                && analysis.getObservedRevision()
-                                                        == dream.getSourceRevision())
                         .orElseThrow(() -> new BusinessException(ImageErrorCode.STORY_REQUIRED));
+        if (!Objects.equals(story.getResultRevision(), dream.getSourceRevision())
+                || analysis.visibleRevision() != dream.getSourceRevision())
+            throw new BusinessException(ImageErrorCode.STORY_REQUIRED);
         options.requireAllowed(request.style(), request.mood());
         String hash = hash(story.getResultJson());
         var prior = images.findByAnalysisIdAndUserId(analysis.getId(), userId);
@@ -103,6 +97,13 @@ public class ImageTransactions {
                         || request.imageVersion() == null
                         || request.imageVersion() != prior.get().getVersion()))
             throw new BusinessException(ImageErrorCode.VERSION_CONFLICT);
+        generationGuard.requireNarrativeAvailable(userId, dreamId);
+        if (story.getStatus() != GenerationStatus.COMPLETED
+                || story.getResultJson() == null
+                || !Objects.equals(story.getResultRevision(), dream.getSourceRevision())
+                || analysis.getStatus() != GenerationStatus.COMPLETED
+                || analysis.getObservedRevision() != dream.getSourceRevision())
+            throw new BusinessException(ImageErrorCode.STORY_REQUIRED);
         if (!available) throw new BusinessException(ImageErrorCode.UNAVAILABLE);
         var image = prior.orElseGet(() -> DreamImage.create(analysis));
         image.start(

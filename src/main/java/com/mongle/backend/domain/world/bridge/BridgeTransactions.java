@@ -2,6 +2,7 @@ package com.mongle.backend.domain.world.bridge;
 
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
 import com.mongle.backend.domain.dream.gateway.DreamGenerationSettings;
+import com.mongle.backend.domain.dream.generation.DreamGenerationGuard;
 import com.mongle.backend.domain.dream.story.StoryResultVersion;
 import com.mongle.backend.domain.dream.story.StoryResultVersionRepository;
 import com.mongle.backend.domain.dream.story.StoryValidator;
@@ -34,6 +35,7 @@ public class BridgeTransactions {
     private final StoryValidator stories;
     private final DreamGenerationSettings settings;
     private final Clock authClock;
+    private final DreamGenerationGuard generationGuard;
 
     public record Reservation(BridgeResponse response, BridgeGenerator.Input input) {}
 
@@ -66,6 +68,8 @@ public class BridgeTransactions {
             // 실패/만료도 재전송으로 자동 재시도하지 않는다. retry를 명시적으로 호출해야 한다.
             return new Reservation(response(prior.get()), null);
         }
+        generationGuard.requireNarrativeAvailable(userId, before.getStory().getAnalysis().getDream().getId());
+        generationGuard.requireNarrativeAvailable(userId, after.getStory().getAnalysis().getDream().getId());
         requireAvailable(available);
         String beforeStory = text(before);
         String afterStory = text(after);
@@ -94,6 +98,8 @@ public class BridgeTransactions {
         }
         var before = selected(userId, bridge.getBeforeVersion().getId());
         var after = selected(userId, bridge.getAfterVersion().getId());
+        generationGuard.requireNarrativeAvailable(userId, bridge.getBeforeDream().getId());
+        generationGuard.requireNarrativeAvailable(userId, bridge.getAfterDream().getId());
         requireAvailable(available);
         String beforeStory = text(before);
         String afterStory = text(after);
