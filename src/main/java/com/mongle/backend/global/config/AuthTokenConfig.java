@@ -1,6 +1,7 @@
 package com.mongle.backend.global.config;
 
 import com.mongle.backend.domain.auth.config.AuthProperties;
+import com.mongle.backend.domain.auth.config.OAuthWebProperties;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -23,7 +24,7 @@ import java.util.Base64;
 import java.util.List;
 
 @Configuration
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({AuthProperties.class, OAuthWebProperties.class})
 public class AuthTokenConfig {
     @Bean
     Clock authClock() {

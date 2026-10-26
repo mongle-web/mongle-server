@@ -36,6 +36,10 @@ logging:
 
 
 mongle:
+  oauth:
+    web:
+      success-url: ${MONGLE_OAUTH_SUCCESS_URL:}
+      failure-url: ${MONGLE_OAUTH_FAILURE_URL:}
   world:
     composition:
       enabled: ${MONGLE_WORLD_COMPOSITION_ENABLED:true}
