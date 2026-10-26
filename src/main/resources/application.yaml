@@ -36,9 +36,23 @@ logging:
 
 
 mongle:
+  payment:
+    enabled: ${MONGLE_PAYMENT_ENABLED:false}
+    # 상품 목록은 운영 설정으로 공급한다. 임의 가격/지급량을 기본 제공하지 않는다.
+    products: []
+    payapp:
+      enabled: ${MONGLE_PAYAPP_ENABLED:false}
+      seller-id: ${PAYAPP_SELLER_ID:}
+      link-key: ${PAYAPP_LINK_KEY:}
+      link-value: ${PAYAPP_LINK_VALUE:}
+      request-key: ${PAYAPP_REQUEST_KEY:}
+      feedback-url: ${PAYAPP_FEEDBACK_URL:}
+      return-url: ${PAYAPP_RETURN_URL:}
+      connect-timeout: ${PAYAPP_CONNECT_TIMEOUT:3s}
+      total-timeout: ${PAYAPP_TOTAL_TIMEOUT:30s}
   credit:
     enabled: ${MONGLE_CREDIT_ENABLED:false}
-    expiry-policy: ${MONGLE_CREDIT_EXPIRY_POLICY:UNDECIDED}
+    expiry-policy: ${MONGLE_CREDIT_EXPIRY_POLICY:NO_EXPIRY}
     signup-amount: ${MONGLE_CREDIT_SIGNUP_AMOUNT:}
     dream-image-generation: ${MONGLE_CREDIT_DREAM_IMAGE_GENERATION:}
     dream-image-regeneration: ${MONGLE_CREDIT_DREAM_IMAGE_REGENERATION:}

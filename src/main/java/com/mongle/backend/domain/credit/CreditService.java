@@ -16,10 +16,12 @@ public class CreditService {
     private final CreditGrantRepository grants;
     private final CreditLedgerRepository ledger;
     private final CreditProperties properties;
+    private final CreditPaymentHoldRepository paymentHolds;
 
     public CreditBalance balance(Long userId) {
         requireUser(userId, false);
-        return accounts.findById(userId).map(CreditBalance::from).orElseGet(CreditBalance::zero);
+        var balance=accounts.findById(userId).map(CreditBalance::from).orElseGet(CreditBalance::zero);
+        return new CreditBalance(balance.available(),balance.reserved(),balance.total(),paymentHolds.existsByUserId(userId));
     }
 
     public CreditTransactionPage transactions(Long userId, Long beforeId, int size) {
@@ -55,6 +57,22 @@ public class CreditService {
         return CreditGrantReceipt.from(grant);
     }
 
+    /** 검증된 외부 취소 통보와 같은 트랜잭션. 기능 비활성화 뒤에도 이미 지급한 결제를 보호한다. */
+    @Transactional
+    public void holdPayment(Long userId,String sourceKey) {
+        String hash=CreditRules.hash(sourceKey);
+        requireUser(userId,true);
+        var grant=grants.findBySourceTypeAndSourceHash(CreditSource.PAYMENT,hash)
+                .orElseThrow(() -> new BusinessException(CreditErrorCode.NOT_FOUND));
+        if(!grant.getUserId().equals(userId) || !grant.getSourceKey().equals(sourceKey))
+            throw new BusinessException(CreditErrorCode.REQUEST_CONFLICT);
+        if(paymentHolds.existsById(grant.getId())) return;
+        paymentHolds.saveAndFlush(CreditPaymentHold.create(grant.getId(),userId));
+        ledger.saveAndFlush(CreditLedger.entry(account(userId),CreditLedger.Kind.PAYMENT_HOLD,grant.getId(),null,CreditSource.PAYMENT,null,0,0));
+    }
+    void requireSpendingAllowed(Long userId) {
+        if(paymentHolds.existsByUserId(userId)) throw new BusinessException(CreditErrorCode.PAYMENT_REVIEW);
+    }
     CreditAccount account(Long userId) {
         return accounts.findById(userId).orElseGet(() -> accounts.save(CreditAccount.create(userId)));
     }

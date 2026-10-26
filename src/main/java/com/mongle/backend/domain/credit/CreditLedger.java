@@ -10,7 +10,7 @@ import lombok.*;
         indexes = @Index(name = "idx_credit_ledger_user_id", columnList = "user_id,id"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CreditLedger extends BaseCreatedEntity {
-    public enum Kind { GRANT, RESERVE, SETTLE, RELEASE }
+    public enum Kind { GRANT, RESERVE, SETTLE, RELEASE, PAYMENT_HOLD }
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "user_id", nullable = false) private Long userId;
     @Column(name = "entry_key", nullable = false, length = 80) private String entryKey;
