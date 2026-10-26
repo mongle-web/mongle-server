@@ -54,6 +54,7 @@ class WorldCompositionIntegrationTest {
     }
     @Autowired WorldCompositionTransactions worlds;
     @Autowired WorldCompositionWorker worker;
+    @Autowired WorldImpactService impacts;
     @Autowired WorldFolderService folders;
     @Autowired DreamService dreams;
     @Autowired DreamStructureService analyses;
@@ -191,6 +192,69 @@ class WorldCompositionIntegrationTest {
         assertThat(worlds.apply(user,f.worldId(),a.dreamId(),new WorldApplyRequest(f.revision(),1L,fixed)).compositionRevision()).isEqualTo(1);
         assertThat(bridge.calls).hasValue(1);
         assertThatThrownBy(()->worlds.apply(user,f.worldId(),a.dreamId(),new WorldApplyRequest(f.revision(),0L,fixed))).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(WorldCompositionErrorCode.CONFLICT);
+    }
+
+    @Test void deletionUsesPublishedSourcesEvenAfterSelectionExclusionAndLeavesGap() throws Exception {
+        var a=ready(1);var b=ready(2);var c=ready(3);var f=folder(a,b,c);build(f);pump(f.worldId());
+        var excluded=folders.exclude(user,f.worldId(),b.dreamId(),f.revision());
+        var affected=impacts.impacts(user,b.dreamId(),null,20).items();
+        assertThat(affected).hasSize(1);assertThat(affected.getFirst().selected()).isFalse();assertThat(affected.getFirst().usedInComposition()).isTrue();
+        var before=worlds.page(user,f.worldId(),null,1);dreams.delete(user,b.dreamId(),b.revision());
+        var remaining=worlds.page(user,f.worldId(),null,50).items();
+        assertThat(remaining).extracting(WorldEntryPage.Entry::dreamId).containsExactly(a.dreamId(),c.dreamId());
+        assertThat(remaining.getFirst().connectionGap()).isFalse();assertThat(remaining.get(1).connectionGap()).isTrue();assertThat(remaining.get(1).bridgeBeforeId()).isNull();
+        assertThat(bridge.calls).hasValue(2);assertThat(folders.get(user,f.worldId()).selectedDreamCount()).isEqualTo(2);
+        assertThatThrownBy(()->worlds.page(user,f.worldId(),before.nextCursor(),1)).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(WorldCompositionErrorCode.CONFLICT);
+        assertThat(jdbc.queryForObject("select count(*) from world_composition_entries where dream_id=?",Long.class,b.dreamId())).isZero();
+    }
+    @Test void deletingToOneThenZeroKeepsFolderAndCompletedComposition() throws Exception {
+        var a=ready(1);var b=ready(2);var f=folder(a,b);build(f);pump(f.worldId());
+        dreams.delete(user,a.dreamId(),a.revision());
+        var one=worlds.page(user,f.worldId(),null,50).items();assertThat(one).hasSize(1);assertThat(one.getFirst().connectionGap()).isFalse();
+        assertThat(worlds.get(user,f.worldId()).hasResult()).isTrue();
+        dreams.delete(user,b.dreamId(),b.revision());
+        assertThat(folders.get(user,f.worldId()).selectedDreamCount()).isZero();assertThat(worlds.get(user,f.worldId()).hasResult()).isTrue();
+        assertThat(worlds.page(user,f.worldId(),null,50).items()).isEmpty();
+        assertThatThrownBy(()->build(folders.get(user,f.worldId()))).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(WorldCompositionErrorCode.SOURCES_REQUIRED);
+    }
+    @Test void deletionRollsBackCompositionChangesIfDerivedDeletionFails() throws Exception {
+        var a=ready(1);var b=ready(2);var c=ready(3);var f=folder(a,b,c);build(f);pump(f.worldId());
+        var before=worlds.page(user,f.worldId(),null,50);
+        jdbc.execute("create table world_delete_blocker(version_id BIGINT references dream_story_versions(id))");
+        jdbc.update("insert into world_delete_blocker values(?)",before.items().get(1).storyVersionId());
+        try {
+            assertThatThrownBy(()->dreams.delete(user,b.dreamId(),b.revision())).isInstanceOf(RuntimeException.class);
+            assertThat(worlds.page(user,f.worldId(),null,50)).isEqualTo(before);
+            assertThat(folders.get(user,f.worldId()).selectedDreamCount()).isEqualTo(3);
+        } finally {jdbc.execute("drop table world_delete_blocker");}
+        dreams.delete(user,b.dreamId(),b.revision());assertThat(worlds.page(user,f.worldId(),null,50).items()).hasSize(2);
+    }
+    @Test void folderDeletionRemovesCompositionAndRejectsLateCompletion() throws Exception {
+        var a=ready(1);var b=ready(2);var f=folder(a,b);bridge.pending=new CompletableFuture<>();build(f);worker.poll();
+        folders.delete(user,f.worldId(),f.revision());bridge.pending.complete("{\"content\":\"Across the ocean\"}");
+        long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);while(worker.activeCount()>0&&System.nanoTime()<end)Thread.sleep(5);
+        assertThat(jdbc.queryForObject("select count(*) from world_compositions where world_id=?",Long.class,f.worldId())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from world_composition_entries where world_id=?",Long.class,f.worldId())).isZero();
+        assertThat(dreams.get(user,a.dreamId())).isNotNull();assertThat(dreams.get(user,b.dreamId())).isNotNull();
+        assertThatThrownBy(()->worlds.get(user,f.worldId())).isInstanceOf(BusinessException.class);
+    }
+    @Test void impactPaginationIncludesSelectedOnlyAndHidesForeignDream() throws Exception {
+        var a=ready(1);var b=ready(2);var f=folder(a,b);build(f);pump(f.worldId());var only=folder(a);
+        var page=impacts.impacts(user,a.dreamId(),null,1);assertThat(page.hasNext()).isTrue();assertThat(page.items().getFirst().worldId()).isEqualTo(only.worldId());
+        assertThat(page.items().getFirst().usedInComposition()).isFalse();assertThat(page.items().getFirst().selected()).isTrue();
+        assertThat(impacts.impacts(user,a.dreamId(),page.nextBeforeId(),1).items().getFirst().worldId()).isEqualTo(f.worldId());
+        var other=users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com","Other")).getId();
+        assertThatThrownBy(()->impacts.impacts(other,a.dreamId(),null,20)).isInstanceOf(BusinessException.class);
+    }
+    @Test void expiredJobDreamDeletionRemovesCandidatesAndLateBridgeCannotResurrect() throws Exception {
+        var a=ready(1);var b=ready(2);var f=folder(a,b);bridge.pending=new CompletableFuture<>();build(f);worker.poll();
+        jdbc.update("update world_compositions set lease_until=? where world_id=?",java.sql.Timestamp.from(Instant.EPOCH),f.worldId());
+        jdbc.update("update world_bridge_results set lease_until=? where user_id=?",java.sql.Timestamp.from(Instant.EPOCH),user);
+        dreams.delete(user,a.dreamId(),a.revision());bridge.pending.complete("{\"content\":\"Late result\"}");
+        long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);while(worker.activeCount()>0&&System.nanoTime()<end)Thread.sleep(5);
+        assertThat(worlds.get(user,f.worldId()).hasResult()).isFalse();assertThat(worlds.get(user,f.worldId()).failureCode()).isEqualTo("SOURCE_DELETED");
+        assertThat(jdbc.queryForObject("select count(*) from world_composition_entries where world_id=?",Long.class,f.worldId())).isZero();
+        assertThat(folders.get(user,f.worldId()).selectedDreamCount()).isEqualTo(1);
     }
 
 }

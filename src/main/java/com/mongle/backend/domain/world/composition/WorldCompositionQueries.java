@@ -82,5 +82,20 @@ public class WorldCompositionQueries {
         String next=more?Base64.getUrlEncoder().withoutPadding().encodeToString((w.getWorldId()+":"+w.getCompositionRevision()+":"+page.getLast().position()).getBytes(StandardCharsets.US_ASCII)):null;
         return new WorldEntryPage(w.getWorldId(),w.getCompositionRevision(),page.stream().map(Positioned::entry).toList(),more,next);
     }
+    WorldImpactPage impacts(Long user,Long dream,Long before,int size) {
+        if(size<1||size>50||before!=null&&before<1)throw new BusinessException(WorldCompositionErrorCode.INVALID_PAGE);
+        var rows=jdbc.query("select f.id,f.name,coalesce(w.composition_revision,0) as revision,"
+                +" exists(select 1 from world_selections s where s.world_id=f.id and s.dream_id=?) as selected,"
+                +" exists(select 1 from world_composition_entries e where e.world_id=f.id and e.candidate=false and e.dream_id=?) as used"
+                +" from world_folders f left join world_compositions w on w.world_id=f.id"
+                +" where f.user_id=? and (? is null or f.id<?) and ("
+                +" exists(select 1 from world_selections s where s.world_id=f.id and s.dream_id=?)"
+                +" or exists(select 1 from world_composition_entries e where e.world_id=f.id and e.candidate=false and e.dream_id=?))"
+                +" order by f.id desc limit ?",
+                (r,n)->new WorldImpactPage.Impact(r.getLong("id"),r.getString("name"),r.getBoolean("selected"),r.getBoolean("used"),r.getLong("revision")),
+                dream,dream,user,before,before,dream,dream,size+1);
+        boolean more=rows.size()>size;var page=rows.stream().limit(size).toList();
+        return new WorldImpactPage(page,more,more?page.getLast().worldId():null);
+    }
     private record Positioned(long position,WorldEntryPage.Entry entry) {}
 }

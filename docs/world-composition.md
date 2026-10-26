@@ -28,3 +28,11 @@ New DB: schema-initial.sql. Existing DB: stop app/workers, back up, then apply d
 ## Explicit partial apply
 
 POST /api/v1/worlds/{worldId}/composition/dreams/{dreamId}/apply accepts folderRevision, compositionRevision and the new storyVersionId. The target must exist in the actual completed composition; current folder selection is independent. A different version must be the dream's current successful version. Copies the completed references into candidates, replaces only the target and rebuilds only its preceding/following bridges. Other dreams retain their fixed versions, including their preexisting gaps. The same fixed version is a200 no-op; accepted updates are202. Failure keeps every prior story/bridge reference; retry reuses already completed candidate bridges.
+
+## Deletion and impact preview
+
+GET /api/v1/dreams/{dreamId}/world-impacts returns ID-descending pages (size1..50/default20, beforeId). Each item distinguishes selected and usedInComposition; actual published sources remain impacted after exclusion from selection. The preview is advisory; the delete transaction checks locks/guards again.
+
+Permanent dream deletion removes its published entry and both adjacent bridge references before deleting the shared bridge/story source rows. No new bridge is generated. Surviving non-first entries with an empty connection return connectionGap=true. The composition revision changes, invalidating old page cursors. Empty and single-dream compositions/folders remain. Candidate work using a deleted source is discarded; late callbacks cannot resurrect it. All changes roll back with dream deletion if any derived-data removal fails.
+
+Folder deletion removes candidate/published references and the head before removing the folder. Original dreams, their AI results and shared bridges remain. An already admitted external bridge request may finish, but cannot recreate the deleted composition. Whole-world image storage is a separate feature; this change does not delete such images.

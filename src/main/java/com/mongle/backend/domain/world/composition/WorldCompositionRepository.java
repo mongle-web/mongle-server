@@ -11,4 +11,7 @@ public interface WorldCompositionRepository extends JpaRepository<WorldCompositi
     List<Candidate> runnable(List<GenerationStatus> statuses,Instant now,Pageable page);
     @Query("select (count(e)>0) from WorldCompositionEntry e,WorldComposition w where e.worldId=w.worldId and e.userId=:user and e.dreamId=:dream and e.candidate=true and w.status in :statuses and w.leaseUntil>:now")
     boolean hasActiveSource(Long user,Long dream,List<GenerationStatus> statuses,Instant now);
+    @Query("select w from WorldComposition w where w.userId=:user and (w.targetDreamId=:dream or exists(select 1 from WorldCompositionEntry e where e.worldId=w.worldId and e.dreamId=:dream)) order by w.worldId")
+    List<WorldComposition> usingDream(Long user,Long dream);
+
 }

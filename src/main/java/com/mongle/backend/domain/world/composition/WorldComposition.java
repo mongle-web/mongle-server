@@ -43,5 +43,9 @@ public class WorldComposition extends BaseEntity {
     void advance(Instant now) { claimToken=null;claimUntil=null;leaseUntil=now.plusSeconds(180); }
     void complete() { hasResult=true;compositionRevision++;status=GenerationStatus.COMPLETED;leaseUntil=null;claimToken=null;claimUntil=null;failureCode=null; }
     void fail(String code) { status=GenerationStatus.FAILED;failureCode=code;leaseUntil=null;claimToken=null;claimUntil=null; }
-    void sourceDeleted() { compositionRevision++; if(working()) fail("SOURCE_DELETED"); }
+    void sourceDeleted(boolean publishedChanged,Long dream) {
+        if(publishedChanged)compositionRevision++;
+        if(working()||status==GenerationStatus.FAILED)fail("SOURCE_DELETED");
+        if(Objects.equals(targetDreamId,dream)) {targetDreamId=null;targetVersionId=null;}
+    }
 }
