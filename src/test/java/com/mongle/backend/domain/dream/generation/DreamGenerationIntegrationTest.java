@@ -652,10 +652,13 @@ class DreamGenerationIntegrationTest {
         var analysisId = state(dream).analysisId();
         dreams.delete(user, dream.dreamId(), dreams.get(user, dream.dreamId()).revision());
         structureGenerator.result.complete(STRUCTURE);
-        pumpUntil(
-                () ->
-                        analysisTransactions.get(user, analysisId).status()
-                                == GenerationStatus.FAILED);
+        // 완료 트랜잭션은 삭제된 분석을 다시 만들지 않는다.
+        pumpUntil(() -> ((java.util.concurrent.atomic.AtomicInteger)
+                org.springframework.test.util.ReflectionTestUtils.getField(worker, "active")).get() == 0);
+        assertThatThrownBy(() -> analysisTransactions.get(user, analysisId))
+                .isInstanceOf(BusinessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from dream_analyses where id=?",
+                Long.class, analysisId)).isZero();
         assertThat(jobs.findByDreamIdAndUserId(dream.dreamId(), user)).isEmpty();
         assertThat(storyGenerator.calls).hasValue(0);
     }

@@ -63,6 +63,8 @@ public class DreamStructureService {
         try {
             return transactions.finish(input, output);
         } catch (RuntimeException ex) {
+            if (ex instanceof BusinessException b && b.getErrorCode() == AnalysisErrorCode.NOT_FOUND)
+                throw ex; // 삭제된 결과를 다시 만들거나 실패 상태로 복구하지 않는다.
             try {
                 transactions.fail(input, "PERSISTENCE_FAILED");
             } catch (RuntimeException recoveryFailure) {

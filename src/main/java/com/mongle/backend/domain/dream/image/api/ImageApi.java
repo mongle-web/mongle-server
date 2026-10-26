@@ -43,7 +43,7 @@ public interface ImageApi {
             summary = "내 이미지 단건 조회",
             description =
                     """
-                    원문 삭제 후에도 완료 결과를 보존합니다. 타인 결과와 없는 결과는 모두 404입니다.
+                    꿈 삭제 시 이미지 기록도 제거합니다. 삭제·타인·없는 결과는 모두 404입니다.
                     hasPreviousResult=true이면 MIME·크기·resultStyle/resultMood는 이전 성공 결과입니다.
                     sourceChanged/storyChanged는 표시 중인 결과의 입력 변경 여부입니다. 저장 키와 URL은 포함하지 않습니다.
                     """)
@@ -52,7 +52,7 @@ public interface ImageApi {
 
     @Operation(
             summary = "내 이미지 임시 다운로드 URL 발급",
-            description = "소유권 확인 후 HTTPS URL을 최대 5분간 발급합니다. 원문 삭제 후에도 사용 가능하며 응답을 캐시하지 않습니다.")
+            description = "소유권 확인 후 HTTPS URL을 최대 5분간 발급합니다. 꿈 삭제 후 새 URL 발급은 404이며 응답을 캐시하지 않습니다. 이미 발급한 URL은 만료 전까지 유효할 수 있습니다.")
     ResponseEntity<ApiResponse<ImageAssetStore.DownloadUrl>> downloadUrl(
             @Parameter(hidden = true) Jwt jwt, @Positive Long imageId);
 }

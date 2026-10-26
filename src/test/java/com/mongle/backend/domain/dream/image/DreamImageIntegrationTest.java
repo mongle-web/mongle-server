@@ -114,7 +114,7 @@ class DreamImageIntegrationTest {
     static class FakeStore implements ImageAssetStore {
         final Map<String, byte[]> stored = new ConcurrentHashMap<>();
         final Set<String> deleted = ConcurrentHashMap.newKeySet();
-        volatile boolean enabled = true, failPut = false;
+        volatile boolean enabled = true, failPut = false, failDelete = false;
 
         @Override
         public boolean available() {
@@ -131,6 +131,7 @@ class DreamImageIntegrationTest {
         @Override
         public void delete(String key) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            if (failDelete) throw new IllegalStateException("test cleanup failure");
             stored.remove(key);
             deleted.add(key);
         }
@@ -171,6 +172,7 @@ class DreamImageIntegrationTest {
         storage.deleted.clear();
         storage.enabled = true;
         storage.failPut = false;
+        storage.failDelete = false;
         storyteller.output = STORY;
     }
 
@@ -434,6 +436,7 @@ class DreamImageIntegrationTest {
         assertThat(storage.stored).isEmpty();
         assertThat(storage.deleted).hasSize(1);
         storage.failPut = false;
+        storage.failDelete = false;
         assertThat(generate(dream).status()).isEqualTo(GenerationStatus.COMPLETED);
     }
 
@@ -467,14 +470,16 @@ class DreamImageIntegrationTest {
     }
 
     @Test
-    void preservesResultsAfterDeletionAndHidesForeignOwnership() {
+    void removesResultsAfterDeletionAndHidesForeignOwnership() {
         var dream = ready();
         var result = generate(dream);
         dreams.delete(userId, dream.dreamId(), dream.revision());
-        var preserved = transactions.get(userId, result.imageId());
-        assertThat(preserved.sourceDeleted()).isTrue();
-        assertThat(preserved.status()).isEqualTo(GenerationStatus.COMPLETED);
-        assertThat(service.downloadUrl(userId, result.imageId()).url()).startsWith("https://");
+        assertThatThrownBy(() -> transactions.get(userId, result.imageId()))
+                .isInstanceOf(BusinessException.class).extracting("errorCode")
+                .isEqualTo(ImageErrorCode.NOT_FOUND);
+        assertThatThrownBy(() -> service.downloadUrl(userId, result.imageId()))
+                .isInstanceOf(BusinessException.class).extracting("errorCode")
+                .isEqualTo(ImageErrorCode.NOT_FOUND);
         var other = users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "다른사용자"));
         assertThatThrownBy(() -> transactions.get(other.getId(), result.imageId()))
                 .isInstanceOf(BusinessException.class);
@@ -537,9 +542,9 @@ class DreamImageIntegrationTest {
                     dreams.delete(userId, dream.dreamId(), dream.revision());
                     return ImagePayloadTest.png();
                 };
-        var failed = generate(dream);
-        assertThat(failed.failureCode()).isEqualTo("SOURCE_DELETED");
-        assertThat(failed.sourceDeleted()).isTrue();
+        assertThatThrownBy(() -> generate(dream)).isInstanceOf(BusinessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from dream_images where user_id=?",
+                Long.class, userId)).isZero();
         assertThat(storage.stored).isEmpty();
         assertThat(storage.deleted).hasSize(1);
     }

@@ -325,18 +325,13 @@ class DreamAnalysisIntegrationTest {
     }
 
     @Test
-    void deletionPreservesGroupingAndAllowsAnotherDreamOnTheSameDate() {
+    void deletionRemovesAnalysisAndAllowsAnotherDreamOnTheSameDate() {
         var d = completed(today);
         var a = await(service.analyze(user, d.dreamId(), d.revision()));
         dreams.delete(user, d.dreamId(), dreams.get(user, d.dreamId()).revision());
-        var kept = transactions.get(user, a.analysisId());
-        assertThat(kept.sourceDeleted()).isTrue();
-        assertThat(kept.dreamedAt()).isEqualTo(today);
-        assertThat(kept.scenes()).hasSize(1);
-        assertThat(kept.elements()).hasSize(1);
-        assertThat(kept.generatedTitle()).isEqualTo("바다 위를 날다");
-        assertThat(kept.displayKeywords()).containsExactly("바다");
-        assertThat(kept.dreamRevision()).isNull();
+        assertThatThrownBy(() -> transactions.get(user, a.analysisId()))
+                .isInstanceOf(BusinessException.class).extracting("errorCode")
+                .isEqualTo(AnalysisErrorCode.NOT_FOUND);
         assertThat(
                         jdbc.queryForObject(
                                 "select count(*) from dream_emotions where dream_id=?",
@@ -426,12 +421,12 @@ class DreamAnalysisIntegrationTest {
                     dreams.delete(user, d.dreamId(), dreams.get(user, d.dreamId()).revision());
                     return StructureValidatorTest.VALID;
                 };
-        var a = await(service.analyze(user, d.dreamId(), d.revision()));
-        assertThat(a.failureCode()).isEqualTo("SOURCE_DELETED");
-        assertThat(a.scenes()).isEmpty();
-        assertThat(a.generatedTitle()).isNull();
-        assertThat(a.displayKeywords()).isEmpty();
-        assertThat(a.sourceDeleted()).isTrue();
+        assertThatThrownBy(() -> await(service.analyze(user, d.dreamId(), d.revision())))
+                .isInstanceOf(BusinessException.class);
+        assertThat(jdbc.queryForObject("select count(*) from dream_analyses where source_dream_id=?",
+                Long.class, d.dreamId())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from dream_scenes where dream_id=?",
+                Long.class, d.dreamId())).isZero();
     }
 
     @Test
