@@ -24,3 +24,7 @@ Each step has a120s claim and180s renewable job lease. Lost claims fail with WOR
 ## Database and verification
 
 New DB: schema-initial.sql. Existing DB: stop app/workers, back up, then apply db/migrations/20261026-world-composition.sql. Hibernate validates two new tables. Actual MySQL/RDS execution and external AI quality require live integration verification.
+
+## Explicit partial apply
+
+POST /api/v1/worlds/{worldId}/composition/dreams/{dreamId}/apply accepts folderRevision, compositionRevision and the new storyVersionId. The target must exist in the actual completed composition; current folder selection is independent. A different version must be the dream's current successful version. Copies the completed references into candidates, replaces only the target and rebuilds only its preceding/following bridges. Other dreams retain their fixed versions, including their preexisting gaps. The same fixed version is a200 no-op; accepted updates are202. Failure keeps every prior story/bridge reference; retry reuses already completed candidate bridges.

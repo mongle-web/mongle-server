@@ -43,13 +43,13 @@ class WorldCompositionIntegrationTest {
     }
     static class TestBridge implements BridgeGenerator {
         AtomicInteger calls=new AtomicInteger();volatile CompletableFuture<String> pending;
-        volatile boolean fail;volatile boolean enabled=true;
+        volatile boolean fail;volatile boolean enabled=true;volatile int failAt=-1;
         List<Input> inputs=new CopyOnWriteArrayList<>();
         public boolean available() {return enabled;}
         public CompletableFuture<String> generate(Input input) {
             assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
-            inputs.add(input);calls.incrementAndGet();
-            return pending!=null?pending:CompletableFuture.completedFuture(fail?"bad":"{\"content\":\"Across the ocean\"}");
+            inputs.add(input);int call=calls.incrementAndGet();
+            return pending!=null?pending:CompletableFuture.completedFuture(fail||call==failAt?"bad":"{\"content\":\"Across the ocean\"}");
         }
     }
     @Autowired WorldCompositionTransactions worlds;
@@ -67,7 +67,7 @@ class WorldCompositionIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Value("${local.server.port}") int port;
     Long user;
-    @BeforeEach void setup() {user=users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com","WorldTest")).getId();bridge.calls.set(0);bridge.pending=null;bridge.fail=false;bridge.enabled=true;bridge.inputs.clear();story.content="Old story";}
+    @BeforeEach void setup() {user=users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com","WorldTest")).getId();bridge.calls.set(0);bridge.pending=null;bridge.fail=false;bridge.failAt=-1;bridge.enabled=true;bridge.inputs.clear();story.content="Old story";}
     @AfterEach void release() {
         jdbc.update("update world_compositions set status='FAILED',claim_token=null,claim_until=null where user_id=? and status in ('PENDING','PROCESSING')",user);
         if(bridge.pending!=null) bridge.pending.complete("{\"content\":\"Late bridge\"}");
@@ -151,4 +151,46 @@ class WorldCompositionIntegrationTest {
         var fresh=folders.get(user,f.worldId());build(fresh);pump(f.worldId());
         assertThatThrownBy(()->worlds.page(user,f.worldId(),page.nextCursor(),1)).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(WorldCompositionErrorCode.CONFLICT);
     }
+    Long regenerate(DreamResponse dream,String content) {
+        story.content=content;var latest=storyTransactions.latest(user,dream.dreamId());
+        return await(stories.generate(user,dream.dreamId(),new StoryRequest(dream.revision(),true,latest.storyVersion()))).resultVersionId();
+    }
+    @Test void partialApplyReplacesOnlyTargetAndAdjacentBridges() throws Exception {
+        var a=ready(1);var b=ready(2);var c=ready(3);var d=ready(4);var f=folder(d,c,b,a);build(f);pump(f.worldId());
+        var before=worlds.page(user,f.worldId(),null,50).items();var bNew=regenerate(b,"New B");regenerate(c,"New C");
+        assertThat(worlds.page(user,f.worldId(),null,50).items().get(1).storyVersionId()).isEqualTo(before.get(1).storyVersionId());
+        var request=new WorldApplyRequest(f.revision(),1L,bNew);var running=worlds.apply(user,f.worldId(),b.dreamId(),request);
+        assertThat(worlds.apply(user,f.worldId(),b.dreamId(),request).attemptId()).isEqualTo(running.attemptId());
+        assertThat(pump(f.worldId()).status()).isEqualTo(GenerationStatus.COMPLETED);
+        var after=worlds.page(user,f.worldId(),null,50).items();
+        assertThat(after.get(0).storyVersionId()).isEqualTo(before.get(0).storyVersionId());
+        assertThat(after.get(1).storyVersionId()).isEqualTo(bNew);
+        assertThat(after.get(2).storyVersionId()).isEqualTo(before.get(2).storyVersionId());
+        assertThat(after.get(2).newStoryAvailable()).isTrue();
+        assertThat(after.get(3).bridgeBeforeId()).isEqualTo(before.get(3).bridgeBeforeId());
+        assertThat(bridge.calls).hasValue(5);
+        assertThat(bridge.inputs.get(3).afterStory()).isEqualTo("New B");
+        assertThat(bridge.inputs.get(4).beforeStory()).isEqualTo("New B");
+        assertThat(bridge.inputs.get(4).afterStory()).isEqualTo("Old story");
+    }
+    @Test void partialApplyFailurePreservesAllOriginalVersionsAndBridges() throws Exception {
+        var a=ready(1);var b=ready(2);var c=ready(3);var f=folder(a,b,c);build(f);pump(f.worldId());
+        var before=worlds.page(user,f.worldId(),null,50).items();var version=regenerate(b,"New B");bridge.failAt=4;
+        worlds.apply(user,f.worldId(),b.dreamId(),new WorldApplyRequest(f.revision(),1L,version));
+        assertThat(pump(f.worldId()).status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(worlds.get(user,f.worldId()).compositionRevision()).isEqualTo(1);
+        var after=worlds.page(user,f.worldId(),null,50).items();
+        assertThat(after).extracting(WorldEntryPage.Entry::storyVersionId).containsExactlyElementsOf(before.stream().map(WorldEntryPage.Entry::storyVersionId).toList());
+        assertThat(after).extracting(WorldEntryPage.Entry::bridgeBeforeId).containsExactlyElementsOf(before.stream().map(WorldEntryPage.Entry::bridgeBeforeId).toList());
+        bridge.failAt=-1;worlds.retry(user,f.worldId(),worlds.get(user,f.worldId()).jobVersion());
+        assertThat(pump(f.worldId()).status()).isEqualTo(GenerationStatus.COMPLETED);assertThat(bridge.calls).hasValue(5);
+    }
+    @Test void noOpApplyDoesNotCallAiAndStaleCompositionCannotOverwrite() throws Exception {
+        var a=ready(1);var b=ready(2);var f=folder(a,b);build(f);pump(f.worldId());
+        var fixed=worlds.page(user,f.worldId(),null,50).items().getFirst().storyVersionId();
+        assertThat(worlds.apply(user,f.worldId(),a.dreamId(),new WorldApplyRequest(f.revision(),1L,fixed)).compositionRevision()).isEqualTo(1);
+        assertThat(bridge.calls).hasValue(1);
+        assertThatThrownBy(()->worlds.apply(user,f.worldId(),a.dreamId(),new WorldApplyRequest(f.revision(),0L,fixed))).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(WorldCompositionErrorCode.CONFLICT);
+    }
+
 }

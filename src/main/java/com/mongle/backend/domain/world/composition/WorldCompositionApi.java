@@ -31,4 +31,9 @@ public interface WorldCompositionApi {
     @Operation(summary="Retry failed world composition",description="Explicitly retries a failed/expired job with its latest jobVersion, preserving frozen inputs and completed bridges. Changed folder/composition/source/config requires a new request. No automatic paid external retry.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="202",description="Retry accepted",useReturnTypeSchema=true)
     ResponseEntity<ApiResponse<WorldCompositionResponse>> retry(@Parameter(hidden=true) Jwt jwt,@Positive Long worldId,@Valid WorldRetryRequest request);
+    @Operation(summary="Apply a new story version",description="Explicitly updates one completed composition's story and only its adjacent bridges. Other story/bridge versions stay fixed, even if newer versions exist. All affected bridges must succeed before publishing. Same version is a no-op. No credit charge.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="200",description="Same story version, unchanged",useReturnTypeSchema=true)
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="202",description="Partial update accepted",useReturnTypeSchema=true)
+    ResponseEntity<ApiResponse<WorldCompositionResponse>> apply(@Parameter(hidden=true) Jwt jwt,@Positive Long worldId,@Positive Long dreamId,@Valid WorldApplyRequest request);
+
 }

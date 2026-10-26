@@ -22,6 +22,6 @@ public class WorldCompositionEntry extends BaseCreatedEntity {
     void publish() { candidate=false; }
     void gap() { bridgeId=null;needsBridge=false; }
     WorldCompositionEntry copy() { var e=create(worldId,userId,position,dreamId,storyVersionId);e.bridgeId=bridgeId;e.needsBridge=false;return e; }
-    void replace(Long version) { storyVersionId=version;bridgeId=null;needsBridge=position>0; }
+    void replace(Long version,boolean hasPrevious) { storyVersionId=version;bridgeId=null;needsBridge=hasPrevious; }
     void reconnect() { bridgeId=null;needsBridge=true; }
 }

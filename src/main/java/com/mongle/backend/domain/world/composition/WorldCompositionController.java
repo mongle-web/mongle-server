@@ -23,6 +23,11 @@ public class WorldCompositionController implements WorldCompositionApi {
     @Override @PostMapping("/retry") public ResponseEntity<ApiResponse<WorldCompositionResponse>> retry(@AuthenticationPrincipal Jwt jwt,@PathVariable @Positive Long worldId,@Valid @RequestBody WorldRetryRequest request) {
         return accepted(transactions.retry(user(jwt),worldId,request.jobVersion()));
     }
+    @Override @PostMapping("/dreams/{dreamId}/apply")
+    public ResponseEntity<ApiResponse<WorldCompositionResponse>> apply(@AuthenticationPrincipal Jwt jwt,@PathVariable @Positive Long worldId,@PathVariable @Positive Long dreamId,@Valid @RequestBody WorldApplyRequest request) {
+        var response=transactions.apply(user(jwt),worldId,dreamId,request);
+        return response.status()==com.mongle.backend.global.common.GenerationStatus.PENDING||response.status()==com.mongle.backend.global.common.GenerationStatus.PROCESSING?accepted(response):ok(response);
+    }
     private Long user(Jwt jwt) {return Long.valueOf(jwt.getSubject());}
     private <T> ResponseEntity<ApiResponse<T>> accepted(T result) {return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(ApiResponse.success(result));}
     private <T> ResponseEntity<ApiResponse<T>> ok(T result) {return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(result));}

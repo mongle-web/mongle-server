@@ -51,6 +51,31 @@ public class WorldCompositionTransactions {
         entries.flush();return response(w,folder);
     }
     @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
+    public WorldCompositionResponse apply(Long user,Long world,Long dream,WorldApplyRequest request) {
+        lock(user);var folder=folder(user,world);folder.checkRevision(request.folderRevision());var w=owned(user,world);
+        if(w.active(authClock.instant())) {
+            if("APPLY".equals(w.getRequestType())&&w.getBaseRevision()==request.compositionRevision()
+                    &&w.getFolderRevision()==request.folderRevision()&&Objects.equals(w.getTargetDreamId(),dream)
+                    &&Objects.equals(w.getTargetVersionId(),request.storyVersionId()))return response(w,folder);
+            throw new BusinessException(WorldCompositionErrorCode.BUSY);
+        }
+        checkRevision(w,request.compositionRevision());
+        if(!w.isHasResult())throw new BusinessException(WorldCompositionErrorCode.NOT_FOUND);
+        var current=entries.findByWorldIdAndCandidateOrderByPositionAsc(world,false);
+        int target=-1;
+        for(int index=0;index<current.size();index++)if(current.get(index).getDreamId().equals(dream))target=index;
+        if(target<0)throw new BusinessException(WorldCompositionErrorCode.NOT_FOUND);
+        if(Objects.equals(current.get(target).getStoryVersionId(),request.storyVersionId()))return response(w,folder);
+        if(!Objects.equals(queries.currentVersion(user,dream),request.storyVersionId()))throw new BusinessException(WorldCompositionErrorCode.SOURCE_NOT_READY);
+        requireEnabled();guard.requireNarrativeAvailable(user,dream);
+        entries.deleteLane(world,true);
+        var candidates=current.stream().map(WorldCompositionEntry::copy).toList();
+        candidates.get(target).replace(request.storyVersionId(),target>0);
+        if(target+1<candidates.size())candidates.get(target+1).reconnect();
+        w.start(folder.getRevision(),"APPLY",dream,request.storyVersionId(),settings.capture(),BridgePrompt.VERSION,authClock.instant());
+        worlds.flush();entries.saveAll(candidates);entries.flush();return response(w,folder);
+    }
+    @Transactional(propagation=Propagation.REQUIRES_NEW,isolation=Isolation.READ_COMMITTED)
     public WorldCompositionResponse retry(Long user,Long world,Long version) {
         lock(user);var folder=folder(user,world);var w=owned(user,world);
         if(w.getVersion()!=version) throw new BusinessException(WorldCompositionErrorCode.CONFLICT);
