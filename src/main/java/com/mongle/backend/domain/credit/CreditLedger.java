@@ -16,7 +16,7 @@ public class CreditLedger extends BaseCreatedEntity {
     @Column(name = "entry_key", nullable = false, length = 80) private String entryKey;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private Kind kind;
     @Enumerated(EnumType.STRING) @Column(name = "source_type", length = 20) private CreditSource sourceType;
-    @Enumerated(EnumType.STRING) @Column(length = 40) private CreditUsage usage;
+    @Enumerated(EnumType.STRING) @Column(name = "`usage`", length = 40) private CreditUsage usage;
     @Column(name = "grant_id") private Long grantId;
     @Column(name = "reservation_id") private Long reservationId;
     @Column(name = "available_delta", nullable = false) private long availableDelta;

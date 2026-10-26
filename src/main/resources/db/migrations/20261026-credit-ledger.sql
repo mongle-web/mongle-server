@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS credit_reservations (
  user_id BIGINT NOT NULL,
  request_key VARCHAR(128) NOT NULL,
  request_hash VARCHAR(64) NOT NULL,
- usage VARCHAR(40) NOT NULL,
+ `usage` VARCHAR(40) NOT NULL,
  target_key VARCHAR(128) NOT NULL,
  target_hash VARCHAR(64) NOT NULL,
  amount BIGINT NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS credit_reservations (
  updated_at DATETIME NOT NULL,
  INDEX idx_credit_reservation_expiry (state,expires_at,id),
  CONSTRAINT uk_credit_reservation_request UNIQUE (user_id,request_hash),
- CONSTRAINT uk_credit_reservation_target UNIQUE (user_id,usage,target_hash),
+ CONSTRAINT uk_credit_reservation_target UNIQUE (user_id,`usage`,target_hash),
  CONSTRAINT fk_credit_reservation_user FOREIGN KEY (user_id) REFERENCES users(id),
  CONSTRAINT ck_credit_reservation_amount CHECK (amount > 0)
 );
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS credit_ledger (
  entry_key VARCHAR(80) NOT NULL,
  kind VARCHAR(20) NOT NULL,
  source_type VARCHAR(20) NULL,
- usage VARCHAR(40) NULL,
+ `usage` VARCHAR(40) NULL,
  grant_id BIGINT NULL,
  reservation_id BIGINT NULL,
  available_delta BIGINT NOT NULL,

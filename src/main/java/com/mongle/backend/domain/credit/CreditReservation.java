@@ -11,7 +11,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "credit_reservations", uniqueConstraints = {
     @UniqueConstraint(name = "uk_credit_reservation_request", columnNames = {"user_id","request_hash"}),
-    @UniqueConstraint(name = "uk_credit_reservation_target", columnNames = {"user_id","usage","target_hash"})},
+    @UniqueConstraint(name = "uk_credit_reservation_target", columnNames = {"user_id","`usage`","target_hash"})},
     indexes = @Index(name = "idx_credit_reservation_expiry", columnList = "state,expires_at,id"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CreditReservation extends BaseEntity {
@@ -21,7 +21,7 @@ public class CreditReservation extends BaseEntity {
     @Column(name = "user_id", nullable = false) private Long userId;
     @Column(name = "request_key", nullable = false, length = 128) private String requestKey;
     @Column(name = "request_hash", nullable = false, length = 64) private String requestHash;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 40) private CreditUsage usage;
+    @Enumerated(EnumType.STRING) @Column(name = "`usage`", nullable = false, length = 40) private CreditUsage usage;
     @Column(name = "target_key", nullable = false, length = 128) private String targetKey;
     @Column(name = "target_hash", nullable = false, length = 64) private String targetHash;
     @Column(nullable = false) private long amount;
