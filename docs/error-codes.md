@@ -78,6 +78,7 @@ HTTP 상태와 메시지, 예외 처리 흐름은 코드 형식 변경과 무관
 | 이미지 | INVALID_OUTPUT | `IMAGE_502_1` | 502 |
 | 이미지 | CALL_FAILED | `IMAGE_502_2` | 502 |
 | 이미지 | UNAVAILABLE | `IMAGE_503_1` | 503 |
+| 이미지 | BUSY | `IMAGE_503_2` | 503 |
 
 ## AI Gateway
 

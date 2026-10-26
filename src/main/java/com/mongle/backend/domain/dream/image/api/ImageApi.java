@@ -11,6 +11,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 
+import java.util.concurrent.CompletableFuture;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
@@ -26,13 +28,15 @@ public interface ImageApi {
             summary = "꿈 이미지 생성·재생성",
             description =
                     """
+                    생성 응답은 비동기로 완료되며 외부 대기 동안 요청 스레드를 점유하지 않습니다.
                     최신 꿈 revision과 현재 원문으로 완료한 분석·이야기가 필요합니다.
                     중복 요청은 진행 중 202, 완료 결과 재사용은 200입니다. 옵션·이야기 변경은 재생성이 필요합니다.
                     regenerate=true일 때 조회한 imageVersion도 전달합니다. 오래된 요청은 409입니다.
+                    새 작업의 인스턴스 처리 한도 초과는 IMAGE_503_2입니다. 기존 결과 재사용은 한도와 무관합니다.
                     Provider/스토리지/스타일 미설정은 503입니다. 처리 실패는 status=FAILED와 failureCode로 표시합니다.
                     재생성 실패 시 이전 성공 결과를 유지합니다. 결제·크레딧 차감은 포함하지 않습니다.
                     """)
-    ResponseEntity<ApiResponse<ImageResponse>> generate(
+    CompletableFuture<ResponseEntity<ApiResponse<ImageResponse>>> generate(
             @Parameter(hidden = true) Jwt jwt, @Positive Long dreamId, @Valid ImageRequest request);
 
     @Operation(summary = "꿈의 이미지 상태 조회")
