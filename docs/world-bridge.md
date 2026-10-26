@@ -1,5 +1,7 @@
 # 두 꿈 사이 연결 문장 생성 · 세계관 연동 계약 (#44)
 
+최신 연결: #66에서 [완성본 생성·부분 반영·삭제 영향](world-composition.md)을 오케스트레이션에 연결했다. 아래의 이번 구현 표는 #44 당시 범위이며 현재 상태는 #66 계약을 함께 따른다.
+
 ## 적용 범위
 
 `feat/44-world-bridge-generation`은 #43의 `feat/42-dream-generation-versioning`에서 분기한다.
