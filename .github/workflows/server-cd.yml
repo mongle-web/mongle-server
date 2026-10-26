@@ -1,0 +1,91 @@
+name: Server CD
+
+on:
+  workflow_run:
+    workflows: [Server CI]
+    types: [completed]
+    branches: [develop]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: mongle-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy verified develop JAR
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'develop' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.repository == 'mongle-web/mongle-server' &&
+      vars.MONGLE_CD_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AWS_PAGER: ''
+      AWS_RETRY_MODE: standard
+      AWS_MAX_ATTEMPTS: '3'
+      MONGLE_CD_BUCKET: ${{ vars.MONGLE_CD_BUCKET }}
+      MONGLE_CD_INSTANCE_ID: ${{ vars.MONGLE_CD_INSTANCE_ID }}
+      MONGLE_CD_SSM_DOCUMENT_VERSION: ${{ vars.MONGLE_CD_SSM_DOCUMENT_VERSION }}
+      MONGLE_CD_SSM_DOCUMENT_SHA256: ${{ vars.MONGLE_CD_SSM_DOCUMENT_SHA256 }}
+    steps:
+      - name: Checkout trusted CI revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Verify successful CI execution and current develop
+        id: ci
+        run: python3 scripts/cd/verify_ci.py
+
+      - name: Download the exact CI artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ steps.ci.outputs.artifact_id }}
+          run-id: ${{ steps.ci.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: build/deploy-artifact
+          merge-multiple: true
+
+      - name: Verify artifact provenance and checksum
+        run: python3 scripts/cd/verify_ci.py --artifact-directory build/deploy-artifact
+
+      - name: Validate fixed deployment configuration
+        run: python3 -c 'import sys; sys.path.insert(0, "scripts/cd"); import dispatch, os; dispatch.config(os.environ)'
+
+      - name: Obtain temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6.0.0
+        with:
+          role-to-assume: ${{ vars.MONGLE_CD_ROLE_ARN }}
+          aws-region: ap-northeast-2
+          role-session-name: mongle-cd-${{ github.run_id }}
+          role-duration-seconds: 3600
+          allowed-account-ids: '800417964658'
+          mask-aws-account-id: true
+          unset-current-credentials: true
+
+      - name: Publish artifact and await fixed SSM deployment
+        run: python3 scripts/cd/dispatch.py
+
+      - name: Preserve deployment identity and result
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: deployment-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/deployment.json
+            build/deployment-result.json
+          if-no-files-found: ignore
+          retention-days: 30
