@@ -15,6 +15,9 @@ springdoc:
     enabled: true
 
 mongle:
+  world:
+    composition:
+      worker-enabled: false
   image:
     recovery:
       enabled: false

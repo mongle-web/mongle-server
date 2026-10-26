@@ -23,6 +23,7 @@ public class WorldFolderService {
     private final WorldSelectionQueryRepository queries;
     private final UserRepository users;
     private final DreamRepository dreams;
+    private final com.mongle.backend.domain.world.composition.WorldCompositionDeletion compositions;
 
     @Transactional
     public WorldFolderResponse create(Long userId, String name) {
@@ -90,6 +91,7 @@ public class WorldFolderService {
         lockUser(userId);
         var folder = owned(userId, worldId);
         folder.checkRevision(revision);
+        compositions.folderDeleted(userId,worldId);
         selections.deleteForFolder(worldId);
         folders.delete(folder);
         folders.flush();

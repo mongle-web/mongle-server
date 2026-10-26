@@ -518,3 +518,46 @@ CREATE TABLE IF NOT EXISTS credit_payment_holds (
  INDEX idx_credit_payment_hold_user(user_id),
  CONSTRAINT fk_credit_payment_hold_user FOREIGN KEY(user_id) REFERENCES users(id)
 );
+
+-- Existing DB: stop app/workers and back up before applying. Requires world folders and successful story versions.
+CREATE TABLE IF NOT EXISTS world_compositions (
+ world_id BIGINT NOT NULL PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ composition_revision BIGINT NOT NULL DEFAULT 0,
+ has_result BOOLEAN NOT NULL DEFAULT FALSE,
+ status VARCHAR(30) NOT NULL,
+ attempt_id VARCHAR(36) NULL,
+ folder_revision BIGINT NOT NULL DEFAULT 0,
+ base_revision BIGINT NOT NULL DEFAULT 0,
+ request_type VARCHAR(10) NULL,
+ target_dream_id BIGINT NULL,
+ target_version_id BIGINT NULL,
+ settings_json TEXT NULL,
+ prompt_version VARCHAR(50) NULL,
+ retrying BOOLEAN NOT NULL DEFAULT FALSE,
+ lease_until DATETIME(6) NULL,
+ claim_token VARCHAR(36) NULL,
+ claim_until DATETIME(6) NULL,
+ failure_code VARCHAR(50) NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ updated_at DATETIME NOT NULL,
+ INDEX idx_composition_work(status,world_id),
+ CONSTRAINT fk_composition_world FOREIGN KEY(world_id) REFERENCES world_folders(id),
+ CONSTRAINT fk_composition_user FOREIGN KEY(user_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS world_composition_entries (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ world_id BIGINT NOT NULL,
+ user_id BIGINT NOT NULL,
+ candidate BOOLEAN NOT NULL,
+ position BIGINT NOT NULL,
+ dream_id BIGINT NOT NULL,
+ story_version_id BIGINT NOT NULL,
+ bridge_id BIGINT NULL,
+ needs_bridge BOOLEAN NOT NULL,
+ created_at DATETIME NOT NULL,
+ CONSTRAINT uk_composition_position UNIQUE(world_id,candidate,position),
+ INDEX idx_composition_dream(dream_id,world_id),
+ CONSTRAINT fk_composition_entry_world FOREIGN KEY(world_id) REFERENCES world_compositions(world_id)
+);

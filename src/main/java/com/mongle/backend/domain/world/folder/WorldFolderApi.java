@@ -46,7 +46,7 @@ public interface WorldFolderApi {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수정 성공", useReturnTypeSchema = true)
     ResponseEntity<ApiResponse<WorldFolderResponse>> rename(@Parameter(hidden = true) Jwt jwt, @Positive Long worldId, @Valid WorldFolderUpdateRequest request);
 
-    @Operation(summary = "세계관 폴더 삭제", description = "최신 revision을 쿼리로 전달합니다. 폴더·선택 관계만 영구 삭제합니다. 원본 꿈·개별 AI 결과·다른 폴더와 공유 연결 결과는 보존합니다.")
+    @Operation(summary = "세계관 폴더 삭제", description = "최신 revision을 쿼리로 전달합니다. 폴더·선택 관계·해당 완성본과 후보 작업을 영구 삭제합니다. 원본 꿈·개별 AI 결과·다른 폴더와 공유 연결 결과는 보존합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "삭제 성공", useReturnTypeSchema = true)
     ResponseEntity<ApiResponse<Void>> delete(@Parameter(hidden = true) Jwt jwt, @Positive Long worldId, @PositiveOrZero Long revision);
 

@@ -100,7 +100,8 @@ class DreamPolicyTest {
                                 com.mongle.backend.domain.dream.generation
                                         .DreamGenerationTransactions.class),
                         mock(com.mongle.backend.domain.world.bridge.BridgeResultRepository.class),
-                        mock(com.mongle.backend.domain.world.folder.WorldSelectionDeletion.class));
+                        mock(com.mongle.backend.domain.world.folder.WorldSelectionDeletion.class),
+                        mock(com.mongle.backend.domain.world.composition.WorldCompositionDeletion.class));
         assertThat(
                         service.create(
                                         1L,
@@ -127,7 +128,8 @@ class DreamPolicyTest {
                                 com.mongle.backend.domain.dream.generation
                                         .DreamGenerationTransactions.class),
                         mock(com.mongle.backend.domain.world.bridge.BridgeResultRepository.class),
-                        mock(com.mongle.backend.domain.world.folder.WorldSelectionDeletion.class));
+                        mock(com.mongle.backend.domain.world.folder.WorldSelectionDeletion.class),
+                        mock(com.mongle.backend.domain.world.composition.WorldCompositionDeletion.class));
         assertThatThrownBy(
                         () ->
                                 service.create(

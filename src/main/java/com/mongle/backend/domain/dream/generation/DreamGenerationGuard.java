@@ -28,6 +28,7 @@ public class DreamGenerationGuard {
     private final DreamImageRepository images;
     private final BridgeResultRepository bridges;
     private final Clock authClock;
+    private final com.mongle.backend.domain.world.composition.WorldCompositionRepository compositions;
 
     public DreamMutationStatus status(Long userId, Long dreamId) {
         var now = authClock.instant();
@@ -37,6 +38,7 @@ public class DreamGenerationGuard {
                 userId, dreamId, GenerationStatus.PROCESSING, now)) reasons.add(BlockingTask.IMAGE);
         if (bridges.hasActiveForDream(userId, dreamId, GenerationStatus.PROCESSING, now))
             reasons.add(BlockingTask.WORLD_BRIDGE);
+        if (worldBusy(userId,dreamId,now)) reasons.add(BlockingTask.WORLD_COMPOSITION);
         return new DreamMutationStatus(reasons.isEmpty(), reasons);
     }
 
@@ -49,7 +51,8 @@ public class DreamGenerationGuard {
         var now = authClock.instant();
         reject(images.existsByUserIdAndAnalysis_Dream_IdAndStatusAndLeaseUntilAfter(
                         userId, dreamId, GenerationStatus.PROCESSING, now)
-                || bridges.hasActiveForDream(userId, dreamId, GenerationStatus.PROCESSING, now));
+                || bridges.hasActiveForDream(userId, dreamId, GenerationStatus.PROCESSING, now)
+                || worldBusy(userId,dreamId,now));
     }
 
     /** 기존 결과/진행 요청 재사용을 먼저 처리한 뒤 신규 파생 작업 예약 직전에 호출한다. */
@@ -67,6 +70,10 @@ public class DreamGenerationGuard {
                 || (story != null
                         && (includeInitial || analysis.isRegenerating() || story.getResultJson() != null)
                         && story.active(now));
+    }
+
+    private boolean worldBusy(Long user,Long dream,Instant now) {
+        return compositions.hasActiveSource(user,dream,java.util.List.of(GenerationStatus.PENDING,GenerationStatus.PROCESSING),now);
     }
 
     private static void reject(boolean busy) {

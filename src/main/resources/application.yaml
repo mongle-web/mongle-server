@@ -36,6 +36,13 @@ logging:
 
 
 mongle:
+  world:
+    composition:
+      enabled: ${MONGLE_WORLD_COMPOSITION_ENABLED:true}
+      worker-enabled: ${MONGLE_WORLD_COMPOSITION_WORKER_ENABLED:true}
+      poll-interval: ${MONGLE_WORLD_COMPOSITION_POLL_INTERVAL:2s}
+      batch-size: ${MONGLE_WORLD_COMPOSITION_BATCH_SIZE:20}
+      max-concurrent-calls: ${MONGLE_WORLD_COMPOSITION_MAX_CONCURRENT_CALLS:2}
   payment:
     enabled: ${MONGLE_PAYMENT_ENABLED:false}
     # 상품 목록은 운영 설정으로 공급한다. 임의 가격/지급량을 기본 제공하지 않는다.

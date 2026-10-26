@@ -44,6 +44,7 @@ public class DreamService {
     private final DreamGenerationTransactions generationTransactions;
     private final BridgeResultRepository bridges;
     private final WorldSelectionDeletion worldSelections;
+    private final com.mongle.backend.domain.world.composition.WorldCompositionDeletion worldCompositions;
 
     @Transactional
     public DreamResponse create(Long userId, DreamCreateRequest request) {
@@ -145,6 +146,7 @@ public class DreamService {
 
         // 연결 결과를 먼저 제거한다. 같은 사용자 잠금으로 늦은 완료 저장과 직렬화한다.
         // 새로 인접한 꿈 사이의 연결 문장은 생성하지 않는다.
+        worldCompositions.dreamDeleted(userId,id);
         bridges.deleteForDream(userId, id);
 
         worldSelections.deleteForDream(userId, id);

@@ -39,12 +39,19 @@ class InitialSchemaValidationTest {
 
     @Test
     void createsWorldFolderTablesFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_composition_entries");
+        jdbcTemplate.execute("drop table world_compositions");
         jdbcTemplate.execute("drop table world_selections");
         jdbcTemplate.execute("drop table world_folders");
         jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
             var migration = new org.springframework.core.io.ClassPathResource("db/migrations/20261025-world-folders.sql");
             org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
             org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, migration);
+            return null;
+        });
+        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var script=new org.springframework.core.io.ClassPathResource("db/migrations/20261026-world-composition.sql");
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,script);
             return null;
         });
         assertThat(jdbcTemplate.queryForList("""
