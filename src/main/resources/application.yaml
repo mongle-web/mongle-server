@@ -36,6 +36,14 @@ logging:
 
 
 mongle:
+  credit:
+    enabled: ${MONGLE_CREDIT_ENABLED:false}
+    expiry-policy: ${MONGLE_CREDIT_EXPIRY_POLICY:UNDECIDED}
+    signup-amount: ${MONGLE_CREDIT_SIGNUP_AMOUNT:}
+    dream-image-generation: ${MONGLE_CREDIT_DREAM_IMAGE_GENERATION:}
+    dream-image-regeneration: ${MONGLE_CREDIT_DREAM_IMAGE_REGENERATION:}
+    world-image-generation: ${MONGLE_CREDIT_WORLD_IMAGE_GENERATION:}
+    world-image-regeneration: ${MONGLE_CREDIT_WORLD_IMAGE_REGENERATION:}
   image:
     openai:
       enabled: ${MONGLE_IMAGE_OPENAI_ENABLED:false}

@@ -156,3 +156,5 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 - [비공개 S3 이미지 저장소 설정과 연동](docs/image-s3.md)
 
 - [OpenAI 비동기 이미지 Provider 설정과 검증](docs/image-openai.md)
+
+- [크레딧 잔액·원장·예약 및 운영 설정](docs/credits.md)
