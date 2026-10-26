@@ -291,3 +291,32 @@ CREATE TABLE dream_generation_jobs (
 );
 CREATE INDEX idx_generation_job_due ON dream_generation_jobs(status,next_run_at,id);
 CREATE INDEX idx_generation_job_user ON dream_generation_jobs(user_id,status,lease_until);
+
+CREATE TABLE world_bridge_results (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    before_dream_id BIGINT NOT NULL,
+    after_dream_id BIGINT NOT NULL,
+    before_version_id BIGINT NOT NULL,
+    after_version_id BIGINT NOT NULL,
+    prompt_version VARCHAR(50) NOT NULL,
+    settings_json TEXT NOT NULL,
+    settings_hash VARCHAR(64) NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    attempt_id VARCHAR(36) NOT NULL,
+    lease_until DATETIME(6) NULL,
+    failure_code VARCHAR(50) NULL,
+    content TEXT NULL,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_bridge_inputs UNIQUE (user_id, before_version_id, after_version_id, prompt_version, settings_hash),
+    INDEX idx_bridge_before_dream (before_dream_id),
+    INDEX idx_bridge_after_dream (after_dream_id),
+    CONSTRAINT fk_bridge_user FOREIGN KEY (user_id) REFERENCES users (id),
+    CONSTRAINT fk_bridge_before_dream FOREIGN KEY (before_dream_id) REFERENCES dreams (id),
+    CONSTRAINT fk_bridge_after_dream FOREIGN KEY (after_dream_id) REFERENCES dreams (id),
+    CONSTRAINT fk_bridge_before_version FOREIGN KEY (before_version_id) REFERENCES dream_story_versions (id),
+    CONSTRAINT fk_bridge_after_version FOREIGN KEY (after_version_id) REFERENCES dream_story_versions (id)
+);

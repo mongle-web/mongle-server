@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Semaphore;
 
-/** 분석·서사화가 공유하는 호출 제한. 슬롯을 기다리는 작업이나 별도 작업 풀을 만들지 않는다. */
+/** 분석·서사화·꿈 사이 연결이 공유하는 호출 제한. 슬롯을 기다리는 작업이나 별도 작업 풀을 만들지 않는다. */
 public final class DreamAiGateway {
 
     private final AiGateway gateway;
