@@ -31,12 +31,14 @@ import java.util.function.BooleanSupplier;
 
 /** #39 비동기 호출에 #46 보호, #48 삭제, #50 정리/재등록을 연결한 회귀 검증. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
         "spring.datasource.url=jdbc:h2:mem:async-image-lifecycle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "mongle.image.styles[0]=test-style", "mongle.image.execution.max-concurrent-calls=2",
         "mongle.image.cleanup.enabled=false", "mongle.image.cleanup.retry-base-delay=100ms"})
 @ActiveProfiles("test")
 @Import(DreamImageIntegrationTest.Config.class)
 class AsyncImageLifecycleIntegrationTest {
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired DreamService dreams;
     @Autowired DreamStructureService analyses;
     @Autowired DreamStoryService stories;
@@ -58,6 +60,7 @@ class AsyncImageLifecycleIntegrationTest {
 
     @BeforeEach void setup() {
         user = users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com", "통합검증")).getId();
+        credits.grant(user, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+user, 1000);
         generator.enabled = true; generator.calls.set(0); generator.pending = null; generator.last = null;
         generator.action = input -> ImagePayloadTest.png();
         storage.enabled = true; storage.failPut = false; storage.failDelete = false;
@@ -146,13 +149,13 @@ class AsyncImageLifecycleIntegrationTest {
         storage.failDelete = true; source.complete(ImagePayloadTest.png());
         error(() -> await(call),ImageErrorCode.NOT_FOUND);
         assertThat(ownedRequests().stream().map(ImageCleanupRequest::getReason)).containsExactlyInAnyOrder(
-                ImageCleanupRequest.Reason.DREAM_DELETED,ImageCleanupRequest.Reason.DISCARDED_UPLOAD);
+                ImageCleanupRequest.Reason.DREAM_DELETED,ImageCleanupRequest.Reason.DISCARDED_UPLOAD,ImageCleanupRequest.Reason.DISCARDED_UPLOAD);
         assertThat(storage.stored).containsKey(oldKey).hasSize(2);
         assertThat(jdbc.queryForObject("select count(*) from dream_images where user_id=?",Long.class,user)).isZero();
         error(() -> images.downloadUrl(user,success.imageId()),ImageErrorCode.NOT_FOUND);
         slotsReleased(); storage.failDelete = false;
         try (var worker = worker()) {
-            worker.poll(); eventually(() -> worker.activeCount()==0);
+            eventually(() -> { worker.poll(); return ownedRequests().stream().allMatch(r -> r.getStatus()==ImageCleanupRequest.Status.COMPLETED); });
             assertThat(ownedRequests()).allMatch(r -> r.getStatus()==ImageCleanupRequest.Status.COMPLETED);
         }
         assertThat(storage.stored).isEmpty();
@@ -165,7 +168,7 @@ class AsyncImageLifecycleIntegrationTest {
         expire(generator.last.imageId()); dreams.delete(user,dream.dreamId(),dream.revision());
         source.completeExceptionally(new IllegalStateException("private provider response"));
         error(() -> await(call),ImageErrorCode.NOT_FOUND);
-        assertThat(storage.stored).isEmpty(); assertThat(ownedRequests()).isEmpty(); slotsReleased();
+        assertThat(storage.stored).isEmpty(); assertThat(ownedRequests()).hasSize(2); slotsReleased();
     }
 
     @Test
@@ -175,7 +178,7 @@ class AsyncImageLifecycleIntegrationTest {
         call.cancel(true); assertThat(source).isNotCancelled();
         expire(generator.last.imageId()); dreams.delete(user,dream.dreamId(),dream.revision());
         storage.failDelete = true; source.complete(ImagePayloadTest.png());
-        eventually(() -> ownedRequests().size()==1); slotsReleased();
+        eventually(() -> ownedRequests().size()==2); slotsReleased();
         assertThat(ownedRequests().getFirst().getReason()).isEqualTo(ImageCleanupRequest.Reason.DISCARDED_UPLOAD);
         assertThat(jdbc.queryForObject("select count(*) from dream_images where user_id=?",Long.class,user)).isZero();
     }
@@ -198,8 +201,8 @@ class AsyncImageLifecycleIntegrationTest {
         error(() -> await(call),ImageErrorCode.NOT_FOUND); slotsReleased();
         assertThat(jdbc.queryForObject("select count(*) from dream_images where user_id=?",Long.class,user)).isZero();
         if (failCleanup) {
-            assertThat(ownedRequests()).hasSize(1); assertThat(storage.stored).hasSize(1);
-        } else { assertThat(ownedRequests()).isEmpty(); assertThat(storage.stored).isEmpty(); }
+            assertThat(ownedRequests()).hasSize(2); assertThat(storage.stored).hasSize(1);
+        } else { assertThat(ownedRequests()).hasSize(2); assertThat(storage.stored).isEmpty(); }
     }
 
     @Test

@@ -36,6 +36,7 @@ import java.util.function.Function;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
             "spring.datasource.url=jdbc:h2:mem:mongle-image;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
             // 두 진행 요청으로 슬롯을 채우는 경계 테스트는 운영 기본값과 분리한다.
             "mongle.image.execution.max-concurrent-calls=2",
@@ -151,6 +152,7 @@ class DreamImageIntegrationTest {
         }
     }
 
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired DreamImageService service;
     @Autowired ImageTransactions transactions;
     @Autowired DreamService dreams;
@@ -172,6 +174,7 @@ class DreamImageIntegrationTest {
     @BeforeEach
     void setup() {
         userId = users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "테스터")).getId();
+        credits.grant(userId, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+userId, 1000);
         generator.calls.set(0);
         generator.enabled = true;
         generator.pending = null;

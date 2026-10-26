@@ -33,7 +33,7 @@ public class ImageController implements ImageApi {
     }
 
     @Override
-    @PostMapping("/dreams/{dreamId}/image")
+    @PostMapping(value = "/dreams/{dreamId}/image", produces = MediaType.APPLICATION_JSON_VALUE)
     public CompletableFuture<ResponseEntity<ApiResponse<ImageResponse>>> generate(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable @Positive Long dreamId,

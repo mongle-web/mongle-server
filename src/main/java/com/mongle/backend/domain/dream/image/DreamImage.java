@@ -19,7 +19,10 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "dream_images",
-        indexes = @Index(name = "idx_image_storage_key", columnList = "storage_key"),
+        indexes = {
+            @Index(name = "idx_image_storage_key", columnList = "storage_key"),
+            @Index(name = "idx_image_attempt_expiry", columnList = "status,lease_until,id")
+        },
         uniqueConstraints =
                 @UniqueConstraint(name = "uk_image_analysis", columnNames = "analysis_id"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -57,6 +60,9 @@ public class DreamImage extends BaseEntity {
 
     @Column(name = "attempt_id", nullable = false, length = 36)
     private String attemptId;
+
+    @Column(name = "credit_reservation_id")
+    private Long creditReservationId;
 
     @JdbcTypeCode(SqlTypes.TIMESTAMP)
     @Column(name = "lease_until")
@@ -105,6 +111,10 @@ public class DreamImage extends BaseEntity {
         leaseUntil = now.plus(Duration.ofMinutes(2));
         failureCode = null;
         // 이전 성공 파일은 새 결과 저장이 끝날 때까지 유지한다.
+    }
+
+    void attachCreditReservation(Long reservationId) {
+        creditReservationId = reservationId;
     }
 
     public boolean accepts(String attempt) {

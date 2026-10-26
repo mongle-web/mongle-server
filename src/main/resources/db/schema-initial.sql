@@ -250,6 +250,7 @@ CREATE TABLE dream_images (
     mood VARCHAR(50) NULL,
     status VARCHAR(30) NOT NULL,
     attempt_id VARCHAR(36) NOT NULL,
+    credit_reservation_id BIGINT NULL,
     lease_until DATETIME(6) NULL,
     failure_code VARCHAR(50) NULL,
     storage_key VARCHAR(255) NULL,
@@ -347,6 +348,7 @@ CREATE TABLE IF NOT EXISTS image_cleanup_requests (
 CREATE INDEX idx_cleanup_due ON image_cleanup_requests(status,next_run_at,id);
 CREATE INDEX idx_cleanup_lease ON image_cleanup_requests(status,lease_until,id);
 CREATE INDEX idx_image_storage_key ON dream_images(storage_key);
+CREATE INDEX idx_image_attempt_expiry ON dream_images(status,lease_until,id);
 
 -- 기존 MySQL DB에 수동 적용. 적용 전 백업 및 대상 DB를 확인한다.
 -- 신규 DB에는 schema-initial.sql을 사용한다. 회원·꿈·AI 결과를 변경하지 않는다.
