@@ -36,6 +36,7 @@ class ImageCreditIntegrationTest {
     @Autowired DreamStoryService stories;
     @Autowired DreamImageService images;
     @Autowired ImageTransactions transactions;
+    @Autowired ImageRecovery recovery;
     @Autowired CreditService credits;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean CreditProperties creditProperties;
     @Autowired CreditReservationService reservations;
@@ -165,4 +166,70 @@ class ImageCreditIntegrationTest {
             assertThat(credits.balance(user).available()).isEqualTo(10); assertThat(storage.stored).isEmpty();
         } finally { jdbc.execute("alter table dream_images drop constraint credit_image_save_failure"); }
     }
+    void expireImage(Long image) { jdbc.update("update dream_images set lease_until=? where id=?", java.sql.Timestamp.from(Instant.EPOCH),image); }
+    void expireCredit(Long reservation) { jdbc.update("update credit_reservations set expires_at=? where id=?",java.sql.Timestamp.from(Instant.EPOCH),reservation); }
+
+    @Test void restartRecoveryReleasesCreditAndRejectsLateUploadWithoutAnotherRequest() {
+        fund(10); var dream=ready(); generator.pending=new CompletableFuture<>();
+        var call=images.generate(user,dream.dreamId(),request(dream)); var running=transactions.latest(user,dream.dreamId());
+        expireImage(running.imageId()); expireCredit(reservation(running.imageId()));
+        recovery.recoverExpired(); recovery.recoverExpired();
+        assertThat(transactions.latest(user,dream.dreamId()).failureCode()).isEqualTo("ATTEMPT_EXPIRED");
+        assertThat(credits.balance(user).available()).isEqualTo(10); assertThat(credits.balance(user).reserved()).isZero();
+        assertThat(count("RELEASE")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from image_cleanup_requests where user_id=?",Long.class,user)).isEqualTo(2);
+        generator.pending.complete(ImagePayloadTest.png()); assertThat(await(call).status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(storage.stored).isEmpty(); assertThat(count("SETTLE")).isZero();
+    }
+    @Test void deletingExpiredDreamReleasesReservationInSameTransaction() {
+        fund(10); var dream=ready(); generator.pending=new CompletableFuture<>();
+        var call=images.generate(user,dream.dreamId(),request(dream));
+        expireImage(generator.last.imageId()); dreams.delete(user,dream.dreamId(),dream.revision());
+        assertThat(credits.balance(user).available()).isEqualTo(10); assertThat(count("RELEASE")).isEqualTo(1);
+        generator.pending.complete(ImagePayloadTest.png()); assertThatThrownBy(() -> await(call)).isInstanceOf(BusinessException.class);
+        assertThat(storage.stored).isEmpty();
+    }
+    @Test void cleanupRegistrationFailureRollsBackDeletionAndCreditRelease() {
+        fund(10); var dream=ready(); generator.pending=new CompletableFuture<>();
+        var call=images.generate(user,dream.dreamId(),request(dream)); var image=generator.last.imageId(); expireImage(image);
+        jdbc.execute("alter table image_cleanup_requests add constraint credit_delete_cleanup_failure check(user_id<>"+user+")");
+        try {
+            assertThatThrownBy(() -> dreams.delete(user,dream.dreamId(),dream.revision())).isInstanceOf(RuntimeException.class);
+            assertThat(credits.balance(user).reserved()).isEqualTo(2); assertThat(count("RELEASE")).isZero();
+            assertThat(transactions.latest(user,dream.dreamId()).status()).isEqualTo(GenerationStatus.PROCESSING);
+        } finally { jdbc.execute("alter table image_cleanup_requests drop constraint credit_delete_cleanup_failure"); }
+        dreams.delete(user,dream.dreamId(),dream.revision());
+        assertThat(credits.balance(user).reserved()).isZero();
+        generator.pending.complete(ImagePayloadTest.png()); assertThatThrownBy(() -> await(call)).isInstanceOf(BusinessException.class);
+    }
+    @Test void concurrentRecoveryWorkersReleaseOnlyOnce() throws Exception {
+        fund(10); var dream=ready(); generator.pending=new CompletableFuture<>();
+        var call=images.generate(user,dream.dreamId(),request(dream)); var image=generator.last.imageId(); expireImage(image);
+        try(var pool=Executors.newFixedThreadPool(2)) {
+            var one=pool.submit(() -> recovery.recoverExpired()); var two=pool.submit(() -> recovery.recoverExpired());
+            one.get(5,TimeUnit.SECONDS); two.get(5,TimeUnit.SECONDS);
+        }
+        assertThat(count("RELEASE")).isEqualTo(1); assertThat(credits.balance(user).reserved()).isZero();
+        generator.pending.complete(ImagePayloadTest.png()); await(call); assertThat(count("SETTLE")).isZero();
+    }
+    @Test void failedRecoveryRemainsRetryableWithoutDoubleRelease() {
+        fund(10); var dream=ready(); generator.pending=new CompletableFuture<>();
+        var call=images.generate(user,dream.dreamId(),request(dream)); var image=generator.last.imageId(); expireImage(image);
+        jdbc.execute("alter table credit_ledger add constraint credit_recovery_failure check(user_id<>"+user+" or kind<>'RELEASE')");
+        try {
+            recovery.recoverExpired();
+            assertThat(credits.balance(user).reserved()).isEqualTo(2);
+            assertThat(transactions.latest(user,dream.dreamId()).status()).isEqualTo(GenerationStatus.PROCESSING);
+        } finally { jdbc.execute("alter table credit_ledger drop constraint credit_recovery_failure"); }
+        recovery.recoverExpired(); assertThat(credits.balance(user).reserved()).isZero(); assertThat(count("RELEASE")).isEqualTo(1);
+        generator.pending.complete(ImagePayloadTest.png()); await(call);
+    }
+    @Test void orphanedExpiredReservationIsAlsoRecovered() {
+        fund(10);
+        var orphan=reservations.reserve(user,"orphan-attempt:"+user,CreditUsage.DREAM_IMAGE_GENERATION,"orphan-target:"+user,Instant.now().plusSeconds(60));
+        expireCredit(orphan.reservationId()); recovery.recoverExpired();
+        assertThat(credits.balance(user).reserved()).isZero(); assertThat(credits.balance(user).available()).isEqualTo(10);
+        assertThat(count("RELEASE")).isEqualTo(1);
+    }
+
 }

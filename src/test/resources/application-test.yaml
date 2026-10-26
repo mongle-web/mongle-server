@@ -15,6 +15,9 @@ springdoc:
     enabled: true
 
 mongle:
+  image:
+    recovery:
+      enabled: false
   dream:
     generation:
       enabled: false

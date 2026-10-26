@@ -226,10 +226,10 @@ class DreamDeletionIntegrationTest {
         missing(() -> await(images.generate(user, graph.dream.dreamId(), new ImageRequest(graph.dream.revision(), "test-style", null, true, graph.image.imageVersion()))));
         assertThat(count("dream_images", "id", graph.image.imageId())).isZero();
         assertThat(jdbc.queryForList("select reason from image_cleanup_requests where image_id=?", String.class, graph.image.imageId()))
-                .containsExactlyInAnyOrder("DREAM_DELETED", "DISCARDED_UPLOAD");
-        var key = jdbc.queryForObject("select storage_key from image_cleanup_requests where image_id=? and reason='DISCARDED_UPLOAD'", String.class, graph.image.imageId());
+                .containsExactlyInAnyOrder("DREAM_DELETED", "DISCARDED_UPLOAD", "DISCARDED_UPLOAD");
+        var key = jdbc.queryForObject("select storage_key from image_cleanup_requests where image_id=? and reason='DISCARDED_UPLOAD' and storage_key like '%.png'", String.class, graph.image.imageId());
         cleanupTransactions.recordDiscardedUpload(user, graph.image.imageId(), key);
-        assertThat(count("image_cleanup_requests", "image_id", graph.image.imageId())).isEqualTo(2);
+        assertThat(count("image_cleanup_requests", "image_id", graph.image.imageId())).isEqualTo(3);
     }
     @Test
     void wrongOwnerOrRevisionCannotDeleteGraphOrEnqueueCleanup() {

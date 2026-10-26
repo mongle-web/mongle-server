@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.*;
 public class DreamDerivedDataDeletion {
     private final EntityManager em;
     private final ImageCleanupRegistration cleanupRegistration;
+    private final ImageCreditTransactions imageCredits;
     private static final String ANALYSES =
             "select id from dream_analyses where source_dream_id=:dream and user_id=:user";
     private static final String SCENES = "select id from dream_scenes where user_id=:user and"
@@ -27,6 +28,8 @@ public class DreamDerivedDataDeletion {
                 + " and i.analysis.sourceDreamId=:dream", DreamImage.class)
                 .setParameter("user", userId).setParameter("dream", dreamId).getResultList();
         for (var image : images) {
+            imageCredits.release(image);
+            cleanupRegistration.registerAttempt(image);
             if (image.getStorageKey() != null)
                 cleanupRegistration.register(userId, dreamId, image.getId(),
                         image.getStorageKey(), ImageCleanupRequest.Reason.DREAM_DELETED);

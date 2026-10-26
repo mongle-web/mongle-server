@@ -36,6 +36,7 @@ public class ImageTransactions {
     private final Clock authClock;
     private final DreamGenerationGuard generationGuard;
     private final ImageCreditTransactions credits;
+    private final ImageCleanupRegistration cleanupRegistration;
 
     public record Reservation(ImageResponse response, ImageGenerator.Input input) {}
 
@@ -117,6 +118,7 @@ public class ImageTransactions {
         admit.run();
         var image = prior.orElseGet(() -> DreamImage.create(analysis));
         credits.release(image);
+        cleanupRegistration.registerAttempt(image);
         image.start(
                 dream.getSourceRevision(),
                 hash,
@@ -174,6 +176,22 @@ public class ImageTransactions {
         image.fail(failure == null ? code : failure);
         images.flush();
         return response(image);
+    }
+
+    /** 재시작 후에도 사용자 잠금 획득 뒤 최신 상태와 기한을 다시 확인한다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
+    public boolean expire(Long userId, Long imageId) {
+        lock(userId);
+        var found = images.findByIdAndUserId(imageId, userId);
+        if (found.isEmpty()) return false;
+        var image = found.get();
+        if (image.getStatus() != GenerationStatus.PROCESSING
+                || image.getLeaseUntil() != null && image.getLeaseUntil().isAfter(authClock.instant())) return false;
+        credits.release(image);
+        cleanupRegistration.registerAttempt(image);
+        image.fail("ATTEMPT_EXPIRED");
+        images.flush();
+        return true;
     }
 
     public ImageResponse get(Long userId, Long imageId) {
