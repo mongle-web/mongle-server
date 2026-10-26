@@ -80,6 +80,8 @@ Driver Class는 `org.h2.Driver`, JDBC URL은
 `jdbc:h2:mem:mongle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE`,
 사용자는 `sa`, 비밀번호는 비워둔다. Gradle 의존성을 새로고침하고 서버를 재시작해야 콘솔 모듈이 적용된다.
 
+세계관 폴더·꿈 선택 API의 revision·페이지·삭제 계약은 [폴더 API 문서](docs/world-folders.md)를 참고한다.
+
 초기 모델의 기준, 연관관계와 Swagger 작성 예시는 [도메인 초기 세팅 문서](docs/domain-setup.md)를 참고한다.
 LLM Gateway의 요청·응답·오류 계약과 테스트용 구현 사용법은 [Gateway 계약 문서](docs/ai-gateway-contract.md)를 참고한다.
 시도별 로그·토큰 사용량·비용 계산과 기존 MySQL DB 변경 방법은 [로그와 비용 문서](docs/ai-generation-logging.md)를 참고한다.
