@@ -24,11 +24,13 @@ import java.time.*;
 import java.util.*;
 
 @SpringBootTest(properties = {
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
         "spring.datasource.url=jdbc:h2:mem:dream-deletion;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "mongle.image.styles[0]=test-style"})
 @ActiveProfiles("test")
 @Import(DreamImageIntegrationTest.Config.class)
 class DreamDeletionIntegrationTest {
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired DreamService dreams;
     @Autowired DreamStructureService analyses;
     @Autowired AnalysisTransactions analysisTransactions;
@@ -51,6 +53,7 @@ class DreamDeletionIntegrationTest {
     @BeforeEach
     void setup() {
         user = users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com", "삭제검증")).getId();
+        credits.grant(user, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+user, 1000);
         generator.action = input -> ImagePayloadTest.png();
         storage.failPut = false;
         storage.failDelete = false;
@@ -58,6 +61,7 @@ class DreamDeletionIntegrationTest {
     }
 
     Graph ready(Long owner, LocalDate date) {
+        credits.grant(owner, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+owner, 1000);
         var draft = dreams.create(owner, new DreamCreateRequest(date, "바다를 보았다"));
         var complete = dreams.complete(owner, draft.dreamId(),
                 new DreamEmotionsRequest(draft.revision(), List.of(DreamEmotion.HAPPY)));

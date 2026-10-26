@@ -24,6 +24,7 @@ import java.util.concurrent.*;
 
 /** 기본 격리 수준이 REPEATABLE_READ인 DB에서도 예약이 잠금 대기 뒤 최신 참조를 읽는지 확인한다. */
 @SpringBootTest(properties = {
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
         "spring.datasource.url=jdbc:h2:mem:cleanup-visibility;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "spring.datasource.hikari.transaction-isolation=TRANSACTION_REPEATABLE_READ",
         "spring.jpa.properties.hibernate.session_factory.statement_inspector=com.mongle.backend.domain.dream.image.ImageCleanupVisibilityIntegrationTest$ReadObserver",
@@ -48,6 +49,7 @@ class ImageCleanupVisibilityIntegrationTest {
         final CountDownLatch ownerRead = new CountDownLatch(1);
         final CountDownLatch published = new CountDownLatch(1);
     }
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired UserRepository users;
     @Autowired DreamService dreams;
     @Autowired DreamStructureService analyses;
@@ -62,6 +64,7 @@ class ImageCleanupVisibilityIntegrationTest {
     @Test
     void observesImagePublishedAfterOwnerLookupWhileWaitingForUserLock() throws Exception {
         Long user = users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com", "가시성검증")).getId();
+        credits.grant(user, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+user, 1000);
         var draft = dreams.create(user,new DreamCreateRequest(LocalDate.of(2026,10,18),"바다를 보았다"));
         var dream = dreams.complete(user,draft.dreamId(),new DreamEmotionsRequest(draft.revision(),List.of(DreamEmotion.HAPPY)));
         await(analyses.analyze(user,dream.dreamId(),dream.revision()));

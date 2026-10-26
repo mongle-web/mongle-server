@@ -31,6 +31,7 @@ import java.util.concurrent.*;
 import java.util.function.BooleanSupplier;
 
 @SpringBootTest(properties={
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
         "spring.datasource.url=jdbc:h2:mem:openai-image-lifecycle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "mongle.image.styles[0]=test-style","mongle.image.moods[0]=test-mood","mongle.image.execution.max-concurrent-calls=4",
         "mongle.image.openai.enabled=true","mongle.image.openai.api-key=fake-openai-secret",
@@ -60,6 +61,7 @@ class OpenAiImageLifecycleIntegrationTest {
         @Bean @Primary StructureGenerator providerStructure() { return input->CompletableFuture.completedFuture(DreamImageIntegrationTest.STRUCTURE); }
         @Bean @Primary StoryGenerator providerStory() { return input->CompletableFuture.completedFuture(DreamImageIntegrationTest.STORY); }
     }
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired OpenAiTestServer server;
     @Autowired S3TestTransport transport;
     @Autowired S3ImageAssetStore storage;
@@ -81,6 +83,7 @@ class OpenAiImageLifecycleIntegrationTest {
         cleanupRequests.deleteAll(); server.reset(); transport.reset(); gate=new CountDownLatch(1);
         clock.now.set(Instant.now().truncatedTo(ChronoUnit.MICROS));
         user=users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com","Provider검증")).getId();
+        credits.grant(user, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+user, 1000);
     }
     @AfterEach void release() { gate.countDown(); }
     DreamResponse ready() {

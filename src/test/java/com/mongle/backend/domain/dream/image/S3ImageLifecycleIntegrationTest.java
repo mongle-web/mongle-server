@@ -29,6 +29,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 @SpringBootTest(properties = {
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
         "spring.datasource.url=jdbc:h2:mem:s3-image-lifecycle;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "mongle.image.styles[0]=test-style", "mongle.image.cleanup.enabled=false",
         "mongle.image.cleanup.lease=5s", "mongle.image.cleanup.retry-base-delay=1s",
@@ -64,6 +65,7 @@ class S3ImageLifecycleIntegrationTest {
             return input -> CompletableFuture.completedFuture(DreamImageIntegrationTest.STORY);
         }
     }
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired S3TestTransport transport;
     @Autowired Generator generator;
     @Autowired ImageCleanupWorkerIntegrationTest.MutableClock clock;
@@ -86,6 +88,7 @@ class S3ImageLifecycleIntegrationTest {
         requests.deleteAll(); transport.reset(); generator.next = null;
         clock.now.set(Instant.now().truncatedTo(ChronoUnit.MICROS));
         user = users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com","S3검증")).getId();
+        credits.grant(user, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+user, 1000);
         worker = new ImageCleanupWorker(work,storage,new ImageCleanupProperties(true,properties.pollInterval(),
                 properties.batchSize(),properties.maxConcurrentCalls(),properties.lease(),properties.retryBaseDelay(),
                 properties.retryMaxDelay(),properties.maxAttempts()));

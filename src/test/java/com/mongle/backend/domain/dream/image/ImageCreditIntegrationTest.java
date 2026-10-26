@@ -1,0 +1,168 @@
+package com.mongle.backend.domain.dream.image;
+
+import static com.mongle.backend.domain.dream.gateway.DreamAiTestAwait.await;
+import static org.assertj.core.api.Assertions.*;
+
+import com.mongle.backend.domain.credit.*;
+import com.mongle.backend.domain.dream.analysis.DreamStructureService;
+import com.mongle.backend.domain.dream.dto.*;
+import com.mongle.backend.domain.dream.entity.DreamEmotion;
+import com.mongle.backend.domain.dream.service.DreamService;
+import com.mongle.backend.domain.dream.story.*;
+import com.mongle.backend.domain.user.entity.User;
+import com.mongle.backend.domain.user.repository.UserRepository;
+import com.mongle.backend.global.common.GenerationStatus;
+import com.mongle.backend.global.error.BusinessException;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.*;
+
+@SpringBootTest(properties = {
+    "spring.datasource.url=jdbc:h2:mem:image-credits;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
+    "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2",
+    "mongle.credit.dream-image-regeneration=3", "mongle.image.styles[0]=test-style"})
+@ActiveProfiles("test")
+@Import(DreamImageIntegrationTest.Config.class)
+class ImageCreditIntegrationTest {
+    @Autowired UserRepository users;
+    @Autowired DreamService dreams;
+    @Autowired DreamStructureService analyses;
+    @Autowired DreamStoryService stories;
+    @Autowired DreamImageService images;
+    @Autowired ImageTransactions transactions;
+    @Autowired CreditService credits;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean CreditProperties creditProperties;
+    @Autowired CreditReservationService reservations;
+    @Autowired DreamImageIntegrationTest.FakeGenerator generator;
+    @Autowired DreamImageIntegrationTest.FakeStore storage;
+    @Autowired JdbcTemplate jdbc;
+    Long user;
+
+    @BeforeEach void setup() {
+        user=users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com","과금검증")).getId();
+        generator.enabled=true; generator.calls.set(0); generator.pending=null;
+        generator.action=input -> ImagePayloadTest.png();
+        storage.enabled=true; storage.failPut=false; storage.failDelete=false;
+        storage.afterPut=key -> {}; storage.stored.clear(); storage.deleted.clear();
+    }
+    @AfterEach void closePending() { if(generator.pending!=null) generator.pending.complete(ImagePayloadTest.png()); }
+    DreamResponse ready() {
+        var draft=dreams.create(user,new DreamCreateRequest(LocalDate.now(ZoneId.of("Asia/Seoul")),"바다를 보았다"));
+        var dream=dreams.complete(user,draft.dreamId(),new DreamEmotionsRequest(draft.revision(),List.of(DreamEmotion.HAPPY)));
+        await(analyses.analyze(user,dream.dreamId(),dream.revision()));
+        dream=dreams.get(user,dream.dreamId());
+        await(stories.generate(user,dream.dreamId(),new StoryRequest(dream.revision(),false,null)));
+        return dream;
+    }
+    void fund(long amount) { credits.grant(user,CreditSource.PAYMENT,"payment-test:"+user,amount); }
+    ImageRequest request(DreamResponse dream) { return new ImageRequest(dream.revision(),"test-style",null,false,null); }
+    ImageRequest regenerate(DreamResponse dream,ImageResponse image) { return new ImageRequest(dream.revision(),"test-style",null,true,image.imageVersion()); }
+    long count(String kind) { return jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind=?",Long.class,user,kind); }
+    Long reservation(Long image) { return jdbc.queryForObject("select credit_reservation_id from dream_images where id=?",Long.class,image); }
+
+    @Test void successReuseAndExplicitRegenerationHaveDifferentCharges() {
+        fund(10); var dream=ready();
+        var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        assertThat(credits.balance(user).available()).isEqualTo(8);
+        assertThat(credits.balance(user).reserved()).isZero();
+        assertThat(await(images.generate(user,dream.dreamId(),request(dream)))).isEqualTo(first);
+        assertThat(count("RESERVE")).isEqualTo(1); assertThat(count("SETTLE")).isEqualTo(1);
+        var second=await(images.generate(user,dream.dreamId(),regenerate(dream,first)));
+        assertThat(second.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(credits.balance(user).available()).isEqualTo(5);
+        assertThat(generator.calls).hasValue(2); assertThat(count("SETTLE")).isEqualTo(2);
+    }
+    @Test void unavailableCostBlocksNewGenerationButDoesNotBlockFreeReuse() {
+        fund(10); var dream=ready(); var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        org.mockito.Mockito.doThrow(new BusinessException(CreditErrorCode.UNAVAILABLE))
+            .when(creditProperties).cost(CreditUsage.DREAM_IMAGE_REGENERATION);
+        assertThat(await(images.generate(user,dream.dreamId(),request(dream)))).isEqualTo(first);
+        assertThatThrownBy(() -> images.generate(user,dream.dreamId(),regenerate(dream,first)))
+            .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(CreditErrorCode.UNAVAILABLE);
+        assertThat(count("RESERVE")).isEqualTo(1); assertThat(generator.calls).hasValue(1);
+        assertThat(transactions.latest(user,dream.dreamId())).isEqualTo(first);
+    }
+    @Test void reservationSaveFailureRollsBackImageStartAndBalance() {
+        fund(10); var dream=ready();
+        jdbc.execute("alter table credit_reservations add constraint credit_image_reserve_failure check(user_id<>"+user+")");
+        try {
+            assertThatThrownBy(() -> images.generate(user,dream.dreamId(),request(dream))).isInstanceOf(RuntimeException.class);
+            assertThat(count("RESERVE")).isZero(); assertThat(generator.calls).hasValue(0);
+            assertThat(credits.balance(user).available()).isEqualTo(10); assertThat(credits.balance(user).reserved()).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from dream_images where user_id=?",Long.class,user)).isZero();
+        } finally { jdbc.execute("alter table credit_reservations drop constraint credit_image_reserve_failure"); }
+    }
+    @Test void insufficientBalanceRollsBackImageAndNeverCallsProvider() {
+        fund(1); var dream=ready();
+        assertThatThrownBy(() -> images.generate(user,dream.dreamId(),request(dream)))
+            .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(CreditErrorCode.INSUFFICIENT);
+        assertThat(generator.calls).hasValue(0); assertThat(count("RESERVE")).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from dream_images where user_id=?",Long.class,user)).isZero();
+        assertThat(credits.balance(user).available()).isEqualTo(1);
+    }
+    @Test void pendingDuplicateReservesOnceAndLateRepeatCannotSettleTwice() {
+        fund(10); var dream=ready(); generator.pending=new CompletableFuture<>();
+        var call=images.generate(user,dream.dreamId(),request(dream));
+        var pending=await(images.generate(user,dream.dreamId(),request(dream)));
+        assertThat(credits.balance(user).available()).isEqualTo(8); assertThat(credits.balance(user).reserved()).isEqualTo(2);
+        assertThat(count("RESERVE")).isEqualTo(1); assertThat(generator.calls).hasValue(1);
+        generator.pending.complete(ImagePayloadTest.png()); var done=await(call);
+        transactions.finish(generator.last,storage.stored.keySet().iterator().next(),ImagePayload.parse(ImagePayloadTest.png()));
+        assertThat(count("SETTLE")).isEqualTo(1); assertThat(credits.balance(user).reserved()).isZero();
+        assertThat(done.imageId()).isEqualTo(pending.imageId());
+    }
+    @Test void invalidOutputAndStorageFailureRestoreAllReservedCredits() {
+        fund(10); var dream=ready(); generator.action=input -> new byte[]{1};
+        assertThat(await(images.generate(user,dream.dreamId(),request(dream))).failureCode()).isEqualTo("INVALID_OUTPUT");
+        assertThat(credits.balance(user).available()).isEqualTo(10);
+        generator.action=input -> ImagePayloadTest.png(); storage.failPut=true;
+        assertThat(await(images.generate(user,dream.dreamId(),request(dream))).failureCode()).isEqualTo("STORAGE_FAILED");
+        assertThat(credits.balance(user).available()).isEqualTo(10); assertThat(credits.balance(user).reserved()).isZero();
+        assertThat(count("RELEASE")).isEqualTo(2); assertThat(count("SETTLE")).isZero();
+    }
+    @Test void releasedReservationCannotPublishImageEvenWithActiveAttempt() {
+        fund(10); var dream=ready(); generator.pending=new CompletableFuture<>();
+        var call=images.generate(user,dream.dreamId(),request(dream));
+        var running=transactions.latest(user,dream.dreamId());
+        reservations.release(user,reservation(running.imageId()),CreditReservation.ReleaseReason.CANCELLED);
+        generator.pending.complete(ImagePayloadTest.png());
+        assertThat(await(call).failureCode()).isEqualTo("CREDIT_RESERVATION_EXPIRED");
+        assertThat(count("SETTLE")).isZero(); assertThat(credits.balance(user).available()).isEqualTo(10);
+        assertThat(storage.stored).isEmpty();
+    }
+    @Test void cancellationDuringRegenerationPreservesPreviousImageAndReleasesReservation() {
+        fund(10); var dream=ready(); var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        generator.pending=new CompletableFuture<>(); var call=images.generate(user,dream.dreamId(),regenerate(dream,first));
+        credits.holdPayment(user,"payment-test:"+user); generator.pending.complete(ImagePayloadTest.png());
+        var failed=await(call); assertThat(failed.failureCode()).isEqualTo("CREDIT_PAYMENT_REVIEW");
+        assertThat(failed.hasPreviousResult()).isTrue(); assertThat(storage.stored).hasSize(1);
+        assertThat(count("SETTLE")).isEqualTo(1); assertThat(credits.balance(user).available()).isEqualTo(8);
+        assertThat(credits.balance(user).reserved()).isZero();
+        assertThatThrownBy(() -> images.generate(user,dream.dreamId(),regenerate(dream,failed)))
+            .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(CreditErrorCode.PAYMENT_REVIEW);
+    }
+    @Test void paymentHoldDoesNotBlockCompletedResultReuseOrReads() {
+        fund(10); var dream=ready(); var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        credits.holdPayment(user,"payment-test:"+user);
+        assertThat(await(images.generate(user,dream.dreamId(),request(dream)))).isEqualTo(first);
+        assertThat(transactions.latest(user,dream.dreamId())).isEqualTo(first);
+        assertThat(generator.calls).hasValue(1); assertThat(count("SETTLE")).isEqualTo(1);
+    }
+    @Test void imageSaveFailureRollsBackSettlementThenReleasesReservation() {
+        fund(10); var dream=ready(); generator.pending=new CompletableFuture<>();
+        var call=images.generate(user,dream.dreamId(),request(dream));
+        var running=transactions.latest(user,dream.dreamId());
+        jdbc.execute("alter table dream_images add constraint credit_image_save_failure check(id<>"+running.imageId()+" or status<>'COMPLETED')");
+        try {
+            generator.pending.complete(ImagePayloadTest.png()); assertThatThrownBy(() -> await(call)).isInstanceOf(BusinessException.class);
+            assertThat(count("SETTLE")).isZero(); assertThat(count("RELEASE")).isEqualTo(1);
+            assertThat(credits.balance(user).available()).isEqualTo(10); assertThat(storage.stored).isEmpty();
+        } finally { jdbc.execute("alter table dream_images drop constraint credit_image_save_failure"); }
+    }
+}

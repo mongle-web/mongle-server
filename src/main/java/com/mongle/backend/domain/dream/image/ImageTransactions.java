@@ -35,6 +35,7 @@ public class ImageTransactions {
     private final ImageOptions options;
     private final Clock authClock;
     private final DreamGenerationGuard generationGuard;
+    private final ImageCreditTransactions credits;
 
     public record Reservation(ImageResponse response, ImageGenerator.Input input) {}
 
@@ -115,12 +116,14 @@ public class ImageTransactions {
         if (!available) throw new BusinessException(ImageErrorCode.UNAVAILABLE);
         admit.run();
         var image = prior.orElseGet(() -> DreamImage.create(analysis));
+        credits.release(image);
         image.start(
                 dream.getSourceRevision(),
                 hash,
                 request.style(),
                 request.mood(),
                 authClock.instant());
+        credits.reserve(image, request.regenerate());
         images.saveAndFlush(image);
         var input =
                 new ImageGenerator.Input(
@@ -142,14 +145,21 @@ public class ImageTransactions {
             return new Completion(response(image), Objects.equals(image.getStorageKey(), key));
         // 워커가 삭제를 시작한 키는 IO 종료/재등록 이후에도 다시 채택하지 않는다.
         if (cleanupRequests.existsByStorageKeyAndDeletionStartedAtIsNotNull(key)) {
+            credits.release(image);
             image.fail("ASSET_DISCARDED");
             images.flush();
             return new Completion(response(image), false);
         }
         String failure = sourceFailure(image);
-        if (failure != null) image.fail(failure);
-        else if (!image.active(authClock.instant())) image.fail("ATTEMPT_EXPIRED");
-        else image.finish(key, payload);
+        if (failure == null && !image.active(authClock.instant())) failure = "ATTEMPT_EXPIRED";
+        if (failure == null) failure = credits.settlementFailure(image);
+        if (failure != null) {
+            credits.release(image);
+            image.fail(failure);
+        } else {
+            credits.settle(image, key);
+            image.finish(key, payload);
+        }
         images.flush();
         return new Completion(response(image), image.getStatus() == GenerationStatus.COMPLETED);
     }
@@ -160,6 +170,7 @@ public class ImageTransactions {
         var image = owned(input.userId(), input.imageId());
         if (!image.accepts(input.attemptId())) return response(image);
         String failure = sourceFailure(image);
+        credits.release(image);
         image.fail(failure == null ? code : failure);
         images.flush();
         return response(image);

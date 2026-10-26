@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.*;
 import java.util.function.Consumer;
 
 @SpringBootTest(properties = {
+        "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=2", "mongle.credit.dream-image-regeneration=3",
         "spring.datasource.url=jdbc:h2:mem:image-cleanup-worker;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "mongle.image.styles[0]=test-style", "mongle.image.cleanup.enabled=false",
         "mongle.image.cleanup.lease=5s", "mongle.image.cleanup.retry-base-delay=1s",
@@ -70,6 +71,7 @@ class ImageCleanupWorkerIntegrationTest {
         }
     }
 
+    @Autowired com.mongle.backend.domain.credit.CreditService credits;
     @Autowired ImageCleanupWorkTransactions work;
     @Autowired ImageCleanupTransactions registration;
     @Autowired ImageCleanupRegistration mandatoryRegistration;
@@ -93,6 +95,7 @@ class ImageCleanupWorkerIntegrationTest {
         requests.deleteAll();
         clock.now.set(Instant.parse("2026-10-18T03:00:00Z"));
         user = users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com", "정리검증")).getId();
+        credits.grant(user, com.mongle.backend.domain.credit.CreditSource.SIGNUP, "image-test:"+user, 1000);
         store.enabled = true; store.action = key -> {}; store.afterDelete = key -> {}; store.objects.clear(); store.calls.set(0);
         worker = new ImageCleanupWorker(work, store, enabled(true));
     }
