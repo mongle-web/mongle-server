@@ -12,7 +12,7 @@ MONGLE_OAUTH_KAKAO_ENABLED=true
 MONGLE_OAUTH_GOOGLE_ENABLED=false
 KAKAO_CLIENT_ID=<REST-API-key>
 KAKAO_CLIENT_SECRET=<Client-Secret>
-MONGLE_AUTH_ALLOWED_ORIGINS=https://mongle.art
+MONGLE_AUTH_ALLOWED_ORIGINS=https://www.mongle.art
 MONGLE_OAUTH_SUCCESS_URL=<확정된-프론트-완료-URL>
 MONGLE_OAUTH_FAILURE_URL=<확정된-프론트-실패-URL>
 MONGLE_AUTH_COOKIE_SAME_SITE=Lax
@@ -20,7 +20,7 @@ MONGLE_AUTH_COOKIE_SAME_SITE=Lax
 
 DB/TLS 5개 환경변수와 `MONGLE_AUTH_SECRET`은 [RDS 배포 안내](mysql-rds-deployment.md)를 따른다. 키·비밀번호·토큰은 Git/프론트 번들/로그에 넣지 않는다. 새 DB 마이그레이션은 없다.
 
-완료·실패 URL은 필수 운영 설정이다. `/auth/callback`(완료), `/login`(실패)은 **프론트와 협의할 제안 경로**이며 현재 화면 구현/주소 확정을 뜻하지 않는다. 경로를 확정한 뒤 정확한 절대 URL을 설정한다. 예를 들어 완료 화면이 실제로 `https://mongle.art/auth/callback`에 생겼을 때만 그 값을 설정한다.
+완료·실패 URL은 필수 운영 설정이다. `/auth/callback`(완료), `/login`(실패)은 **프론트와 협의할 제안 경로**이며 현재 화면 구현/주소 확정을 뜻하지 않는다. 경로를 확정한 뒤 정확한 절대 URL을 설정한다. 예를 들어 완료 화면이 실제로 `https://www.mongle.art/auth/callback`에 생겼을 때만 그 값을 설정한다.
 
 URL은 정확한 `MONGLE_AUTH_ALLOWED_ORIGINS` 중 하나에 속해야 하고, userinfo/query/fragment를 허용하지 않는다. 운영은 HTTPS를 요구한다. 요청의 `next`, `redirect_uri`, Host 등으로 프론트 목적지를 바꿀 수 없다. 실패 시 서버가 허용한 `code` 하나만 추가한다.
 
@@ -82,7 +82,7 @@ Refresh 응답은 `{ success, code, message, data: { accessToken, tokenType, exp
 
 ## HTTPS·쿠키 확인
 
-Refresh/CSRF 쿠키는 API 호스트 전용이며 Path=/api/v1/auth다. 프론트에서 직접 읽거나 Domain=.mongle.art로 바꿀 필요가 없다. `mongle.art` 프론트와 `api.mongle.art` API는 Origin이 다르므로 CORS와 credentials가 필요하다. 실제 프론트 주소가 Vercel 도메인이면 쿠키의 사이트 조건도 달라지므로 이 배포와 같은 것으로 가정하지 않는다.
+Refresh/CSRF 쿠키는 API 호스트 전용이며 Path=/api/v1/auth다. 프론트에서 직접 읽거나 Domain=.mongle.art로 바꿀 필요가 없다. `www.mongle.art` 프론트와 `api.mongle.art` API는 Origin이 다르므로 CORS와 credentials가 필요하다. 실제 프론트 주소가 Vercel 도메인이면 쿠키의 사이트 조건도 달라지므로 이 배포와 같은 것으로 가정하지 않는다.
 
 Nginx는 실제 HTTPS/Host를 전달하고 `SERVER_FORWARD_HEADERS_STRATEGY=framework`를 적용한다. 앱 8080은 루프백으로 제한한다. 로컬 HTTP 테스트는 `local,oauth`, OAUTH_COOKIE_SECURE=false, localhost 프론트 Origin/완료/실패 URL을 명시한다. 운영 mysql/prod에서는 HTTP 복귀와 Secure=false 세션 쿠키를 허용하지 않는다.
 
