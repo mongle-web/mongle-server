@@ -322,7 +322,7 @@ CREATE TABLE world_bridge_results (
 );
 
 -- 꿈 삭제 커밋 이후 처리할 내부 파일 정리 대상. 삭제된 원본으로 향하는 FK는 두지 않는다.
--- 워커/실제 S3 삭제는 후속 구현이며, 행 존재만으로 파일 삭제 완료를 뜻하지 않는다.
+-- 정리 워커는 기본 비활성이다. 상태 COMPLETED만 멱등 삭제 성공을 뜻한다.
 CREATE TABLE IF NOT EXISTS image_cleanup_requests (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
@@ -331,6 +331,19 @@ CREATE TABLE IF NOT EXISTS image_cleanup_requests (
     storage_key VARCHAR(255) NOT NULL,
     reason VARCHAR(30) NOT NULL,
     created_at DATETIME(6) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+    attempt_count INT NOT NULL DEFAULT 0,
+    claim_token VARCHAR(36) NULL,
+    lease_until DATETIME(6) NULL,
+    next_run_at DATETIME(6) NULL,
+    completed_at DATETIME(6) NULL,
+    deletion_started_at DATETIME(6) NULL,
+    failure_code VARCHAR(50) NULL,
+    requeue_requested BOOLEAN NOT NULL DEFAULT FALSE,
+    version BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     CONSTRAINT uk_image_cleanup_key UNIQUE (storage_key)
 );
+CREATE INDEX idx_cleanup_due ON image_cleanup_requests(status,next_run_at,id);
+CREATE INDEX idx_cleanup_lease ON image_cleanup_requests(status,lease_until,id);
+CREATE INDEX idx_image_storage_key ON dream_images(storage_key);

@@ -36,6 +36,16 @@ logging:
 
 
 mongle:
+  image:
+    cleanup:
+      enabled: ${MONGLE_IMAGE_CLEANUP_ENABLED:false}
+      poll-interval: ${MONGLE_IMAGE_CLEANUP_POLL_INTERVAL:2s}
+      batch-size: ${MONGLE_IMAGE_CLEANUP_BATCH_SIZE:20}
+      max-concurrent-calls: ${MONGLE_IMAGE_CLEANUP_MAX_CONCURRENT_CALLS:2}
+      lease: ${MONGLE_IMAGE_CLEANUP_LEASE:2m}
+      retry-base-delay: ${MONGLE_IMAGE_CLEANUP_RETRY_BASE_DELAY:30s}
+      retry-max-delay: ${MONGLE_IMAGE_CLEANUP_RETRY_MAX_DELAY:1h}
+      max-attempts: ${MONGLE_IMAGE_CLEANUP_MAX_ATTEMPTS:5}
   dream:
     generation:
       enabled: ${MONGLE_DREAM_GENERATION_ENABLED:true}

@@ -19,6 +19,7 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "dream_images",
+        indexes = @Index(name = "idx_image_storage_key", columnList = "storage_key"),
         uniqueConstraints =
                 @UniqueConstraint(name = "uk_image_analysis", columnNames = "analysis_id"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

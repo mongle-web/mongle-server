@@ -20,7 +20,7 @@ class InitialSchemaValidationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Test
-    void createsCleanupRequestTableFromMigrationAndAllowsRerun() {
+    void createsCleanupRequestTableFromMigrationAndAllowsRerun() throws Exception {
         jdbcTemplate.execute("drop table image_cleanup_requests");
         jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
             var migration = new org.springframework.core.io.ClassPathResource(
@@ -34,6 +34,21 @@ class InitialSchemaValidationTest {
                 where table_schema = 'public' and table_name = 'image_cleanup_requests'
                 """, String.class)).containsExactlyInAnyOrder(
                 "id", "user_id", "dream_id", "image_id", "storage_key", "reason", "created_at");
+        // 구 테이블 생성 계약을 확인한 뒤 현재 초기 스키마로 복원한다.
+        jdbcTemplate.execute("drop table image_cleanup_requests");
+        String initial = new org.springframework.core.io.ClassPathResource("db/schema-initial.sql")
+                .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        var table = java.util.regex.Pattern.compile(
+                "CREATE TABLE IF NOT EXISTS image_cleanup_requests \\([\\s\\S]+?\\n\\);").matcher(initial);
+        assertThat(table.find()).isTrue();
+        jdbcTemplate.execute(table.group());
+        jdbcTemplate.execute("create index idx_cleanup_due on image_cleanup_requests(status,next_run_at,id)");
+        jdbcTemplate.execute("create index idx_cleanup_lease on image_cleanup_requests(status,lease_until,id)");
+        assertThat(jdbcTemplate.queryForList("""
+                select column_name from information_schema.columns
+                where table_schema = 'public' and table_name = 'image_cleanup_requests'
+                """, String.class)).contains("status", "attempt_count", "claim_token", "lease_until",
+                "next_run_at", "completed_at", "deletion_started_at", "failure_code", "requeue_requested", "version");
     }
 
     @Test

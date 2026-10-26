@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 public interface DreamImageRepository extends JpaRepository<DreamImage, Long> {
+    boolean existsByStorageKey(String storageKey);
     boolean existsByUserIdAndAnalysis_Dream_IdAndStatusAndLeaseUntilAfter(
             Long userId, Long dreamId, GenerationStatus status, Instant now);
 

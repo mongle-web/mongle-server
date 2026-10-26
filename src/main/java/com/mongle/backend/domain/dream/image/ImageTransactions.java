@@ -31,6 +31,7 @@ public class ImageTransactions {
     private final DreamStoryRepository stories;
     private final StoryValidator storyValidator;
     private final DreamImageRepository images;
+    private final ImageCleanupRequestRepository cleanupRequests;
     private final ImageOptions options;
     private final Clock authClock;
     private final DreamGenerationGuard generationGuard;
@@ -129,7 +130,14 @@ public class ImageTransactions {
     public Completion finish(ImageGenerator.Input input, String key, ImagePayload payload) {
         lock(input.userId());
         var image = owned(input.userId(), input.imageId());
-        if (!image.accepts(input.attemptId())) return new Completion(response(image), false);
+        if (!image.accepts(input.attemptId()))
+            return new Completion(response(image), Objects.equals(image.getStorageKey(), key));
+        // 워커가 삭제를 시작한 키는 IO 종료/재등록 이후에도 다시 채택하지 않는다.
+        if (cleanupRequests.existsByStorageKeyAndDeletionStartedAtIsNotNull(key)) {
+            image.fail("ASSET_DISCARDED");
+            images.flush();
+            return new Completion(response(image), false);
+        }
         String failure = sourceFailure(image);
         if (failure != null) image.fail(failure);
         else if (!image.active(authClock.instant())) image.fail("ATTEMPT_EXPIRED");
