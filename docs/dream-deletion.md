@@ -27,7 +27,7 @@ FK 삭제 순서를 지키고 벌크 제거 뒤 영속성 컨텍스트를 비운
 
 `image_cleanup_requests`에는 `user_id`, nullable `dream_id`, `image_id`, `storage_key`, `reason`, `created_at`만 저장한다.
 원본 삭제 뒤에도 처리해야 하므로 삭제 대상 부모와의 FK는 없다. 키는 유일하며 공개 DTO/Swagger/일반 로그로 내보내지 않는다.
-행의 처리 상태/시도/lease는 [정리 워커 계약](image-cleanup-worker.md)을 따른다. 워커는 기본 비활성이며 실제 S3 어댑터는 별도다.
+행의 처리 상태/시도/lease는 [정리 워커 계약](image-cleanup-worker.md)을 따른다. 워커는 기본 비활성이고 #54의 선택적 [S3 어댑터](image-s3.md)로 저장소를 연결한다. 버전 관리 버킷의 과거 객체 버전 회수는 별도다.
 
 - `DREAM_DELETED`: 이미지 상태가 성공/실패/만료여도 남아 있는 마지막 성공 storageKey를 삭제 트랜잭션 안에서 기록한다.
   성공 파일이 없는 실패/진행 행은 정리 요청 없이 제거한다. 정리 요청 저장이 실패하면 삭제도 취소한다.

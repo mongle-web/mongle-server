@@ -73,3 +73,8 @@ image.execution과 image.cleanup은 같은 YAML image 아래에 공존하지만 
 
 H2/가짜 Provider/가짜 저장소와 로컬 HTTP를 사용한다. 실제 MySQL 8·OpenAI·S3·운영 파일 삭제는 실행하지 않는다.
 전체 테스트/bootJar/diff 최종 결과는 PR 검증 기록과 이 프로젝트 완료 보고서에 남긴다.
+
+## S3 어댑터 후속 (#54)
+
+#54에서 선택적 비공개 S3 저장소를 추가한다. 기본 비활성이며 실제 이미지 Provider는 여전히 미연결이다.
+S3 IO는 기존 제한된 완료 풀/정리 실행기에서 수행한다. [설정·시간 제한·버전 관리 전제](image-s3.md)를 참고한다.
