@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "GOOGLE_CLIENT_ID=test-google", "GOOGLE_CLIENT_SECRET=test-secret",
+        "MONGLE_OAUTH_GOOGLE_ENABLED=true", "GOOGLE_CLIENT_ID=test-google", "GOOGLE_CLIENT_SECRET=test-secret",
         "KAKAO_CLIENT_ID=test-kakao", "KAKAO_CLIENT_SECRET=test-secret",
         "spring.datasource.url=jdbc:h2:mem:oauth-redirect;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE"
 })

@@ -6,6 +6,8 @@ import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.global.security.MongleJwtAuthenticationConverter;
 import com.mongle.backend.domain.auth.oauth.MongleOidcUserService;
 import com.mongle.backend.domain.auth.oauth.OAuthLoginHandlers;
+import com.mongle.backend.domain.auth.oauth.OAuthProviderGuard;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import com.mongle.backend.global.error.CommonErrorCode;
 import com.mongle.backend.global.security.SecurityResponseWriter;
 import jakarta.servlet.DispatcherType;
@@ -112,6 +114,7 @@ public class SecurityConfig {
                     .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
         }
         if (registrations.getIfAvailable() != null) {
+            http.addFilterBefore(new OAuthProviderGuard(registrations.getObject(), responses), OAuth2AuthorizationRequestRedirectFilter.class);
             http.oauth2Login(oauth -> oauth
                     .authorizedClientRepository(new HttpSessionOAuth2AuthorizedClientRepository())
                     .userInfoEndpoint(info -> info.userService(kakao).oidcUserService(google))
