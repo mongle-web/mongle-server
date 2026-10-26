@@ -51,5 +51,7 @@ dependencies {
 }
 
 tasks.named('test') {
+	// Full integration suite retains multiple Spring/JPA contexts. Production heap is configured separately.
+	maxHeapSize = '1g'
 	useJUnitPlatform()
 }
