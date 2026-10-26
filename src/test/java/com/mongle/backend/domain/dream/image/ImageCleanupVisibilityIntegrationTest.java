@@ -67,7 +67,7 @@ class ImageCleanupVisibilityIntegrationTest {
         await(analyses.analyze(user,dream.dreamId(),dream.revision()));
         dream = dreams.get(user,dream.dreamId());
         await(stories.generate(user,dream.dreamId(),new StoryRequest(dream.revision(),false,null)));
-        var image = images.generate(user,dream.dreamId(),new ImageRequest(dream.revision(),"test-style",null,false,null));
+        var image = await(images.generate(user,dream.dreamId(),new ImageRequest(dream.revision(),"test-style",null,false,null)));
         String key = "published-after-owner-read";
         registration.recordDiscardedUpload(user,image.imageId(),key);
         Long id = requests.findAll().getFirst().getId();

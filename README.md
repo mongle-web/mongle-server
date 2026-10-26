@@ -148,3 +148,5 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 - [꿈 영구 삭제와 이미지 정리 요청](docs/dream-deletion.md)
 
 - [이미지 파일 정리 워커와 실패 복구](docs/image-cleanup-worker.md)
+
+- [비동기 이미지·생성 보호·삭제·정리 통합](docs/image-async-integration.md)

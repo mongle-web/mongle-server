@@ -19,6 +19,7 @@ public enum ImageErrorCode implements ErrorCode {
     INVALID_OPTION(HttpStatus.BAD_REQUEST, "IMAGE_400_1", "허용된 이미지 스타일과 분위기를 선택해주세요."),
     INVALID_OUTPUT(HttpStatus.BAD_GATEWAY, "IMAGE_502_1", "이미지 생성 결과가 올바르지 않습니다."),
     CALL_FAILED(HttpStatus.BAD_GATEWAY, "IMAGE_502_2", "이미지 처리 중 오류가 발생했습니다."),
+    BUSY(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_503_2", "이미지 처리 한도에 도달했습니다. 잠시 후 다시 시도해주세요."),
     UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_503_1", "이미지 생성 또는 저장소 연결이 준비되지 않았습니다.");
 

@@ -92,4 +92,4 @@ lease가 외부 요청을 강제로 취소하지는 않는다. 느린 이전 삭
 초기 SQL/JPA validate와 MySQL 마이그레이션의 컬럼/백필/인덱스 정의 재실행을 H2에서 확인한다.
 실제 MySQL 8 프로시저 원문 실행·S3·다중 서버 운영 부하 검증과 구분한다.
 
-PR base는 미병합 #49의 feat/48-dream-delete-derived-data다. #39와 통합할 때 비동기 완료에도 삭제 시작 검사·등록 재요청 계약을 유지한다.
+PR base는 미병합 #49의 feat/48-dream-delete-derived-data다. #52에서 #39와 통합했으며 비동기 완료에도 삭제 시작 검사·등록 재요청 계약을 유지한다. [통합 계약](image-async-integration.md)을 참고한다.

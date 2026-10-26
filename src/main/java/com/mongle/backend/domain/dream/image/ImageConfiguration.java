@@ -6,10 +6,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 
 @Configuration
-@EnableConfigurationProperties(ImageOptions.class)
+@EnableConfigurationProperties({ImageOptions.class, ImageExecutionProperties.class})
 public class ImageConfiguration {
+    @Bean(destroyMethod = "close")
+    ImageGenerationResources imageGenerationResources(ImageExecutionProperties properties) {
+        return new ImageGenerationResources(properties.maxConcurrentCalls(), properties.resultThreads());
+    }
+
     @Bean
     @ConditionalOnMissingBean(ImageGenerator.class)
     ImageGenerator unavailableImageGenerator() {
@@ -20,8 +26,8 @@ public class ImageConfiguration {
             }
 
             @Override
-            public byte[] generate(Input input) {
-                throw new IllegalStateException("이미지 Provider 미연결");
+            public CompletableFuture<byte[]> generate(Input input) {
+                return CompletableFuture.failedFuture(new IllegalStateException("이미지 Provider 미연결"));
             }
         };
     }

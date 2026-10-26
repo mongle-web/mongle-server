@@ -85,6 +85,7 @@ HTTP 상태와 메시지, 예외 처리 흐름은 코드 형식 변경과 무관
 | 꿈 사이 연결 | INVALID_OUTPUT | `BRIDGE_502_1` | 502 |
 | 꿈 사이 연결 | CALL_FAILED | `BRIDGE_502_2` | 502 |
 | 꿈 사이 연결 | UNAVAILABLE | `BRIDGE_503_1` | 503 |
+| 이미지 | BUSY | `IMAGE_503_2` | 503 |
 
 ## AI Gateway
 

@@ -37,6 +37,8 @@ import java.util.function.Function;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
             "spring.datasource.url=jdbc:h2:mem:mongle-image;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
+            // 두 진행 요청으로 슬롯을 채우는 경계 테스트는 운영 기본값과 분리한다.
+            "mongle.image.execution.max-concurrent-calls=2",
             "mongle.image.styles[0]=test-style",
             "mongle.image.styles[1]=other-style",
             "mongle.image.styles[2]=third-style",
@@ -95,6 +97,8 @@ class DreamImageIntegrationTest {
     static class FakeGenerator implements ImageGenerator {
         final AtomicInteger calls = new AtomicInteger();
         volatile boolean enabled = true;
+        volatile CompletableFuture<byte[]> pending;
+        volatile Input last;
         volatile Function<Input, byte[]> action = input -> ImagePayloadTest.png();
 
         @Override
@@ -103,11 +107,12 @@ class DreamImageIntegrationTest {
         }
 
         @Override
-        public byte[] generate(Input input) {
+        public CompletableFuture<byte[]> generate(Input input) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             assertThat(input.sections()).hasSize(1);
+            last = input;
             calls.incrementAndGet();
-            return action.apply(input);
+            return pending == null ? CompletableFuture.completedFuture(action.apply(input)) : pending;
         }
     }
 
@@ -115,6 +120,7 @@ class DreamImageIntegrationTest {
         final Map<String, byte[]> stored = new ConcurrentHashMap<>();
         final Set<String> deleted = ConcurrentHashMap.newKeySet();
         volatile boolean enabled = true, failPut = false, failDelete = false;
+        volatile java.util.function.Consumer<String> afterPut = key -> {};
 
         @Override
         public boolean available() {
@@ -126,6 +132,7 @@ class DreamImageIntegrationTest {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             stored.put(key, payload.bytes());
             if (failPut) throw new IllegalStateException("partial upload");
+            afterPut.accept(key);
         }
 
         @Override
@@ -167,20 +174,27 @@ class DreamImageIntegrationTest {
         userId = users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "테스터")).getId();
         generator.calls.set(0);
         generator.enabled = true;
+        generator.pending = null;
+        generator.last = null;
         generator.action = input -> ImagePayloadTest.png();
         storage.stored.clear();
         storage.deleted.clear();
         storage.enabled = true;
         storage.failPut = false;
         storage.failDelete = false;
+        storage.afterPut = key -> {};
         storyteller.output = STORY;
     }
 
     DreamResponse ready() {
+        return ready(LocalDate.now(ZoneId.of("Asia/Seoul")));
+    }
+
+    DreamResponse ready(LocalDate date) {
         var dream =
                 dreams.create(
                         userId,
-                        new DreamCreateRequest(LocalDate.now(ZoneId.of("Asia/Seoul")), "바다를 보았다"));
+                        new DreamCreateRequest(date, "바다를 보았다"));
         dream =
                 dreams.complete(
                         userId,
@@ -199,7 +213,7 @@ class DreamImageIntegrationTest {
     }
 
     ImageResponse generate(DreamResponse dream) {
-        return service.generate(userId, dream.dreamId(), request(dream));
+        return await(service.generate(userId, dream.dreamId(), request(dream)));
     }
 
     @Test
@@ -229,17 +243,17 @@ class DreamImageIntegrationTest {
                 };
         var regenerate =
                 new ImageRequest(dream.revision(), "other-style", null, true, first.imageVersion());
-        var failed = service.generate(userId, dream.dreamId(), regenerate);
+        var failed = await(service.generate(userId, dream.dreamId(), regenerate));
         assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
         assertThat(failed.hasPreviousResult()).isTrue();
         assertThat(failed.style()).isEqualTo("other-style");
         assertThat(failed.resultStyle()).isEqualTo("test-style");
         assertThat(transactions.assetKey(userId, first.imageId())).isEqualTo(oldKey);
-        assertThatThrownBy(() -> service.generate(userId, dream.dreamId(), regenerate))
+        assertThatThrownBy(() -> await(service.generate(userId, dream.dreamId(), regenerate)))
                 .isInstanceOf(BusinessException.class);
         generator.action = input -> ImagePayloadTest.png();
         assertThat(
-                        service.generate(
+                        await(service.generate(
                                         userId,
                                         dream.dreamId(),
                                         new ImageRequest(
@@ -247,7 +261,7 @@ class DreamImageIntegrationTest {
                                                 "other-style",
                                                 null,
                                                 true,
-                                                failed.imageVersion()))
+                                                failed.imageVersion())))
                                 .status())
                 .isEqualTo(GenerationStatus.COMPLETED);
     }
@@ -270,7 +284,7 @@ class DreamImageIntegrationTest {
                         new ImageRequest(
                                 dream.revision(), "other-style", "other-mood", false, null),
                         request(dream))) {
-            assertThatThrownBy(() -> service.generate(userId, dream.dreamId(), changed))
+            assertThatThrownBy(() -> await(service.generate(userId, dream.dreamId(), changed)))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(ImageErrorCode.REGENERATION_REQUIRED);
@@ -295,14 +309,14 @@ class DreamImageIntegrationTest {
         generator.action = input -> ImagePayloadTest.png();
         var retry = new ImageRequest(dream.revision(), "other-style", null, false, null);
 
-        var completed = service.generate(userId, dream.dreamId(), retry);
+        var completed = await(service.generate(userId, dream.dreamId(), retry));
         assertThat(completed.status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(completed.resultStyle()).isEqualTo("other-style");
         assertThat(completed.resultMood()).isNull();
         assertThat(completed.imageVersion()).isGreaterThan(prior.imageVersion());
         assertThat(generator.calls).hasValue(calls + 1);
         assertThat(storage.stored).containsKey(originalKey).hasSize(2);
-        assertThat(service.generate(userId, dream.dreamId(), retry)).isEqualTo(completed);
+        assertThat(await(service.generate(userId, dream.dreamId(), retry))).isEqualTo(completed);
         assertThat(generator.calls).hasValue(calls + 1);
     }
 
@@ -326,7 +340,7 @@ class DreamImageIntegrationTest {
                                 null,
                                 true,
                                 first.imageVersion()))) {
-            assertThatThrownBy(() -> service.generate(userId, dream.dreamId(), stale))
+            assertThatThrownBy(() -> await(service.generate(userId, dream.dreamId(), stale)))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(ImageErrorCode.VERSION_CONFLICT);
@@ -334,11 +348,11 @@ class DreamImageIntegrationTest {
         assertThat(transactions.get(userId, first.imageId())).isEqualTo(prior);
         assertThat(generator.calls).hasValue(calls);
         var completed =
-                service.generate(
+                await(service.generate(
                         userId,
                         dream.dreamId(),
                         new ImageRequest(
-                                dream.revision(), "third-style", null, true, prior.imageVersion()));
+                                dream.revision(), "third-style", null, true, prior.imageVersion())));
         assertThat(completed.status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(completed.resultStyle()).isEqualTo("third-style");
         assertThat(generator.calls).hasValue(calls + 1);
@@ -364,7 +378,7 @@ class DreamImageIntegrationTest {
 
         assertThatThrownBy(
                         () ->
-                                service.generate(
+                                await(service.generate(
                                         userId,
                                         dream.dreamId(),
                                         new ImageRequest(
@@ -372,7 +386,7 @@ class DreamImageIntegrationTest {
                                                 "other-style",
                                                 null,
                                                 false,
-                                                null)))
+                                                null))))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ImageErrorCode.REGENERATION_REQUIRED);
@@ -393,7 +407,7 @@ class DreamImageIntegrationTest {
                     input -> {
                         throw new IllegalStateException("provider unavailable");
                     };
-            return service.generate(userId, dream.dreamId(), regenerate);
+            return await(service.generate(userId, dream.dreamId(), regenerate));
         }
         var pending = transactions.begin(userId, dream.dreamId(), regenerate, true).response();
         jdbc.update(
@@ -409,7 +423,7 @@ class DreamImageIntegrationTest {
         generate(dream);
         assertThatThrownBy(
                         () ->
-                                service.generate(
+                                await(service.generate(
                                         userId,
                                         dream.dreamId(),
                                         new ImageRequest(
@@ -417,7 +431,7 @@ class DreamImageIntegrationTest {
                                                 "other-style",
                                                 null,
                                                 false,
-                                                null)))
+                                                null))))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ImageErrorCode.REGENERATION_REQUIRED);
@@ -449,6 +463,7 @@ class DreamImageIntegrationTest {
                 .extracting("errorCode")
                 .isEqualTo(ImageErrorCode.UNAVAILABLE);
         generator.enabled = true;
+        generator.pending = null;
         storage.enabled = false;
         assertThatThrownBy(() -> generate(dream)).isInstanceOf(BusinessException.class);
         assertThat(
@@ -460,11 +475,11 @@ class DreamImageIntegrationTest {
         storage.enabled = true;
         assertThatThrownBy(
                         () ->
-                                service.generate(
+                                await(service.generate(
                                         userId,
                                         dream.dreamId(),
                                         new ImageRequest(
-                                                dream.revision(), "unknown", null, false, null)))
+                                                dream.revision(), "unknown", null, false, null))))
                 .isInstanceOf(BusinessException.class);
         assertThat(generator.calls).hasValue(0);
     }
@@ -514,7 +529,7 @@ class DreamImageIntegrationTest {
                     return ImagePayloadTest.png();
                 };
         var failed =
-                service.generate(
+                await(service.generate(
                         userId,
                         current.dreamId(),
                         new ImageRequest(
@@ -522,7 +537,7 @@ class DreamImageIntegrationTest {
                                 "test-style",
                                 null,
                                 true,
-                                first.imageVersion()));
+                                first.imageVersion())));
         assertThat(failed.failureCode()).isEqualTo("SOURCE_CHANGED");
         assertThat(failed.hasPreviousResult()).isTrue();
         assertThat(storage.stored).hasSize(1);
@@ -580,11 +595,11 @@ class DreamImageIntegrationTest {
                     return ImagePayloadTest.png();
                 };
         var failed =
-                service.generate(
+                await(service.generate(
                         userId,
                         dream.dreamId(),
                         new ImageRequest(
-                                dream.revision(), "test-style", null, true, first.imageVersion()));
+                                dream.revision(), "test-style", null, true, first.imageVersion())));
         assertThat(failed.failureCode()).isEqualTo("STORY_CHANGED");
         assertThat(failed.hasPreviousResult()).isTrue();
     }
@@ -593,42 +608,60 @@ class DreamImageIntegrationTest {
     void duplicateRequestsReuseProcessingAndExpiredAttemptCannotOverwriteSuccess()
             throws Exception {
         var dream = ready();
-        var entered = new CountDownLatch(1);
-        var release = new CountDownLatch(1);
-        generator.action =
-                input -> {
-                    entered.countDown();
-                    try {
-                        if (!release.await(10, TimeUnit.SECONDS))
-                            throw new IllegalStateException("timeout");
-                    } catch (InterruptedException ex) {
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException(ex);
-                    }
-                    return ImagePayloadTest.png();
-                };
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            var running = executor.submit(() -> generate(dream));
-            try {
-                assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
-                var pending = generate(dream);
-                assertThat(pending.status()).isEqualTo(GenerationStatus.PROCESSING);
-                assertThat(generator.calls).hasValue(1);
-                jdbc.update(
-                        "update dream_images set lease_until=? where id=?",
-                        java.sql.Timestamp.from(Instant.EPOCH),
-                        pending.imageId());
-                generator.action = input -> ImagePayloadTest.png();
-                var completed = generate(dream);
-                release.countDown();
-                assertThat(running.get(5, TimeUnit.SECONDS).status())
-                        .isEqualTo(GenerationStatus.COMPLETED);
-                assertThat(transactions.get(userId, completed.imageId())).isEqualTo(completed);
-                assertThat(storage.stored).hasSize(1);
-                assertThat(storage.deleted).hasSize(1);
-            } finally {
-                release.countDown();
-            }
+        var firstCall = new CompletableFuture<byte[]>();
+        generator.pending = firstCall;
+        var running = service.generate(userId, dream.dreamId(), request(dream));
+        try {
+            assertThat(running).isNotDone();
+            var pending = generate(dream);
+            assertThat(pending.status()).isEqualTo(GenerationStatus.PROCESSING);
+            assertThat(generator.calls).hasValue(1);
+            jdbc.update(
+                    "update dream_images set lease_until=? where id=?",
+                    java.sql.Timestamp.from(Instant.EPOCH), pending.imageId());
+            generator.pending = null;
+            var completed = generate(dream);
+            firstCall.complete(ImagePayloadTest.png());
+            assertThat(await(running).status()).isEqualTo(GenerationStatus.COMPLETED);
+            assertThat(transactions.get(userId, completed.imageId())).isEqualTo(completed);
+            assertThat(storage.stored).hasSize(1);
+            assertThat(storage.deleted).hasSize(1);
+        } finally {
+            firstCall.complete(ImagePayloadTest.png());
+            await(running);
+        }
+    }
+
+    @Test
+    void fullCapacityAllowsReuseAndRejectsNewReservationWithoutMutatingIt() {
+        var today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        var first = ready(today);
+        var second = ready(today.minusDays(1));
+        var third = ready(today.minusDays(2));
+        var response = new CompletableFuture<byte[]>();
+        generator.pending = response;
+        var runningFirst = service.generate(userId, first.dreamId(), request(first));
+        var runningSecond = service.generate(userId, second.dreamId(), request(second));
+        try {
+            assertThat(runningFirst).isNotDone();
+            assertThat(runningSecond).isNotDone();
+            assertThat(generate(first).status()).isEqualTo(GenerationStatus.PROCESSING);
+            assertThatThrownBy(() -> service.generate(userId, third.dreamId(), request(third)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode").isEqualTo(ImageErrorCode.BUSY);
+            assertThat(generator.calls).hasValue(2);
+            assertThatThrownBy(() -> transactions.latest(userId, third.dreamId()))
+                    .isInstanceOf(BusinessException.class);
+            response.complete(ImagePayloadTest.png());
+            var completed = await(runningFirst);
+            await(runningSecond);
+            generator.pending = null;
+            assertThat(generate(third).status()).isEqualTo(GenerationStatus.COMPLETED);
+            assertThat(generate(first)).isEqualTo(completed);
+        } finally {
+            response.complete(ImagePayloadTest.png());
+            await(runningFirst);
+            await(runningSecond);
         }
     }
 
@@ -658,7 +691,7 @@ class DreamImageIntegrationTest {
         try {
             assertThatThrownBy(
                             () ->
-                                    service.generate(
+                                    await(service.generate(
                                             userId,
                                             dream.dreamId(),
                                             new ImageRequest(
@@ -666,7 +699,7 @@ class DreamImageIntegrationTest {
                                                     "other-style",
                                                     null,
                                                     true,
-                                                    first.imageVersion())))
+                                                    first.imageVersion()))))
                     .isInstanceOf(BusinessException.class);
             var failed = transactions.get(userId, first.imageId());
             assertThat(failed.failureCode()).isEqualTo("PERSISTENCE_FAILED");
@@ -676,7 +709,7 @@ class DreamImageIntegrationTest {
             assertThat(storage.deleted).hasSize(1);
             jdbc.execute("alter table dream_images drop constraint image_test_storage");
             assertThat(
-                            service.generate(
+                            await(service.generate(
                                             userId,
                                             dream.dreamId(),
                                             new ImageRequest(
@@ -684,7 +717,7 @@ class DreamImageIntegrationTest {
                                                     "other-style",
                                                     null,
                                                     true,
-                                                    failed.imageVersion()))
+                                                    failed.imageVersion())))
                                     .status())
                     .isEqualTo(GenerationStatus.COMPLETED);
         } finally {
@@ -733,13 +766,13 @@ class DreamImageIntegrationTest {
                         userId, dream.dreamId(), new StoryRequest(dream.revision(), false, null)));
         assertThatThrownBy(
                         () ->
-                                service.generate(
+                                await(service.generate(
                                         userId,
                                         dream.dreamId(),
-                                        new ImageRequest(-1L, "test-style", null, false, null)))
+                                        new ImageRequest(-1L, "test-style", null, false, null))))
                 .isInstanceOf(BusinessException.class);
         var other = users.saveAndFlush(User.create(UUID.randomUUID() + "@test.com", "다른사용자"));
-        assertThatThrownBy(() -> service.generate(other.getId(), dream.dreamId(), request(dream)))
+        assertThatThrownBy(() -> await(service.generate(other.getId(), dream.dreamId(), request(dream))))
                 .isInstanceOf(BusinessException.class);
         assertThat(generator.calls).hasValue(0);
     }
