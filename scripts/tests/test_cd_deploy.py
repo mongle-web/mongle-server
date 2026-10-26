@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 import zipfile
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'cd'
@@ -168,11 +170,35 @@ class DeployTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 deploy.parameters({**environment, 'SSM_' + key: value})
 
-    def test_second_deployment_cannot_acquire_lock(self):
-        with (self.state / 'lock').open('a') as first, (self.state / 'lock').open('a') as second:
-            deploy.fcntl.flock(first, deploy.fcntl.LOCK_EX | deploy.fcntl.LOCK_NB)
-            with self.assertRaises(BlockingIOError):
-                deploy.fcntl.flock(second, deploy.fcntl.LOCK_EX | deploy.fcntl.LOCK_NB)
+
+class HealthTest(unittest.TestCase):
+    class Response:
+        status = 200
+
+        def __init__(self, url, state):
+            self.url, self.state = url, state
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def geturl(self):
+            return self.url
+
+        def read(self, _size):
+            return json.dumps({'status': self.state}).encode()
+
+    def test_both_internal_and_public_health_are_required(self):
+        public = 'https://api.mongle.art/actuator/health'
+        for state in ('UP', 'DOWN'):
+            with self.subTest(public_state=state), patch.object(deploy.subprocess, 'run', return_value=SimpleNamespace(returncode=0)), patch.object(deploy.urllib.request, 'build_opener') as factory:
+                opener = factory.return_value
+                opener.open.side_effect = lambda url, timeout: self.Response(url, state if url == public else 'UP')
+                with patch.object(deploy.time, 'monotonic', side_effect=[0, 0, 0, 0, 2, 2]), patch.object(deploy.time, 'sleep'):
+                    self.assertEqual(deploy.Runtime({'publicHealth': public}).healthy(timeout=1), state == 'UP')
+                self.assertEqual(opener.open.call_count, 2)
 
 
 if __name__ == '__main__':

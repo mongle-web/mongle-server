@@ -34,6 +34,14 @@ def digest(path):
     return value.hexdigest()
 
 
+def sync_directory(path):
+    directory_fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 def atomic_json(path, value):
     with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as target:
         temporary = Path(target.name)
@@ -43,11 +51,7 @@ def atomic_json(path, value):
             target.flush()
             os.fsync(target.fileno())
             os.replace(temporary, path)
-            directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            sync_directory(path.parent)
         finally:
             temporary.unlink(missing_ok=True)
 
@@ -152,6 +156,7 @@ class Deployer:
         try:
             temporary.symlink_to(target)
             os.replace(temporary, self.current)
+            sync_directory(self.app)
         finally:
             temporary.unlink(missing_ok=True)
 
@@ -205,6 +210,7 @@ class Deployer:
                 with staged.open('rb') as source:
                     os.fsync(source.fileno())
                 os.replace(staged, target)
+                sync_directory(self.releases)
         if not self.runtime.healthy(timeout=20):
             raise RuntimeError('Previous release is not healthy; automatic deployment refused')
         state.update(highestSequence=list(sequence), lastCommit=commit, runId=values['RunId'])
