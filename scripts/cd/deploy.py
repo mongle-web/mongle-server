@@ -146,6 +146,7 @@ class Runtime:
                    '--property=User=mongle-migrate', '--property=Group=mongle-migrate',
                    '--property=WorkingDirectory=' + str(MIGRATION_CACHE),
                    '--property=EnvironmentFile=' + str(MIGRATION_ENV),
+                   # Primary deadline; MigrationSettings.socketTimeout is the 250s fallback.
                    '--property=RuntimeMaxSec=240', '--property=TimeoutStopSec=15',
                    '--property=KillMode=control-group', '--property=NoNewPrivileges=true',
                    '--property=PrivateTmp=true', '--property=ProtectSystem=strict',

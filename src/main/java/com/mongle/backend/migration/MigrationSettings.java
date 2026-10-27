@@ -53,7 +53,9 @@ public record MigrationSettings(String url, String user, String password, String
         properties.setProperty("trustCertificateKeyStorePassword", truststorePassword);
         properties.setProperty("fallbackToSystemTrustStore", "false");
         properties.setProperty("connectTimeout", "5000");
-        properties.setProperty("socketTimeout", "60000");
+        // CD's systemd RuntimeMaxSec=240 is the primary deadline (scripts/cd/deploy.py).
+        // Keep this fallback above 240s and below the deployer's 270s wait.
+        properties.setProperty("socketTimeout", "250000");
         source.setConnectionProperties(properties);
         return source;
     }

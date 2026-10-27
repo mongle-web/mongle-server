@@ -1,6 +1,7 @@
 """Exercise the credential boundary and real protected-JAR staging, with systemd simulated."""
 import importlib.util
 import json
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -41,6 +42,12 @@ class MigrationRuntimeTest(unittest.TestCase):
             self.assertIn('--property=EnvironmentFile=/etc/mongle-migration/migration.env', command)
             self.assertIn('--property=RuntimeMaxSec=240', command)
             self.assertEqual(command[-1], '--db-migration=migrate')
+            settings = (Path(__file__).resolve().parents[2] /
+                        'src/main/java/com/mongle/backend/migration/MigrationSettings.java').read_text()
+            socket = int(re.search(r'setProperty\(\s*"socketTimeout"\s*,\s*"([0-9]+)"\s*\)', settings).group(1))
+            runtime = int(next(value for value in command if value.startswith('--property=RuntimeMaxSec=')).split('=')[-1])
+            self.assertGreater(socket, runtime * 1000)
+            self.assertLess(socket, run.call_args.kwargs['timeout'] * 1000)
             self.assertIn(str(self.cache / self.source.name), command)
             self.assertNotIn(str(self.source), command)
             self.assertEqual(deploy.digest(self.cache / self.source.name), deploy.digest(self.source))
