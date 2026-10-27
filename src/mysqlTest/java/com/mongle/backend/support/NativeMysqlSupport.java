@@ -15,7 +15,7 @@ public final class NativeMysqlSupport {
         int value = Integer.parseInt(port);
         if (value < 1
                 || value > 65535
-                || !List.of("credit_test", "payment_test").contains(database)) {
+                || !List.of("credit_test", "payment_test", "flyway_jpa").contains(database)) {
             throw new IllegalStateException("Invalid disposable MySQL fixture");
         }
         registry.add(

@@ -89,7 +89,17 @@ def main():
                 with (base / "admin.cnf").open("a") as handle:
                     handle.write(f"password={admin_password}\n")
                 sql(f"CREATE USER 'mongle_test'@'127.0.0.1' IDENTIFIED BY '{password}' REQUIRE SSL;")
+                migration_password = secrets.token_hex(24)
+                sql(f"CREATE USER 'mongle_migrator'@'127.0.0.1' IDENTIFIED BY '{migration_password}' REQUIRE SSL;")
+                migration_databases = ("flyway_fresh", "flyway_existing", "flyway_drift", "flyway_failed",
+                                       "flyway_checksum", "flyway_privilege", "flyway_jpa")
                 schema = (repo / "src/main/resources/db/schema-initial.sql").read_text()
+                for database in migration_databases:
+                    sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
+                    sql(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {database}.* TO 'mongle_test'@'127.0.0.1';")
+                    sql(f"GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES ON {database}.* TO 'mongle_migrator'@'127.0.0.1';")
+                    if database in ("flyway_existing", "flyway_drift", "flyway_privilege"):
+                        sql(schema, database)
                 for database in ("credit_test", "payment_test", "upgrade_test", "credit_migration_test"):
                     sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
                     sql(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {database}.* TO 'mongle_test'@'127.0.0.1';")
@@ -123,9 +133,10 @@ def main():
                 if sql("SELECT nickname FROM users WHERE email='preserved@test.invalid';", "upgrade_test").strip() != "keep":
                     raise RuntimeError("Upgrade did not preserve the fixture row.")
                 env.update(MONGLE_MYSQL_TEST_PORT=str(port), MONGLE_MYSQL_TEST_PASSWORD=password,
+                           MONGLE_MYSQL_MIGRATOR_PASSWORD=migration_password,
                            DB_URL=f"jdbc:mysql://127.0.0.1:{port}/credit_test", DB_USERNAME="mongle_test", DB_PASSWORD=password,
                            DB_TRUSTSTORE_URL=(base / "truststore.p12").as_uri())
-                print("MySQL 8.4: fresh schema and 29→33 upgrade match; running JDBC regressions.", flush=True)
+                print("MySQL 8.4: fresh schema and 29→33 upgrade match; running JDBC/Flyway regressions.", flush=True)
                 result = subprocess.run([str(repo / "gradlew"), "mysqlTest", "--rerun-tasks"], cwd=repo, env=env)
                 return result.returncode
             except (Exception, KeyboardInterrupt):
