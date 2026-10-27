@@ -1,6 +1,6 @@
 # 몽글 프론트엔드 연동 전달본
 
-2026-10-27 #79 기준. 카카오 단독 로그인 코드로 정리했으며 기능 API55개는 유지한다. #78까지 운영 배포가 성공했고 #79는 별도 머지·배포가 필요하다. **현재 구현 계약과 최종 MVP 예정 기능, 운영 활성 상태를 구분한다.**
+2026-10-27 #79 기준. 카카오 단독 로그인 코드로 정리하고 작업 중 머지된 #77 세계관 이미지 API를 통합했다. 이번 인증 변경은 API를 추가하지 않으며 통합 코드의 API는 58개다. #79는 별도 머지·배포가 필요하다. **현재 구현 계약과 최종 MVP 예정 기능, 운영 활성 상태를 구분한다.**
 
 ## 주소와 명세 전달
 
@@ -11,15 +11,15 @@
 | 공통 API 접두사 | /api/v1 |
 | 운영 health | https://api.mongle.art/actuator/health — 이번 확인 HTTP200/UP |
 | 운영 Swagger | https://api.mongle.art/swagger-ui.html — UI200 확인 |
-| 운영 OpenAPI JSON | https://api.mongle.art/v3/api-docs — HTTP200, 45경로55 API 확인 |
+| 운영 OpenAPI JSON | https://api.mongle.art/v3/api-docs — HTTP200, 실제 배포 커밋의 명세 표시 |
 | 로컬 Swagger | http://localhost:8080/swagger-ui.html |
 | 로컬 OpenAPI JSON | http://localhost:8080/v3/api-docs |
 
-이번 공개 요청 점검에서는 `https://www.mongle.art`의 Bearer GET preflight가 HTTP200 및 정확한 Allow-Origin으로 응답했다. 모든 메서드·실제 인증·브라우저 기능 연동 완료까지 뜻하지 않는다. CD 실행40491244847에서는 develop `c325ce097ac2dcc2e6f15d2e055986569770161d` JAR 배포와 내부·공개 health가 성공했다. #79의 Google 제거는 이후 배포에서 반영된다.
+이번 공개 요청 점검에서는 `https://www.mongle.art`의 Bearer GET preflight가 HTTP200 및 정확한 Allow-Origin으로 응답했다. 모든 메서드·실제 인증·브라우저 기능 연동 완료까지 뜻하지 않는다. CD 실행40491244847에서는 develop `c325ce097ac2dcc2e6f15d2e055986569770161d` JAR 배포와 내부·공개 health가 성공했다. 이후 #77의 `21f6489` 배포(40497224862)는 후보 헬스체크 실패로 이전 `c325ce0` JAR로 롤백됐다. #77의 SQL 적용 여부와 EC2 기동 오류를 확인해야 하며, #79도 이후 배포가 필요하다.
 
 공통 설정에서는 문서가 기본 비활성이지만 현재 운영은 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 공개했다. 문서 열람과 실제 기능 활성화·로그인 성공은 구분한다.
 
-우선 별도 첨부하는 **프론트 공유용 OpenAPI JSON**을 Postman 등의 Import 기능으로 사용한다. JSON의 운영 주소는 호출 대상 설정이며, 모든 기능이 운영에서 활성화됐다는 의미가 아니다. 원본 추출 JSON의 `127.0.0.1:18176`은 임시 추출 서버이며 공유 서버가 아니다.
+우선 별도 첨부하는 **프론트 공유용 OpenAPI JSON**을 Postman 등의 Import 기능으로 사용한다. JSON의 운영 주소는 호출 대상 설정이며, 모든 기능이 운영에서 활성화됐다는 의미가 아니다. 원본 추출 JSON의 `127.0.0.1:18179`은 임시 추출 서버이며 공유 서버가 아니다.
 
 ## 프론트 API 기본 설정
 
@@ -119,7 +119,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 - `hasResult=true`면 생성 중/실패에도 이전 완성본을 유지한다. 항목은 `/composition/entries`로 페이지 조회한다.
 - 원문/새 서사는 자동 반영되지 않는다. `selectionChanged/sourceChanged/newStoryAvailable/hasConnectionGaps`로 변경 안내하고 필요한 생성/부분 반영을 요청한다.
 - 꿈 삭제로 남은 꿈이0~1개여도 폴더와 기존 유효 결과는 보존한다. 새로운 전체 구성은2개 조건을 따른다. 삭제 후 새 연결을 자동으로 생성하지 않는다.
-- 폴더/꿈 연결/이야기 구성은 무료다. **세계관 전체 이미지 API는 현재55개 명세에 없고 별도 #71 범위다.**
+- 폴더/꿈 연결/이야기 구성은 무료다. 세계관 전체 이미지는 #77의 생성·재생성/상태/다운로드3개 API를 통합했다. 이미지 사용권 정책과 운영 활성화는 별도다.
 
 ## 크레딧·페이앱
 
@@ -150,7 +150,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 |---|---|
 | 판매·이용권·이미지 과금 정책 | 페이앱 답변 후 확정·연결. 기존 크레딧 추가 정책 구현 보류 |
 | 스타일4개 고정 카탈로그·프롬프트 | 후속 구현 필요, 모델/옵션 검증 상준 담당 |
-| 세계관 전체 이미지 | #71 별도 구현 범위 |
+| 세계관 전체 이미지 | #77 구현·통합. 정확한 SQL 적용과 운영 활성화·실검증은 별도 |
 | 무료 종합 해석 생성/저장/갱신 | 미구현. recent-context는 최근 분석 대상 조회다 |
 | Google 완전 제거 | #79 코드 반영, 머지·배포 후 운영 적용 |
 | 회원탈퇴/카카오 연결 해제 | 미구현 |
@@ -167,7 +167,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 3. 완료 화면의 CSRF→Refresh·온보딩·401 갱신 공통 처리 및 긴 생성 요청의 상태 복구.
 4. 남은 기능 API가 추가될 때 이 명세를 갱신하는 시점. 현재 JSON은 먼저 구현된 기능 연동용이며 최종 MVP 전체 명세가 아니다.
 
-## 현재55개 API 목록
+## 현재 58개 API 목록
 
 요청 본문·필수값·쿼리·응답 스키마는 함께 전달한 JSON을 기준으로 한다. OAuth 시작/콜백과 health/Swagger는 이 업무 API 집계에 포함하지 않는다.
 
@@ -228,6 +228,9 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | GET | `/api/v1/worlds/{worldId}/dreams` | 선택한 꿈 페이지 조회 |
 | DELETE | `/api/v1/worlds/{worldId}/dreams/{dreamId}` | 세계관에서 꿈 제외 |
 | PUT | `/api/v1/worlds/{worldId}/dreams/{dreamId}` | 세계관에 꿈 선택 |
+| GET | `/api/v1/worlds/{worldId}/image` | 세계관 이미지 상태 조회 |
+| POST | `/api/v1/worlds/{worldId}/image` | 세계관 이미지 생성·재생성 |
+| GET | `/api/v1/worlds/{worldId}/image/download-url` | 세계관 이미지 다운로드 URL |
 
 ## 로컬 실행
 
