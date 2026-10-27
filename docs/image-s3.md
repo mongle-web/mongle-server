@@ -96,3 +96,7 @@ SDK 체크섬 청크 전송을 모의 저장소에서 해석해 최종 이미지
 - [Apache 5 HTTP 클라이언트 설정](https://docs.aws.amazon.com/java/api/latest/software/amazon/awssdk/http/apache5/Apache5HttpClient.Builder.html)
 - [S3 GET 서명](https://docs.aws.amazon.com/java/api/latest/software/amazon/awssdk/services/s3/presigner/S3Presigner.html)
 - [DeleteObject와 버전 관리](https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObject.html)
+
+## 세계관 이미지 (#71)
+
+세계관 이미지도 같은 비공개 저장소를 사용한다. `world-images/{userId}/{imageId}/{attemptId}.png|jpg`를 키 검증과 IAM 허용 경로에 추가했다. 기존 dream-images 경로는 유지한다. 꿈 삭제 후 보존하는 세계관 이미지는 정리하지 않으며 세계관 폴더 삭제·성공 교체·폐기 시도만 정리한다. [세계관 이미지 계약](world-image.md)을 따른다.

@@ -111,6 +111,8 @@ def main():
                 if sql("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='upgrade_test';").strip() != "29":
                     raise RuntimeError("Expected 29 tables before the world composition migration.")
                 sql((repo / "src/main/resources/db/migrations/20261026-world-composition.sql").read_text(), "upgrade_test")
+                sql((repo / "src/main/resources/db/migrations/20261026-world-images.sql").read_text(), "upgrade_test")
+                sql((repo / "src/main/resources/db/migrations/20261026-world-images.sql").read_text(), "upgrade_test")
                 for catalog in ("columns", "statistics"):
                     fields = ("TABLE_NAME,COLUMN_NAME,ORDINAL_POSITION,COLUMN_TYPE,IS_NULLABLE,COALESCE(COLUMN_DEFAULT,'<NULL>'),EXTRA,COLLATION_NAME"
                               if catalog == "columns" else "TABLE_NAME,INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,INDEX_TYPE")
@@ -123,7 +125,7 @@ def main():
                 env.update(MONGLE_MYSQL_TEST_PORT=str(port), MONGLE_MYSQL_TEST_PASSWORD=password,
                            DB_URL=f"jdbc:mysql://127.0.0.1:{port}/credit_test", DB_USERNAME="mongle_test", DB_PASSWORD=password,
                            DB_TRUSTSTORE_URL=(base / "truststore.p12").as_uri())
-                print("MySQL 8.4: fresh schema and 29→31 upgrade match; running JDBC regressions.", flush=True)
+                print("MySQL 8.4: fresh schema and 29→33 upgrade match; running JDBC regressions.", flush=True)
                 result = subprocess.run([str(repo / "gradlew"), "mysqlTest", "--rerun-tasks"], cwd=repo, env=env)
                 return result.returncode
             except (Exception, KeyboardInterrupt):

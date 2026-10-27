@@ -1,0 +1,43 @@
+-- Apply after world-composition and image-credit migrations, with app/workers stopped and a backup.
+CREATE TABLE IF NOT EXISTS world_images (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ user_id BIGINT NOT NULL,
+ world_id BIGINT NOT NULL,
+ composition_revision BIGINT NOT NULL,
+ style VARCHAR(50) NOT NULL,
+ mood VARCHAR(50) NULL,
+ status VARCHAR(30) NOT NULL,
+ attempt_id VARCHAR(36) NOT NULL,
+ credit_reservation_id BIGINT NULL,
+ lease_until DATETIME(6) NULL,
+ failure_code VARCHAR(50) NULL,
+ storage_key VARCHAR(255) NULL,
+ content_type VARCHAR(30) NULL,
+ width INT NULL,
+ height INT NULL,
+ result_composition_revision BIGINT NULL,
+ result_source_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+ result_style VARCHAR(50) NULL,
+ result_mood VARCHAR(50) NULL,
+ version BIGINT NOT NULL DEFAULT 0,
+ created_at DATETIME NOT NULL,
+ updated_at DATETIME NOT NULL,
+ CONSTRAINT uk_world_image_world UNIQUE(world_id),
+ INDEX idx_world_image_expiry(status,lease_until,id),
+ INDEX idx_world_image_key(storage_key),
+ CONSTRAINT fk_world_image_world FOREIGN KEY(world_id) REFERENCES world_folders(id),
+ CONSTRAINT fk_world_image_user FOREIGN KEY(user_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS world_image_sources (
+ id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ image_id BIGINT NOT NULL,
+ user_id BIGINT NOT NULL,
+ dream_id BIGINT NOT NULL,
+ story_version_id BIGINT NOT NULL,
+ source_revision BIGINT NOT NULL,
+ bridge_id BIGINT NULL,
+ candidate BOOLEAN NOT NULL,
+ CONSTRAINT uk_world_image_source UNIQUE(image_id,candidate,dream_id),
+ INDEX idx_world_image_source_dream(user_id,dream_id,image_id),
+ CONSTRAINT fk_world_image_source_image FOREIGN KEY(image_id) REFERENCES world_images(id)
+);

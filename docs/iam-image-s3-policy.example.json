@@ -5,7 +5,10 @@
       "Sid": "PrivateDreamImages",
       "Effect": "Allow",
       "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::REPLACE_WITH_PRIVATE_IMAGE_BUCKET/dream-images/*"
+      "Resource": [
+        "arn:aws:s3:::REPLACE_WITH_PRIVATE_IMAGE_BUCKET/dream-images/*",
+        "arn:aws:s3:::REPLACE_WITH_PRIVATE_IMAGE_BUCKET/world-images/*"
+      ]
     }
   ]
 }

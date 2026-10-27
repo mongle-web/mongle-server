@@ -21,14 +21,25 @@ public interface ImageGenerator {
             String promptVersion,
             String style,
             String mood,
-            List<StoryResult.Section> sections) {
+            List<StoryResult.Section> sections,
+            List<WorldStory> worldStories) {
+        public Input(Long userId, Long imageId, String attemptId, String promptVersion,
+                String style, String mood, List<StoryResult.Section> sections) {
+            this(userId, imageId, attemptId, promptVersion, style, mood, sections, List.of());
+        }
         public Input {
             sections = List.copyOf(sections);
+            worldStories = List.copyOf(worldStories);
         }
 
         @Override
         public String toString() {
             return "ImageInput[imageId=" + imageId + ",attemptId=" + attemptId + "]";
         }
+    }
+
+    /** 세계관의 꿈별 문단과 그 꿈 앞의 연결 문장. 원본 식별자는 Provider에 보내지 않는다. */
+    record WorldStory(List<StoryResult.Section> sections, String bridgeBefore) {
+        public WorldStory { sections = List.copyOf(sections); }
     }
 }

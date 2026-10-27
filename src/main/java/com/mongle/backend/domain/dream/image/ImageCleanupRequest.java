@@ -19,7 +19,7 @@ import java.util.*;
         })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ImageCleanupRequest extends BaseCreatedEntity {
-    public enum Reason { DREAM_DELETED, DISCARDED_UPLOAD }
+    public enum Reason { DREAM_DELETED, DISCARDED_UPLOAD, WORLD_DELETED, REPLACED_RESULT }
     public enum Status { PENDING, PROCESSING, RETRY_WAIT, COMPLETED, HELD }
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
