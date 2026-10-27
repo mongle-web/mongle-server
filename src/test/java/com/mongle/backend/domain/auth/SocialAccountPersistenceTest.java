@@ -48,41 +48,41 @@ class SocialAccountPersistenceTest {
     void uniqueIdentityConstraintRejectsSameProviderAndIdEvenForDifferentUsers() {
         User first = userRepository.saveAndFlush(User.register("first@example.com"));
         User second = userRepository.saveAndFlush(User.register("second@example.com"));
-        socialAccountRepository.saveAndFlush(SocialAccount.link(first, SocialProvider.GOOGLE, "same-id"));
+        socialAccountRepository.saveAndFlush(SocialAccount.link(first, SocialProvider.KAKAO, "123456"));
 
         assertThatThrownBy(() -> socialAccountRepository.saveAndFlush(
-                SocialAccount.link(second, SocialProvider.GOOGLE, "same-id")))
+                SocialAccount.link(second, SocialProvider.KAKAO, "123456")))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
-    void sameEmailOrSameIdAcrossProvidersDoesNotMergeUsersAndIdIsCaseSensitive() {
+    void sameEmailDoesNotMergeUsersAndOpaqueStoredIdsRemainCaseSensitive() {
         User first = userRepository.saveAndFlush(User.register("same@example.com"));
         User second = userRepository.saveAndFlush(User.register("same@example.com"));
         User third = userRepository.saveAndFlush(User.register("same@example.com"));
-        socialAccountRepository.saveAndFlush(SocialAccount.link(first, SocialProvider.GOOGLE, "CaseSensitive"));
-        socialAccountRepository.saveAndFlush(SocialAccount.link(second, SocialProvider.KAKAO, "CaseSensitive"));
-        socialAccountRepository.saveAndFlush(SocialAccount.link(third, SocialProvider.GOOGLE, "casesensitive"));
+        socialAccountRepository.saveAndFlush(SocialAccount.link(first, SocialProvider.KAKAO, "CaseSensitive"));
+        socialAccountRepository.saveAndFlush(SocialAccount.link(second, SocialProvider.KAKAO, "another-id"));
+        socialAccountRepository.saveAndFlush(SocialAccount.link(third, SocialProvider.KAKAO, "casesensitive"));
         entityManager.clear();
 
         assertThat(socialAccountRepository.findByProviderAndProviderUserId(
-                SocialProvider.GOOGLE, "CaseSensitive").orElseThrow().getUser().getId()).isEqualTo(first.getId());
+                SocialProvider.KAKAO, "CaseSensitive").orElseThrow().getUser().getId()).isEqualTo(first.getId());
         assertThat(socialAccountRepository.findByProviderAndProviderUserId(
-                SocialProvider.KAKAO, "CaseSensitive").orElseThrow().getUser().getId()).isEqualTo(second.getId());
+                SocialProvider.KAKAO, "another-id").orElseThrow().getUser().getId()).isEqualTo(second.getId());
         assertThat(socialAccountRepository.findByProviderAndProviderUserId(
-                SocialProvider.GOOGLE, "casesensitive").orElseThrow().getUser().getId()).isEqualTo(third.getId());
+                SocialProvider.KAKAO, "casesensitive").orElseThrow().getUser().getId()).isEqualTo(third.getId());
     }
 
     @Test
     void factoryRejectsMissingOrNonAsciiIdentityBeforePersistence() {
         User user = User.register("verified@example.com");
-        assertThatThrownBy(() -> SocialAccount.link(user, SocialProvider.GOOGLE, null))
+        assertThatThrownBy(() -> SocialAccount.link(user, SocialProvider.KAKAO, null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> SocialAccount.link(user, SocialProvider.GOOGLE, "   "))
+        assertThatThrownBy(() -> SocialAccount.link(user, SocialProvider.KAKAO, "   "))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> SocialAccount.link(user, SocialProvider.GOOGLE, "한글"))
+        assertThatThrownBy(() -> SocialAccount.link(user, SocialProvider.KAKAO, "한글"))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> SocialAccount.link(user, SocialProvider.GOOGLE, "a".repeat(256)))
+        assertThatThrownBy(() -> SocialAccount.link(user, SocialProvider.KAKAO, "a".repeat(256)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

@@ -28,7 +28,7 @@ class SocialLoginRecoveryTest {
         var manager = mock(PlatformTransactionManager.class);
         when(manager.getTransaction(any(TransactionDefinition.class)))
                 .thenAnswer(call -> new SimpleTransactionStatus());
-        var identity = new SocialIdentity(SocialProvider.GOOGLE, "subject", "user@example.com");
+        var identity = new SocialIdentity(SocialProvider.KAKAO, "123456", "user@example.com");
         var winner = SocialAccount.link(User.create(identity.email(), "몽글이"),
                 identity.provider(), identity.providerUserId());
         when(accounts.findByProviderAndProviderUserId(identity.provider(), identity.providerUserId()))
