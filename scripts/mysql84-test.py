@@ -137,7 +137,7 @@ def main():
                            DB_URL=f"jdbc:mysql://127.0.0.1:{port}/credit_test", DB_USERNAME="mongle_test", DB_PASSWORD=password,
                            DB_TRUSTSTORE_URL=(base / "truststore.p12").as_uri())
                 print("MySQL 8.4: fresh schema and 29→33 upgrade match; running JDBC/Flyway regressions.", flush=True)
-                result = subprocess.run([str(repo / "gradlew"), "mysqlTest", "--rerun-tasks"], cwd=repo, env=env)
+                result = subprocess.run([str(repo / "gradlew"), "--no-daemon", "mysqlTest", "--rerun-tasks"], cwd=repo, env=env)
                 return result.returncode
             except (Exception, KeyboardInterrupt):
                 # Raw SQL/client output may contain generated secrets; never dump fixture.log.
