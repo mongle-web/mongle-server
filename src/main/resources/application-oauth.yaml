@@ -5,10 +5,6 @@ mongle:
       enabled: ${MONGLE_OAUTH_KAKAO_ENABLED:true}
       client-id: ${KAKAO_CLIENT_ID:}
       client-secret: ${KAKAO_CLIENT_SECRET:}
-    google:
-      enabled: ${MONGLE_OAUTH_GOOGLE_ENABLED:false}
-      client-id: ${GOOGLE_CLIENT_ID:}
-      client-secret: ${GOOGLE_CLIENT_SECRET:}
 
 server:
   servlet:

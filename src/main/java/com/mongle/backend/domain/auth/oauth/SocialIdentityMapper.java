@@ -12,20 +12,7 @@ import java.util.regex.Pattern;
 
 @Component
 public class SocialIdentityMapper {
-    private static final Pattern PROVIDER_ID = Pattern.compile("[\\x21-\\x7E]{1,255}");
     private static final Pattern EMAIL = Pattern.compile("[^\\s@]+@[^\\s@]+\\.[^\\s@]+");
-
-    public SocialIdentity google(Map<String, Object> idTokenClaims) {
-        Object sub = idTokenClaims.get("sub");
-        if (!(sub instanceof String id) || !PROVIDER_ID.matcher(id).matches()) {
-            throw failure(AuthErrorCode.INVALID_PROVIDER_RESPONSE);
-        }
-        String email = email(idTokenClaims.get("email"));
-        if (!Boolean.TRUE.equals(idTokenClaims.get("email_verified"))) {
-            throw failure(AuthErrorCode.EMAIL_NOT_VERIFIED);
-        }
-        return new SocialIdentity(SocialProvider.GOOGLE, id, email);
-    }
 
     public SocialIdentity kakao(Map<String, Object> attributes) {
         Object rawId = attributes.get("id");

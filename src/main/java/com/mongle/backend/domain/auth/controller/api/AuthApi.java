@@ -10,7 +10,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
 
-@Tag(name = "Auth", description = "카카오 웹 로그인은 /oauth2/authorization/kakao로 브라우저 전체 이동합니다. 완료 화면에서 쿠키를 포함해 CSRF 조회 후 Refresh를 한 번 호출합니다. OAuth 시작/Callback은 보안 필터가 처리합니다.")
+@Tag(name = "Auth", description = "로그인은 카카오만 지원합니다. 카카오 웹 로그인은 /oauth2/authorization/kakao로 브라우저 전체 이동합니다. 완료 화면에서 쿠키를 포함해 CSRF 조회 후 Refresh를 한 번 호출합니다. OAuth 시작/Callback은 보안 필터가 처리합니다.")
 public interface AuthApi {
     @Operation(summary = "CSRF 토큰 조회", description = "쿠키를 유지하고 반환된 headerName과 token을 재발급·로그아웃 요청 헤더에 넣습니다.")
     ResponseEntity<ApiResponse<CsrfResponse>> csrf(@Parameter(hidden = true) CsrfToken token);

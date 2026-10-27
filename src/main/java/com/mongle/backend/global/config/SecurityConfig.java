@@ -4,7 +4,6 @@ import com.mongle.backend.domain.auth.oauth.MongleOAuth2UserService;
 import com.mongle.backend.domain.auth.exception.AuthErrorCode;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.global.security.MongleJwtAuthenticationConverter;
-import com.mongle.backend.domain.auth.oauth.MongleOidcUserService;
 import com.mongle.backend.domain.auth.oauth.OAuthLoginHandlers;
 import com.mongle.backend.domain.auth.oauth.OAuthProviderGuard;
 import com.mongle.backend.domain.auth.oauth.OAuthWebRedirects;
@@ -45,7 +44,7 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, Environment environment,
             ObjectProvider<ClientRegistrationRepository> registrations,
-            MongleOAuth2UserService kakao, MongleOidcUserService google,
+            MongleOAuth2UserService kakao,
             OAuthLoginHandlers handlers, SecurityResponseWriter responses, OAuthWebRedirects redirects,
             MongleJwtAuthenticationConverter jwtUsers, CookieCsrfTokenRepository csrfTokens,
             @Qualifier("corsConfigurationSource") CorsConfigurationSource corsSource) throws Exception {
@@ -119,7 +118,7 @@ public class SecurityConfig {
             http.addFilterBefore(new OAuthProviderGuard(registrations.getObject(), responses), OAuth2AuthorizationRequestRedirectFilter.class);
             http.oauth2Login(oauth -> oauth
                     .authorizedClientRepository(new HttpSessionOAuth2AuthorizedClientRepository())
-                    .userInfoEndpoint(info -> info.userService(kakao).oidcUserService(google))
+                    .userInfoEndpoint(info -> info.userService(kakao))
                     .successHandler(handlers.success())
                     .failureHandler(handlers.failure()));
         }

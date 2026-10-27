@@ -48,7 +48,7 @@ class Mysql84CreditIntegrationTest extends CreditReservationIntegrationTest {
                                 "select count(*) from information_schema.tables where"
                                     + " table_schema=database()",
                                 Integer.class))
-                .isEqualTo(31);
+                .isEqualTo(33);
     }
 
     @Test

@@ -32,7 +32,7 @@ class SocialLoginIntegrationTest {
 
     @Test
     void registersWithoutNicknameAndKeepsOnboardingOnRepeatedLogin() {
-        SocialIdentity identity = identity(SocialProvider.GOOGLE);
+        SocialIdentity identity = identity(SocialProvider.KAKAO);
         UserResponse first = login.login(identity);
         assertThat(first.nickname()).isNull();
         assertThat(first.onboardingCompleted()).isFalse();
@@ -44,10 +44,10 @@ class SocialLoginIntegrationTest {
     }
 
     @Test
-    void sameEmailDoesNotMergeDifferentProviders() {
-        SocialIdentity google = identity(SocialProvider.GOOGLE);
-        var kakao = new SocialIdentity(SocialProvider.KAKAO, google.providerUserId(), google.email());
-        assertThat(login.login(google).userId()).isNotEqualTo(login.login(kakao).userId());
+    void sameEmailDoesNotMergeDifferentKakaoIdentities() {
+        SocialIdentity first = identity(SocialProvider.KAKAO);
+        var second = new SocialIdentity(SocialProvider.KAKAO, UUID.randomUUID().toString(), first.email());
+        assertThat(login.login(first).userId()).isNotEqualTo(login.login(second).userId());
     }
 
     @Test

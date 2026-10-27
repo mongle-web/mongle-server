@@ -1,6 +1,6 @@
 # 카카오 웹 로그인 연동
 
-카카오 인증은 백엔드가 처리하고, 프론트는 로그인 시작과 완료/실패 화면을 담당한다. 기존 자체 JWT·Refresh 세션·CSRF·온보딩 계약을 유지한다. 구글 구현과 기존 계정은 유지하며 기본 비활성으로 둔다.
+로그인은 카카오만 지원한다. 카카오 인증은 백엔드가 처리하고, 프론트는 로그인 시작과 완료/실패 화면을 담당한다. 기존 자체 JWT·Refresh 세션·CSRF·온보딩 계약을 유지한다.
 
 ## 배포 설정
 
@@ -9,7 +9,6 @@ SPRING_PROFILES_ACTIVE=mysql,oauth
 OAUTH_BASE_URL=https://api.mongle.art
 OAUTH_COOKIE_SECURE=true
 MONGLE_OAUTH_KAKAO_ENABLED=true
-MONGLE_OAUTH_GOOGLE_ENABLED=false
 KAKAO_CLIENT_ID=<REST-API-key>
 KAKAO_CLIENT_SECRET=<Client-Secret>
 MONGLE_AUTH_ALLOWED_ORIGINS=https://www.mongle.art
@@ -18,13 +17,17 @@ MONGLE_OAUTH_FAILURE_URL=<확정된-프론트-실패-URL>
 MONGLE_AUTH_COOKIE_SAME_SITE=Lax
 ```
 
-DB/TLS 5개 환경변수와 `MONGLE_AUTH_SECRET`은 [RDS 배포 안내](mysql-rds-deployment.md)를 따른다. 키·비밀번호·토큰은 Git/프론트 번들/로그에 넣지 않는다. 새 DB 마이그레이션은 없다.
+DB/TLS 5개 환경변수와 `MONGLE_AUTH_SECRET`은 [RDS 배포 안내](mysql-rds-deployment.md)를 따른다. 키·비밀번호·토큰은 Git/프론트 번들/로그에 넣지 않는다. 기존 서명 키는 유지한다. 새 DB 마이그레이션은 없다.
+
+배포 전 `db/checks/kakao-only-preflight.sql`을 기존 TLS 연결로 읽기 전용 실행한다. `unsupported_provider_count=0`인지 확인한 뒤 머지/배포한다. `social_accounts`는 기존 VARCHAR(20)/VARBINARY(255) 구조를 유지하며, 초기 스키마 재적용이나 데이터 변환은 하지 않는다. 다른 제공자의 계정이 있다면 삭제·카카오 변환을 실행하지 말고 기존 데이터 처리부터 정한다. #79 준비 시 전달받은 운영 조회는 소셜 계정0건이었다.
 
 완료·실패 URL은 필수 운영 설정이다. `/auth/callback`(완료), `/login`(실패)은 **프론트와 협의할 제안 경로**이며 현재 화면 구현/주소 확정을 뜻하지 않는다. 경로를 확정한 뒤 정확한 절대 URL을 설정한다. 예를 들어 완료 화면이 실제로 `https://www.mongle.art/auth/callback`에 생겼을 때만 그 값을 설정한다.
 
 URL은 정확한 `MONGLE_AUTH_ALLOWED_ORIGINS` 중 하나에 속해야 하고, userinfo/query/fragment를 허용하지 않는다. 운영은 HTTPS를 요구한다. 요청의 `next`, `redirect_uri`, Host 등으로 프론트 목적지를 바꿀 수 없다. 실패 시 서버가 허용한 `code` 하나만 추가한다.
 
-선택한 제공사의 Client ID/Secret이 없거나 미해결 placeholder이면 기동을 거절한다. 카카오만 켜면 구글 키는 필요 없다. 구글을 다시 쓰기로 정하면 `MONGLE_OAUTH_GOOGLE_ENABLED=true`와 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`을 함께 제공한다. oauth 프로필에서는 최소 한 제공사가 켜져 있어야 한다.
+`oauth` 프로필에서는 `MONGLE_OAUTH_KAKAO_ENABLED=true`와 카카오 Client ID/Secret이 필요하다. 값이 없거나 미해결 placeholder이면 기동을 거절한다. `mysql`만 사용하는 첫 배포는 카카오 키 없이 기동할 수 있지만 로그인은 활성화되지 않는다.
+
+이전 Google 활성화·키 설정은 더 이상 사용하지 않는다. 운영 파일에 남은 `MONGLE_OAUTH_GOOGLE_ENABLED`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`은 정리 대상이며 필수 설정이 아니다. 남아 있어도 Google 등록을 만들거나 로그인을 활성화하지 않는다. GitHub Actions 배포에 사용하는 AWS OIDC 설정은 이 변경과 별개다.
 
 운영 `OAUTH_BASE_URL`은 경로·후행 슬래시 없는 백엔드 HTTPS Origin이다. 카카오 콘솔 Callback은 `https://api.mongle.art/login/oauth2/code/kakao`를 그대로 유지한다. 프론트 완료 페이지를 카카오 Callback으로 바꾸지 않는다.
 
@@ -78,7 +81,7 @@ Refresh 응답은 `{ success, code, message, data: { accessToken, tokenType, exp
 | AUTH_401_6 | 취소·state 오류·제공사 인증 실패 등 |
 | AUTH_503_1 | 몽글 로그인 처리 장애 |
 
-비활성/미지원 제공사 로그인 시작·Callback은 외부로 이동하지 않고 400 공통 JSON `AUTH_400_1`을 반환한다. 프론트 실패 화면은 허용한 코드만 메시지로 매핑한다. 토큰 또는 서버/제공사 오류 설명을 URL에서 기대하지 않는다.
+OAuth가 활성화된 환경의 Google/미지원 제공사 로그인 시작·Callback은 외부로 이동하지 않고 400 공통 JSON `AUTH_400_1`을 반환한다. 다른 제공사의 등록이 외부 설정으로 주어져도 카카오만 통과시킨다. 프론트 실패 화면은 허용한 코드만 메시지로 매핑한다. 토큰 또는 서버/제공사 오류 설명을 URL에서 기대하지 않는다.
 
 ## HTTPS·쿠키 확인
 
@@ -88,7 +91,7 @@ Nginx는 실제 HTTPS/Host를 전달하고 `SERVER_FORWARD_HEADERS_STRATEGY=fram
 
 ## 검증 범위
 
-모의 종단 테스트는 실제 Spring 보안 필터와 루프백 카카오 모의 서버를 사용한다. 로그인·state·쿠키·CSRF·Refresh·로그아웃·재가입 방지·잘못된 이메일/응답·취소·재사용·장애·CORS를 검증한다. 구글 기본 비활성 및 선택 활성화도 검증한다.
+모의 종단 테스트는 실제 Spring 보안 필터와 루프백 카카오 모의 서버를 사용한다. 로그인·state·쿠키·CSRF·Refresh·로그아웃·중복 가입 방지·잘못된 이메일/응답·취소·재사용·장애·CORS를 검증한다. Google/미지원 경로 차단과 이전 Google 설정으로 등록이 되살아나지 않는 것도 검증한다. 네이티브 MySQL8.4 테스트는 기존 VARCHAR 스키마의 카카오 계정 저장/조회 및 사전 점검 SQL의 비지원 제공자 탐지를 검증한다.
 
 실제 카카오 계정 동의, 카카오 콘솔 키/Redirect URI, EC2 환경변수, RDS 저장, Nginx/HTTPS, 프론트 화면 복귀는 실환경에서 별도 확인해야 한다. 회원탈퇴/카카오 연결 해제는 이 기능에 포함하지 않는다.
 
