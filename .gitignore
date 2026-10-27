@@ -49,3 +49,7 @@ logs/
 ### OS ###
 .DS_Store
 Thumbs.db
+
+### Python CI helpers ###
+__pycache__/
+*.pyc

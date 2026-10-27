@@ -20,7 +20,10 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "GOOGLE_CLIENT_ID=test-google", "GOOGLE_CLIENT_SECRET=test-secret",
+        "MONGLE_OAUTH_GOOGLE_ENABLED=true", "GOOGLE_CLIENT_ID=test-google", "GOOGLE_CLIENT_SECRET=test-secret",
+        "MONGLE_AUTH_ALLOWED_ORIGINS=https://mongle.test",
+        "MONGLE_OAUTH_SUCCESS_URL=https://mongle.test/auth/callback",
+        "MONGLE_OAUTH_FAILURE_URL=https://mongle.test/login",
         "KAKAO_CLIENT_ID=test-kakao", "KAKAO_CLIENT_SECRET=test-secret",
         "spring.datasource.url=jdbc:h2:mem:oauth-redirect;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE"
 })
@@ -48,8 +51,9 @@ class OAuthRedirectIntegrationTest {
                 assertThat(query.get("scope")).doesNotContain("profile_nickname", "profile_image");
             }
             var failure = get(client, "/login/oauth2/code/kakao?code=fake&state=unknown");
-            assertThat(failure.statusCode()).isEqualTo(401);
-            assertThat(failure.body()).contains("AUTH_401_6").doesNotContain("fake", "unknown");
+            assertThat(failure.statusCode()).isEqualTo(303);
+            assertThat(failure.headers().firstValue("Location")).contains("https://mongle.test/login?code=AUTH_401_6");
+            assertThat(failure.body()).doesNotContain("fake", "unknown");
         }
     }
 

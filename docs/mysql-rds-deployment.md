@@ -77,3 +77,4 @@ python3 scripts/mysql84-test.py
 ## 세계관 이미지 스키마 추가 (#71)
 
 세계관 완성본까지 적용된 31개 테이블에는 앱/워커 중지·백업 후 `db/migrations/20261026-world-images.sql`을 추가 적용한다. 총 33개 테이블과 Hibernate validate를 확인한다. 29개 테이블에서 출발하면 앞의 세계관 구성 SQL을 먼저 적용한다. S3 IAM 정책에도 world-images/* 경로를 추가한다. [세부 설정과 생성 정책](world-image.md)을 따른다.
+카카오 로그인 활성화 시 제공사별 설정과 프론트 복귀 URL 등 추가 필수 설정은 [카카오 웹 로그인 안내](kakao-oauth-web.md)를 따른다.

@@ -74,7 +74,7 @@ Swagger UI는 `local`에서 [http://localhost:8080/swagger-ui.html](http://local
 OpenAPI JSON은 [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)로 확인한다.
 외부 DB 프로필에서는 문서 엔드포인트가 기본 비활성화되어 있다.
 필요한 개발 환경에서 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 활성화한다.
-JWT Scheme은 문서화 설정이며 실제 인증 구현은 S0 기능 개발에서 추가한다.
+업무 API는 Bearer 인증을 사용하며, 쿠키 기반 Refresh·로그아웃은 CSRF 토큰을 함께 전달한다.
 
 H2 콘솔은 `local`에서 [http://localhost:8080/h2-console](http://localhost:8080/h2-console)로 접속한다.
 Driver Class는 `org.h2.Driver`, JDBC URL은
@@ -163,3 +163,9 @@ Gateway는 `CompletableFuture<AiGenerationResult>`를 반환한다. 호출부는
 MySQL 8.4 / RDS TLS, existing-schema upgrade and native regression instructions: [deployment guide](docs/mysql-rds-deployment.md).
 
 - [세계관 전체 이미지 생성·재생성 및 크레딧 과금](docs/world-image.md)
+카카오 단독 활성화와 프론트 로그인/쿠키/Refresh 계약: [카카오 웹 로그인](docs/kakao-oauth-web.md).
+
+서버 CI·테스트 보고서·CD용 JAR 계약: [서버 CI](docs/server-ci.md).
+
+[EC2 자동 배포·복구](docs/server-cd.md)에 OIDC/SSM 권한·서버 설치·GitHub 변수·운영 검증 순서를 정리했다.
+[프론트 연동 전달본](docs/frontend-integration.md)에 현재 API·인증·상태 처리와 미구현 범위를 구분했다.

@@ -36,6 +36,10 @@ logging:
 
 
 mongle:
+  oauth:
+    web:
+      success-url: ${MONGLE_OAUTH_SUCCESS_URL:}
+      failure-url: ${MONGLE_OAUTH_FAILURE_URL:}
   world:
     image:
       enabled: ${MONGLE_WORLD_IMAGE_ENABLED:true}
