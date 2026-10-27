@@ -1,6 +1,6 @@
 # MySQL 8.4 / EC2 최초 배포
 
-EC2에서 Java 21 JAR와 RDS MySQL 8.4를 사용한다. Docker는 필요 없다. 앱은 `mysql` 프로필의 `ddl-auto=validate`로 실행하며, 스키마 변경은 관리자 계정으로 별도 적용한다. 앱 계정에는 DB의 SELECT/INSERT/UPDATE/DELETE와 REQUIRE SSL만 부여한다.
+EC2에서 Java 21 JAR와 RDS MySQL 8.4를 사용한다. Docker는 필요 없다. 앱은 `mysql` 프로필의 `ddl-auto=validate`로 실행하며, 후속 스키마 변경은 [Flyway/CD 도입 절차](database-migrations.md)에 따라 전용 계정으로 적용한다. 아래 수동 스키마 절차는 최초 배포/과거 호환성 설명이며 이미 운영 중인 DB에 초기화 SQL을 재실행하는 안내가 아니다. 앱 계정에는 DB의 SELECT/INSERT/UPDATE/DELETE와 REQUIRE SSL만 부여한다.
 
 ## JDBC TLS 설정
 
@@ -67,14 +67,17 @@ Nginx는 Host와 X-Forwarded-Proto를 실제 요청 기준으로 덮어써서 �
 Java 21, Python 3, 네이티브 MySQL 8.4.x(`mysqld`, `mysql`), OpenSSL, `keytool`이 PATH에 있어야 한다.
 
 ```bash
+./gradlew --no-daemon test bootJar
 python3 scripts/mysql84-test.py
 ```
 
-별도 로컬 서버·임시 데이터 디렉터리·테스트 CA·최소 DML 계정을 만든다. 외부 DB 주소를 입력받지 않고 기존 MySQL 서비스/RDS에 접속하지 않는다. 새 초기 스키마와 기존 29개→31개 테이블 전환의 컬럼·인덱스 일치 및 기존 행 보존을 검사한 뒤, `mysqlTest`에서 크레딧 예약 동시성/중복/확정/해제/롤백과 결제 조기 콜백/중복 지급 방지를 실행한다. MySQL 프로필의 실제 TLS 설정을 사용하며, 신뢰하지 않는 저장소의 연결 실패도 검증한다.
+별도 로컬 서버·임시 데이터 디렉터리·테스트 CA·최소 DML 계정을 만든다. 외부 DB 주소를 입력받지 않고 기존 MySQL 서비스/RDS에 접속하지 않는다. 새 초기 스키마와 기존 29개→33개 테이블 전환의 컬럼·인덱스 일치 및 기존 행 보존을 검사한 뒤, `mysqlTest`에서 크레딧 예약 동시성/중복/확정/해제/롤백과 결제 조기 콜백/중복 지급 방지를 실행한다. Flyway 기준 등록·최신 스키마/기존 앱 호환성·부분 DDL/체크섬 실패와 패키징된 전용 실행 모드도 검증한다. MySQL 프로필의 실제 TLS 설정을 사용하며, 신뢰하지 않는 저장소의 연결 실패도 검증한다.
 
 종료 시 임시 서버를 중지하고 데이터·개인 키·신뢰 저장소·비밀번호 파일을 삭제한다. 결과는 `build/reports/tests/mysqlTest/index.html`에 남는다. 강제 종료(SIGKILL)로 정리되지 못한 경우에는 해당 `mongle84-*` 임시 인스턴스만 확인해 정리한다. 일반 `./gradlew test`는 기존 H2 회귀를 유지하고 MySQL 설치를 요구하지 않는다.
 
-## 세계관 이미지 스키마 추가 (#71)
+## 과거 세계관 이미지 스키마 추가 (#71)
+
+Flyway 도입 전33개 업무 테이블에 도달하기 위한 과거 안내다. 이미33개 테이블이 있거나 Flyway 이력을 도입한 DB에서는 이 SQL을 다시 실행하지 않는다.
 
 세계관 완성본까지 적용된 31개 테이블에는 앱/워커 중지·백업 후 `db/migrations/20261026-world-images.sql`을 추가 적용한다. 총 33개 테이블과 Hibernate validate를 확인한다. 29개 테이블에서 출발하면 앞의 세계관 구성 SQL을 먼저 적용한다. S3 IAM 정책에도 world-images/* 경로를 추가한다. [세부 설정과 생성 정책](world-image.md)을 따른다.
 카카오 로그인 활성화 시 제공사별 설정과 프론트 복귀 URL 등 추가 필수 설정은 [카카오 웹 로그인 안내](kakao-oauth-web.md)를 따른다.
