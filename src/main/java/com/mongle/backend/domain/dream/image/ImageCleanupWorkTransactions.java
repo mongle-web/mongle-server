@@ -14,6 +14,7 @@ import java.util.*;
 public class ImageCleanupWorkTransactions {
     private final ImageCleanupRequestRepository requests;
     private final DreamImageRepository images;
+    private final com.mongle.backend.domain.world.image.WorldImageRepository worldImages;
     private final UserRepository users;
     private final ImageCleanupProperties properties;
     private final Clock authClock;
@@ -82,6 +83,21 @@ public class ImageCleanupWorkTransactions {
 
     private boolean protect(ImageCleanupRequest request, Instant now) {
         String key = request.getStorageKey();
+        if (key.startsWith("world-images/")) {
+            if (worldImages.existsByStorageKey(key)) {
+                request.retry(now.plus(properties.retryBaseDelay()), "REFERENCED");
+                return true;
+            }
+            var worldImage = worldImages.findByIdAndUserId(request.getImageId(), request.getUserId());
+            if (worldImage.isPresent() && worldImage.get().active(now)) {
+                String prefix = "world-images/" + request.getUserId() + "/" + request.getImageId() + "/" + worldImage.get().getAttemptId();
+                if (key.equals(prefix + ".png") || key.equals(prefix + ".jpg")) {
+                    request.retry(now.plus(properties.retryBaseDelay()), "ACTIVE_ATTEMPT");
+                    return true;
+                }
+            }
+            return false;
+        }
         if (images.existsByStorageKey(key)) {
             request.retry(now.plus(properties.retryBaseDelay()), "REFERENCED");
             return true;

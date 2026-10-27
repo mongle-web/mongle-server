@@ -74,4 +74,7 @@ python3 scripts/mysql84-test.py
 
 종료 시 임시 서버를 중지하고 데이터·개인 키·신뢰 저장소·비밀번호 파일을 삭제한다. 결과는 `build/reports/tests/mysqlTest/index.html`에 남는다. 강제 종료(SIGKILL)로 정리되지 못한 경우에는 해당 `mongle84-*` 임시 인스턴스만 확인해 정리한다. 일반 `./gradlew test`는 기존 H2 회귀를 유지하고 MySQL 설치를 요구하지 않는다.
 
+## 세계관 이미지 스키마 추가 (#71)
+
+세계관 완성본까지 적용된 31개 테이블에는 앱/워커 중지·백업 후 `db/migrations/20261026-world-images.sql`을 추가 적용한다. 총 33개 테이블과 Hibernate validate를 확인한다. 29개 테이블에서 출발하면 앞의 세계관 구성 SQL을 먼저 적용한다. S3 IAM 정책에도 world-images/* 경로를 추가한다. [세부 설정과 생성 정책](world-image.md)을 따른다.
 카카오 로그인 활성화 시 제공사별 설정과 프론트 복귀 URL 등 추가 필수 설정은 [카카오 웹 로그인 안내](kakao-oauth-web.md)를 따른다.

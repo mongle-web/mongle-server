@@ -16,6 +16,8 @@ import java.time.Clock;
 public class ImageRecovery {
     private final DreamImageRepository images;
     private final ImageTransactions transactions;
+    private final com.mongle.backend.domain.world.image.WorldImageRepository worldImages;
+    private final com.mongle.backend.domain.world.image.WorldImageTransactions worldTransactions;
     private final CreditReservationRecovery credits;
     private final ImageRecoveryProperties properties;
     private final Clock authClock;
@@ -30,6 +32,14 @@ public class ImageRecovery {
                 if (transactions.expire(candidate.getUserId(), candidate.getImageId())) recovered++;
             } catch (RuntimeException ex) {
                 log.warn("이미지 시도 예약을 복구하지 못했습니다. 다음 주기에 다시 확인합니다.");
+            }
+        }
+        for (var candidate : worldImages.expiredAttempts(GenerationStatus.PROCESSING, authClock.instant(),
+                PageRequest.of(0, properties.batchSize()))) {
+            try {
+                if (worldTransactions.expire(candidate.getUserId(), candidate.getImageId())) recovered++;
+            } catch (RuntimeException ex) {
+                log.warn("세계관 이미지 시도 예약을 복구하지 못했습니다. 다음 주기에 다시 확인합니다.");
             }
         }
         // 삭제된 이미지 등 연결이 사라진 과거 예약도 영속 원장에서 회수한다.

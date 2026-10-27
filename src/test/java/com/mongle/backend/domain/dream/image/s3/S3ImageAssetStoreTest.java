@@ -26,6 +26,16 @@ import javax.imageio.ImageIO;
 class S3ImageAssetStoreTest {
     static final String KEY = "dream-images/1/2/12345678-1234-1234-1234-123456789abc.png";
     S3TestTransport transport = new S3TestTransport();
+
+    @Test void worldImagesUseTheSamePrivateStorageWithTheirOwnAttemptNamespace() throws Exception {
+        try (var store = transport.store()) {
+            String key = KEY.replace("dream-images/", "world-images/");
+            store.put(key, payload("png"));
+            store.delete(key);
+            assertThat(transport.calls).hasSize(2);
+            assertThat(transport.calls.getFirst().key()).contains("world-images/");
+        }
+    }
     static ImagePayload payload(String format) throws Exception {
         var bytes = new ByteArrayOutputStream();
         ImageIO.write(new BufferedImage(2,3,BufferedImage.TYPE_INT_RGB), format, bytes);
