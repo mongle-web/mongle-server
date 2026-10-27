@@ -4,18 +4,16 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.mongle.backend.domain.dream.image.*;
 import com.mongle.backend.global.error.BusinessException;
+import com.mongle.backend.global.logging.support.LogCapture;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.*;
-import org.springframework.boot.test.system.*;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
-@ExtendWith(OutputCaptureExtension.class)
 class OpenAiImageGeneratorTest {
     OpenAiTestServer server;
     @BeforeEach void start() { server=new OpenAiTestServer(); }
@@ -31,11 +29,13 @@ class OpenAiImageGeneratorTest {
         assertThat(server.received).hasSize(count);
     }
 
-    @Test void sendsOneAuthenticatedImageRequestWithJsonDataAndNoLegacyFields(CapturedOutput output) {
+    @Test void sendsOneAuthenticatedImageRequestWithJsonDataAndNoLegacyFields() {
         var bytes=OpenAiTestServer.image("png"); server.replies.add(new OpenAiTestServer.Reply(200,OpenAiTestServer.body(bytes),
                 Map.of("x-request-id","req_safe_123"),null,null));
-        try(var generator=server.generator(Duration.ofSeconds(2),4)) {
-            assertThat(await(generator.generate(OpenAiTestServer.input()))).containsExactly(bytes);
+        var input=OpenAiTestServer.input();
+        try(var capture=new LogCapture(OpenAiImageGenerator.class);
+                var generator=server.generator(Duration.ofSeconds(2),4)) {
+            assertThat(await(generator.generate(input))).containsExactly(bytes);
             assertThat(server.received).hasSize(1);
             var received=server.received.getFirst();
             assertThat(received.method()).isEqualTo("POST"); assertThat(received.authorization()).isEqualTo("Bearer fake-openai-secret");
@@ -48,22 +48,36 @@ class OpenAiImageGeneratorTest {
             assertThat(request.path("stream").asBoolean()).isFalse();
             assertThat(request.has("response_format")).isFalse(); assertThat(request.has("style")).isFalse();
             assertThat(request.path("prompt").asString()).contains("SCENE","AI_BRIDGE","watercolor","calm","private-story-scene");
-            assertThat(output.getAll()).doesNotContain("fake-openai-secret","private-story-scene","private-story-bridge",Base64.getEncoder().encodeToString(bytes));
-            assertThat(output.getAll()).contains("req_safe_123","BYTES_RECEIVED");
+            var message=completedLog(capture,input);
+            assertThat(message).contains("requestId=req_safe_123","outcome=BYTES_RECEIVED","status=200");
+            assertThat(String.join("\n",capture.messages())).doesNotContain("fake-openai-secret","private-story-scene","private-story-bridge",Base64.getEncoder().encodeToString(bytes));
         }
     }
 
     @ParameterizedTest @CsvSource({"401,PROVIDER_AUTH_FAILED","403,PROVIDER_AUTH_FAILED","429,PROVIDER_RATE_LIMITED",
             "500,PROVIDER_UNAVAILABLE","503,PROVIDER_UNAVAILABLE","400,PROVIDER_REJECTED","302,PROVIDER_REJECTED"})
-    void classifiesHttpErrorsWithoutRetryRedirectOrProviderBodyLeak(int status,String code,CapturedOutput output) {
+    void classifiesHttpErrorsWithoutRetryRedirectOrProviderBodyLeak(int status,String code) {
         server.replies.add(new OpenAiTestServer.Reply(status,"private-error-body",Map.of("Location",server.endpoint().toString(),
                 "x-request-id","unsafe.private.header"),null,null));
-        try(var generator=server.generator(Duration.ofSeconds(2),4)) {
-            assertThatThrownBy(()->await(generator.generate(OpenAiTestServer.input())))
+        var input=OpenAiTestServer.input();
+        try(var capture=new LogCapture(OpenAiImageGenerator.class);
+                var generator=server.generator(Duration.ofSeconds(2),4)) {
+            assertThatThrownBy(()->await(generator.generate(input)))
                     .isInstanceOfSatisfying(ImageProviderException.class,ex -> assertThat(ex.failureCode()).isEqualTo(code)).hasNoCause();
             assertThat(server.received).hasSize(1);
-            assertThat(output.getAll()).doesNotContain("private-error-body","unsafe.private.header","fake-openai-secret");
+            assertThat(completedLog(capture,input)).contains("requestId=unavailable","outcome="+code,"status="+status);
+            assertThat(String.join("\n",capture.messages())).doesNotContain("private-error-body","unsafe.private.header","fake-openai-secret");
         }
+    }
+
+    private static String completedLog(LogCapture capture,ImageGenerator.Input input) {
+        String attempt="attemptId="+input.attemptId()+",";
+        // 결과 Future와 완료 로그의 실행 순서는 보장되지 않는다. 해당 호출의 실제 로그를 기다린다.
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
+                assertThat(capture.messages()).anyMatch(message -> message.contains(attempt)));
+        var messages=capture.messages().stream().filter(message -> message.contains(attempt)).toList();
+        assertThat(messages).hasSize(1);
+        return messages.getFirst();
     }
 
     @ParameterizedTest @ValueSource(strings={"{}","not-json","{\"data\":[]}","{\"data\":[{},{}]}",
