@@ -93,13 +93,13 @@ def main():
                 migration_password = secrets.token_hex(24)
                 sql(f"CREATE USER 'mongle_migrator'@'127.0.0.1' IDENTIFIED BY '{migration_password}' REQUIRE SSL;")
                 migration_databases = ("flyway_fresh", "flyway_existing", "flyway_drift", "flyway_failed",
-                                       "flyway_checksum", "flyway_privilege", "flyway_jpa", "flyway_v1", "flyway_cli")
+                                       "flyway_checksum", "flyway_privilege", "flyway_jpa", "flyway_v1", "flyway_cli", "flyway_check")
                 schema = (repo / "src/main/resources/db/schema-initial.sql").read_text()
                 for database in migration_databases:
                     sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
                     sql(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {database}.* TO 'mongle_test'@'127.0.0.1';")
                     sql(f"GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES ON {database}.* TO 'mongle_migrator'@'127.0.0.1';")
-                    if database in ("flyway_existing", "flyway_drift", "flyway_privilege"):
+                    if database in ("flyway_existing", "flyway_drift", "flyway_privilege", "flyway_check"):
                         sql(schema, database)
                 for database in ("credit_test", "payment_test", "upgrade_test", "credit_migration_test"):
                     sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")

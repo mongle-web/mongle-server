@@ -91,6 +91,22 @@ class Mysql84MigrationTest {
         assertThat(engine.execute("info")).containsEntry("historyExists", false);
     }
 
+    @Test void baselineRejectsMissingModifiedAndDisabledCheckConstraintsWithoutCreatingHistory() throws Exception {
+        var source = source("flyway_check"); var jdbc = new JdbcTemplate(source);
+        var engine = new MigrationEngine(source, "flyway_check");
+        assertThat(engine.execute("info")).containsEntry("matchesBaseline", true);
+        jdbc.execute("ALTER TABLE credit_accounts ALTER CHECK ck_credit_account_balance NOT ENFORCED");
+        assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("BASELINE_SCHEMA_MISMATCH");
+        jdbc.execute("ALTER TABLE credit_accounts ALTER CHECK ck_credit_account_balance ENFORCED");
+        assertThat(engine.execute("info")).containsEntry("matchesBaseline", true);
+        jdbc.execute("ALTER TABLE credit_accounts DROP CHECK ck_credit_account_balance, "
+                + "ADD CONSTRAINT ck_credit_account_balance CHECK (available >= -1 AND reserved >= 0)");
+        assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("BASELINE_SCHEMA_MISMATCH");
+        jdbc.execute("ALTER TABLE credit_accounts DROP CHECK ck_credit_account_balance");
+        assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("BASELINE_SCHEMA_MISMATCH");
+        assertThat(engine.execute("info")).containsEntry("businessTables", 33).containsEntry("historyExists", false);
+    }
+
     @Test void checksumMismatchCannotBeRepairedOrReappliedAutomatically() throws Exception {
         String location = location();
         Path second = directory.resolve("V9000__additional_column.sql");
@@ -107,6 +123,10 @@ class Mysql84MigrationTest {
         // An older artifact cannot silently ignore a newer migration history.
         assertThatThrownBy(() -> new MigrationEngine(source, "flyway_checksum").execute("migrate"))
                 .isInstanceOf(org.flywaydb.core.api.exception.FlywayValidateException.class);
+        // Reverting app code remains deployable when the already applied SQL is preserved exactly.
+        Files.writeString(second, "ALTER TABLE users ADD COLUMN release_marker VARCHAR(20) NULL;");
+        assertThat(new MigrationEngine(source, "flyway_checksum", "classpath:db/migration", location)
+                .execute("migrate")).containsEntry("migrationsExecuted", 0);
     }
 
     @Test void failedMysqlDdlStaysVisibleAndIsNotCleanedOrMarkedSuccessful() throws Exception {

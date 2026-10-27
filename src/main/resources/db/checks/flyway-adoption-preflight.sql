@@ -99,6 +99,12 @@ JOIN information_schema.referential_constraints r
   ON r.constraint_schema=k.constraint_schema AND r.table_name=k.table_name AND r.constraint_name=k.constraint_name
 WHERE k.table_schema=DATABASE()
 ORDER BY k.table_name, k.constraint_name, k.ordinal_position;
+SELECT t.table_name, t.constraint_name, t.enforced, c.check_clause
+FROM information_schema.table_constraints t
+JOIN information_schema.check_constraints c
+  ON c.constraint_schema=t.constraint_schema AND c.constraint_name=t.constraint_name
+WHERE t.table_schema=DATABASE() AND t.table_name <> 'flyway_schema_history' AND t.constraint_type='CHECK'
+ORDER BY t.table_name, t.constraint_name;
 SELECT table_name AS existing_flyway_history
 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='flyway_schema_history';
 SHOW GRANTS FOR CURRENT_USER;

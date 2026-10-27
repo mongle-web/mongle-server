@@ -612,5 +612,15 @@
     ["world_images", "fk_world_image_world", "world_id", 1, "world_folders", "id", "NO ACTION", "NO ACTION"],
     ["world_selections", "fk_world_selection_dream", "dream_id", 1, "dreams", "id", "NO ACTION", "NO ACTION"],
     ["world_selections", "fk_world_selection_folder", "world_id", 1, "world_folders", "id", "NO ACTION", "NO ACTION"]
+  ],
+  "checkConstraints": [
+    ["credit_accounts", "ck_credit_account_balance", "YES", "((`available` >= 0) and (`reserved` >= 0))"],
+    ["credit_allocations", "ck_credit_allocation_amount", "YES", "(`amount` > 0)"],
+    ["credit_grants", "ck_credit_grant_balance", "YES", "((`amount` > 0) and (`available` >= 0) and (`reserved` >= 0) and (`consumed` >= 0))"],
+    ["credit_ledger", "ck_credit_ledger_balance", "YES", "((`available_after` >= 0) and (`reserved_after` >= 0))"],
+    ["credit_reservations", "ck_credit_reservation_amount", "YES", "(`amount` > 0)"],
+    ["payment_notifications", "ck_payment_notification_amount", "YES", "(`amount` > 0)"],
+    ["payment_orders", "ck_payment_order_amount", "YES", "((`price` >= 1000) and (`credits` > 0))"],
+    ["world_folders", "ck_world_folder_selection_count", "YES", "(`selected_dream_count` >= 0)"]
   ]
 }
