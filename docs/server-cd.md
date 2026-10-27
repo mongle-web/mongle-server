@@ -120,7 +120,7 @@ Settings → Secrets and variables → Actions → **Variables** → Repository 
 
 ## 장애와 수동 복구
 
-자동 복구가 성공해도 해당 CD는 실패로 남는다. `/var/lib/mongle-deploy/state.json`의 highestSequence는 낮추지 않는다. 과거 CI 재실행으로 되돌리지 말고, 코드 revert를 develop에 새 커밋으로 머지해 검증/배포한다.
+자동 복구가 성공해도 해당 CD는 실패로 남는다. `/var/lib/mongle-deploy/state.json`의 highestSequence는 낮추지 않는다. 과거 CI 재실행으로 되돌리지 말고, 코드 revert를 develop에 새 커밋으로 머지해 검증/배포하되, 이미 적용된 `V*` SQL 파일은 원본 그대로 보존한다. SQL 추가 커밋 전체를 되돌려 적용 파일까지 제거하면 이후 Flyway 검증이 실패한다. DB 보정은 후속 버전으로 추가하고 앱 변경만 되돌린다.
 
 결과가 불명확하면 새 요청 전에 Command ID를 조회한다. SSM 명령이 진행 중인 동안 state/current.jar를 수동 수정하지 않는다. GitHub의 실행 취소만으로 원격 작업이 중단됐다고 판단하지 않는다.
 
