@@ -20,7 +20,6 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "MONGLE_OAUTH_GOOGLE_ENABLED=true", "GOOGLE_CLIENT_ID=test-google", "GOOGLE_CLIENT_SECRET=test-secret",
         "MONGLE_AUTH_ALLOWED_ORIGINS=https://mongle.test",
         "MONGLE_OAUTH_SUCCESS_URL=https://mongle.test/auth/callback",
         "MONGLE_OAUTH_FAILURE_URL=https://mongle.test/login",
@@ -32,24 +31,21 @@ class OAuthRedirectIntegrationTest {
     @Value("${local.server.port}") private int port;
 
     @Test
-    void generatesProviderRedirectsWithStateAndRejectsUnknownStateWithoutProviderHttpCalls() throws Exception {
+    void generatesKakaoRedirectWithStateAndRejectsUnknownStateWithoutProviderHttpCalls() throws Exception {
         try (HttpClient client = HttpClient.newBuilder().cookieHandler(new CookieManager())
                 .connectTimeout(Duration.ofSeconds(5)).build()) {
-            for (String provider : new String[]{"google", "kakao"}) {
-                var response = get(client, "/oauth2/authorization/" + provider);
-                assertThat(response.statusCode()).isEqualTo(302);
-                assertThat(response.headers().allValues("Set-Cookie").toString())
-                        .contains("JSESSIONID", "Secure", "HttpOnly");
-                var target = URI.create(response.headers().firstValue("Location").orElseThrow());
-                assertThat(target.getHost()).isEqualTo(provider.equals("google")
-                        ? "accounts.google.com" : "kauth.kakao.com");
-                Map<String, String> query = query(target);
-                assertThat(query.get("state")).isNotBlank();
-                assertThat(query.get("redirect_uri")).isEqualTo(
-                        "http://localhost:8080/login/oauth2/code/" + provider);
-                assertThat(query.get("scope")).contains(provider.equals("google") ? "openid" : "account_email");
-                assertThat(query.get("scope")).doesNotContain("profile_nickname", "profile_image");
-            }
+            var response = get(client, "/oauth2/authorization/kakao");
+            assertThat(response.statusCode()).isEqualTo(302);
+            assertThat(response.headers().allValues("Set-Cookie").toString())
+                    .contains("JSESSIONID", "Secure", "HttpOnly");
+            var target = URI.create(response.headers().firstValue("Location").orElseThrow());
+            assertThat(target.getHost()).isEqualTo("kauth.kakao.com");
+            Map<String, String> query = query(target);
+            assertThat(query.get("state")).isNotBlank();
+            assertThat(query.get("redirect_uri")).isEqualTo(
+                    "http://localhost:8080/login/oauth2/code/kakao");
+            assertThat(query.get("scope")).isEqualTo("account_email");
+            assertThat(query.get("scope")).doesNotContain("profile_nickname", "profile_image");
             var failure = get(client, "/login/oauth2/code/kakao?code=fake&state=unknown");
             assertThat(failure.statusCode()).isEqualTo(303);
             assertThat(failure.headers().firstValue("Location")).contains("https://mongle.test/login?code=AUTH_401_6");

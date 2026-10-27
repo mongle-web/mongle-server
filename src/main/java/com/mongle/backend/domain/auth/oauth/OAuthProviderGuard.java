@@ -13,7 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-/** Reject disabled or unknown providers before Spring creates an authorization redirect. */
+/** Only Kakao may start or complete OAuth, even if a legacy registration is supplied. */
 public final class OAuthProviderGuard extends OncePerRequestFilter {
     private final ClientRegistrationRepository registrations;
     private final SecurityResponseWriter responses;
@@ -32,8 +32,7 @@ public final class OAuthProviderGuard extends OncePerRequestFilter {
         for (String prefix : new String[] {"/oauth2/authorization/", "/login/oauth2/code/"}) {
             if (path.startsWith(prefix)) {
                 String provider = path.substring(prefix.length());
-                if (provider.isBlank()
-                        || provider.contains("/")
+                if (!"kakao".equals(provider)
                         || registrations.findByRegistrationId(provider) == null) {
                     responses.failure(response, AuthErrorCode.UNSUPPORTED_PROVIDER);
                     return;

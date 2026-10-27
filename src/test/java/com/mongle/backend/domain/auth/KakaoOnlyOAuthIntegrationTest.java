@@ -18,11 +18,10 @@ import java.net.http.HttpResponse;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
             "MONGLE_AUTH_ALLOWED_ORIGINS=https://mongle.test",
-        "MONGLE_OAUTH_SUCCESS_URL=https://mongle.test/auth/callback",
-        "MONGLE_OAUTH_FAILURE_URL=https://mongle.test/login",
-        "KAKAO_CLIENT_ID=test-kakao",
+            "MONGLE_OAUTH_SUCCESS_URL=https://mongle.test/auth/callback",
+            "MONGLE_OAUTH_FAILURE_URL=https://mongle.test/login",
+            "KAKAO_CLIENT_ID=test-kakao",
             "KAKAO_CLIENT_SECRET=test-secret",
-            "MONGLE_OAUTH_GOOGLE_ENABLED=false",
             "spring.datasource.url=jdbc:h2:mem:kakao-only;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE"
         })
 @ActiveProfiles({"test", "oauth"})
@@ -33,7 +32,7 @@ class KakaoOnlyOAuthIntegrationTest {
     @Autowired ClientRegistrationRepository registrations;
 
     @Test
-    void startsKakaoWithoutGoogleKeysAndBlocksDisabledOrUnknownProviders() throws Exception {
+    void startsOnlyKakaoWithoutGoogleConfigurationAndBlocksUnsupportedProviders() throws Exception {
         assertThat(registrations.findByRegistrationId("google")).isNull();
         try (var client = HttpClient.newHttpClient()) {
             var kakao = get(client, "/oauth2/authorization/kakao");
