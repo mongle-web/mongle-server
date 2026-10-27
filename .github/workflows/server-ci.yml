@@ -40,8 +40,17 @@ jobs:
       - name: Test artifact packaging contract
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
+      - name: Install native MySQL 8.4 test runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libaio1t64 libnuma1
+          python3 scripts/install-ci-mysql84.py
+
       - name: Test and build executable JAR
         run: ./gradlew --no-daemon test bootJar
+
+      - name: Verify native MySQL schemas and Flyway upgrades
+        run: python3 scripts/mysql84-test.py
 
       - name: Upload test reports
         if: ${{ always() && !cancelled() }}
@@ -51,6 +60,8 @@ jobs:
           path: |
             build/reports/tests/test/
             build/test-results/test/
+            build/reports/tests/mysqlTest/
+            build/test-results/mysqlTest/
             build/reports/problems/
           if-no-files-found: ignore
           retention-days: 7

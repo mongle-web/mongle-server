@@ -1,4 +1,7 @@
 spring:
+  # Normal application startup must never use migration credentials or perform DDL.
+  flyway:
+    enabled: false
   application:
     name: mongle_backend
   profiles:

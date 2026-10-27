@@ -1,6 +1,6 @@
 # EC2 자동 배포 (#76)
 
-`develop` push의 **Server CI 성공 → Server CD → 동일 JAR 배포** 순서다. PR 리뷰·머지 외 별도 배포 승인은 없다. PR·수동 실행 CI 산출물은 배포하지 않는다. `MONGLE_CD_ENABLED`는 최초 설정/장애 대응용 스위치이며, 매번 승인을 요구하는 기능이 아니다.
+`develop` push의 **Server CI 성공 → Server CD → DB 마이그레이션 → 동일 JAR 배포** 순서다. PR 리뷰·머지 외 별도 배포 승인은 없다. PR·수동 실행 CI 산출물은 배포하지 않는다. `MONGLE_CD_ENABLED`는 최초 설정/장애 대응용 스위치이며, 매번 승인을 요구하는 기능이 아니다.
 
 ## 현재 준비와 적용 경계
 
@@ -21,13 +21,15 @@ EC2·SSM 온라인·GitHub OIDC 공급자·GitHub 배포 역할·서울 배포 S
 3. 해당 CI attempt의 산출물 하나만 내려받고 JAR/체크섬/metadata의 정확한 파일 목록·소유 실행·SHA256을 대조한다. 다시 빌드하지 않는다.
 4. 검증 후 OIDC 임시 AWS 권한을 받고 S3 `releases/<commit>/<ci-run-id>/<attempt>/`에 파일 3개를 업로드한다. `If-None-Match: *`로 덮어쓰지 않으며 동일 파일 재전송만 허용한다.
 5. 업로드 후 develop HEAD를 다시 확인하고 지정 EC2·`Mongle-DeployV1`의 **고정 숫자 버전과 SHA256**으로 SSM 명령을 보낸다. GitHub 역할은 임의 Document/서버/셸을 실행하거나 Document를 수정하지 못한다.
-6. root가 설치한 고정 `deploy.py`가 `flock`으로 동시에 하나만 실행한다. SSM 입력은 숫자/해시만 허용하며 `ENV_VAR` 보간으로 전달한다. 버킷·실행 파일·서비스·경로·URL을 명령 파라미터로 바꿀 수 없다.
+6. root가 설치한 고정 `deploy-flyway.py`가 `flock`으로 동시에 하나만 실행한다. SSM 입력은 숫자/해시와 고정 `MigrationProtocol=flyway-v1`만 허용하며 `ENV_VAR` 보간으로 전달한다. 버킷·실행 파일·서비스·경로·URL을 명령 파라미터로 바꿀 수 없다.
 7. 진행 중이던 배포의 `pending` 기록이 있으면 먼저 이전 릴리스로 복구한다. CI run number/attempt보다 오래된 명령은 거절한다. 실행 번호는 같은 Server CI 워크플로 기준이다.
-8. JAR를 다운로드·SHA256·BootJar 형식 검증한 뒤 배치한다. 기존 릴리스가 정상인지 확인하고 복구 지점을 디스크에 기록한 후 링크를 교체한다. 다운로드 중에는 서비스를 중지하지 않는다.
+8. JAR를 다운로드해 SHA256·BootJar 형식을 검증하고 배치한 뒤 기존 릴리스 health를 확인한다. 같은 검증 JAR의 보호된 복사본을 전용 계정으로 실행해 Flyway를 검증/적용한다. 실패하면 링크 교체를 중단한다. 성공하면 앱 복구 지점을 기록하고 링크를 교체한다. 다운로드·마이그레이션 동안 앱을 중지하지 않으며 DB를 자동 되돌리지 않는다.
 9. `systemctl restart mongle.service` 후 내부·공개 HTTPS health가 같은 회차에 모두 HTTP200/UP인지 확인한다. 실패·예외·TERM/INT는 이전 링크 복구·재시작·health 재확인 후 실패로 종료한다. 복구 실패 기록은 다음 배포까지 보존한다.
 10. GitHub는 SSM 완료 결과를 확인하고 CI SHA/체크섬/Command ID/결과만 30일 보관한다. 결과 불명확/시간 초과 시 명령을 취소하거나 새 배포를 자동 발행하지 않는다.
 
 현재 단일 systemd 프로세스를 재시작하므로 **기동 시간 동안 짧은 중단이 있다**. 무중단/블루그린 배포를 제공하는 구조는 아니다. SIGKILL·EC2 장애·호스트 네트워크 단절에서는 즉시 복구를 보장할 수 없으며, pending 복구와 아래 수동 절차를 사용한다. 서비스가 이미 비정상이면 자동 교체를 거절하므로 먼저 수동으로 정상 릴리스를 복구한다.
+
+최초 도입 시 [DB 마이그레이션의 baseline·전용 계정·새 SSM 설치](database-migrations.md)를 먼저 완료한다. 기존 SSM 문서 버전과 설치 파일만으로 새 DB 단계를 실행할 수 없다.
 
 ## 1. 인프라 JSON 생성 — 로컬 저장소
 
@@ -77,7 +79,7 @@ SSM에서 **한 줄씩** 실행한다. 아래 상대 경로는 리뷰한 저장�
 
 ```bash
 sudo install -d -o root -g root -m 755 /usr/local/libexec/mongle
-sudo install -o root -g root -m 755 scripts/cd/deploy.py /usr/local/libexec/mongle/deploy.py
+sudo install -o root -g root -m 755 scripts/cd/deploy.py /usr/local/libexec/mongle/deploy-flyway.py
 sudo install -o root -g root -m 600 build/cd-infra/deploy.json /etc/mongle/deploy.json
 sudo install -d -o root -g root -m 700 /var/lib/mongle-deploy
 /snap/bin/aws --version
@@ -111,14 +113,14 @@ Settings → Secrets and variables → Actions → **Variables** → Repository 
 2. IAM·버킷·문서·고정 서버 스크립트·변수 준비를 마친다. 켜지지 않은 `MONGLE_CD_ENABLED`는 CD를 skip한다.
 3. PR을 develop에 머지하면 해당 push의 Server CI 성공 후 Server CD가 실행된다. 설정을 뒤늦게 완료했다면 **현재 develop HEAD의 push CI**를 재실행한다. 수동 workflow_dispatch CI는 배포 대상이 아니다.
 4. CD 결과 아티팩트의 커밋/Command ID/status와 Systems Manager Run Command 실행 결과를 확인한다.
-5. EC2 `sudo readlink -f /opt/mongle/current.jar`가 전체 SHA JAR인지, 내부·외부 health UP인지 확인한다. 환경 파일·DB 스키마·기능 플래그를 이 배포가 바꾸지 않았는지 확인한다.
+5. EC2 `sudo readlink -f /opt/mongle/current.jar`가 전체 SHA JAR인지, 내부·외부 health UP인지 확인한다. 환경 파일·기능 플래그가 유지됐는지와 DB 마이그레이션 결과/이력을 확인한다.
 6. 실제 운영 JAR를 일부러 손상시키지 않는다. 자동 실패/복구는 테스트의 임시 디렉터리·모의 경계에서 먼저 검증한다. 실서버의 실패 주입은 사용자 영향과 점검 시간을 정한 후 별도 검증한다.
 
 현재 Java 테스트는 기존 전체 suite이고, Python 테스트는 실제 파일/심볼릭 링크/상태 기록을 사용하며 AWS·systemd·health 경계는 모의 처리한다. 실제 OIDC AssumeRole·S3 업로드/다운로드·SSM 실행·운영 롤백 성공은 위 절차의 별도 증거가 필요하다.
 
 ## 장애와 수동 복구
 
-자동 복구가 성공해도 해당 CD는 실패로 남는다. `/var/lib/mongle-deploy/state.json`의 highestSequence는 낮추지 않는다. 과거 CI 재실행으로 되돌리지 말고, 코드 revert를 develop에 새 커밋으로 머지해 검증/배포한다.
+자동 복구가 성공해도 해당 CD는 실패로 남는다. `/var/lib/mongle-deploy/state.json`의 highestSequence는 낮추지 않는다. 과거 CI 재실행으로 되돌리지 말고, 코드 revert를 develop에 새 커밋으로 머지해 검증/배포하되, 이미 적용된 `V*` SQL 파일은 원본 그대로 보존한다. SQL 추가 커밋 전체를 되돌려 적용 파일까지 제거하면 이후 Flyway 검증이 실패한다. DB 보정은 후속 버전으로 추가하고 앱 변경만 되돌린다.
 
 결과가 불명확하면 새 요청 전에 Command ID를 조회한다. SSM 명령이 진행 중인 동안 state/current.jar를 수동 수정하지 않는다. GitHub의 실행 취소만으로 원격 작업이 중단됐다고 판단하지 않는다.
 
@@ -130,7 +132,7 @@ curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/actuator/he
 curl --fail --silent --show-error --max-time 5 https://api.mongle.art/actuator/health
 ```
 
-배포 잠금 획득 실패/기존 `.manual-recovery`가 있다면 원인을 확인한다. state를 무조건 삭제하지 않는다. pending이 남았다면 기록된 previous를 대조하고 복구 대상이 맞는지 확인한 뒤 정리한다. 과거 JAR와 새 DB 스키마의 호환성도 별도로 판단한다. DB 변경은 이 파이프라인에서 실행하거나 되돌리지 않는다.
+배포 잠금 획득 실패/기존 `.manual-recovery`가 있다면 원인을 확인한다. state를 무조건 삭제하지 않는다. pending이 남았다면 기록된 previous를 대조하고 복구 대상이 맞는지 확인한 뒤 정리한다. 과거 JAR와 새 DB 스키마의 호환성도 별도로 판단한다. DB 변경은 JAR 교체 전에 전용 프로세스로 실행한다. 앱 롤백은 DB를 되돌리지 않는다. 실패한 SQL/부분 DDL은 별도로 확인하고 자동 repair/clean으로 처리하지 않는다.
 
 ## 검증 명령
 

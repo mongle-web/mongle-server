@@ -5,16 +5,18 @@
 `.github/workflows/server-ci.yml`의 Server CI는 develop 대상 PR, develop push, 수동 실행에서 동작한다. Ubuntu 24.04 / Temurin Java 21 / 저장소 Gradle Wrapper를 사용한다.
 
 1. 체크아웃 후 Gradle Wrapper 무결성 검사와 Gradle 캐시를 준비한다.
-2. Python 표준 unittest로 산출물 계약 6개를 검사한다.
-3. `./gradlew --no-daemon test bootJar`로 전체 기본 회귀와 실행 JAR를 빌드한다.
-4. 실패한 실행에서도 생성된 테스트 보고서를 보관한다.
-5. 앞선 단계가 모두 성공한 경우에만 실행 JAR·체크섬·메타데이터를 묶어 업로드한다.
+2. Python unittest로 산출물·배포 출처·마이그레이션 실행·실패 복구 계약을 검사한다.
+3. SHA256으로 고정한 공식 네이티브 MySQL8.4.11을 runner 임시 폴더에 준비한다.
+4. `./gradlew --no-daemon test bootJar`로 기본 회귀와 실행 JAR를 빌드한다.
+5. 임시 MySQL8.4에서 실제 SQL/Flyway/JDBC 회귀 및 패키징된 JAR의 독립 실행을 검증한다.
+6. 실패한 실행에서도 생성된 일반/MySQL 테스트 보고서를 보관한다.
+7. 앞선 단계가 모두 성공한 경우에만 실행 JAR·체크섬·메타데이터를 묶어 업로드한다.
 
 PR은 GitHub가 만든 병합 커밋을 기본 체크아웃하므로 develop과 합친 결과를 검증한다. PR 브랜치 head SHA와 실제 테스트한 commit SHA는 다를 수 있다.
 
 CI는 운영 DB·AWS·카카오·LINER·OpenAI·PayApp의 비밀값을 전달하지 않는다. Spring 테스트별 test 프로필/H2와 로컬 모의 서버를 사용한다. 앱 기본 프로필을 환경변수로 test에 고정하지 않아 기존 `@ActiveProfiles`별 검증도 유지한다.
 
-네이티브 MySQL 테스트는 `python3 scripts/mysql84-test.py`로 별도 실행한다. 기본 CI는 runner의 MySQL 버전을8.4라고 가정하거나 운영 RDS에 접속하지 않는다. 향후 추가 job에서 네이티브8.4 설치/검증을 준비할 수 있다.
+CI는 `scripts/install-ci-mysql84.py`로 공식 MySQL8.4.11 Linux 최소 바이너리를 SHA256 검증 후 runner 임시 폴더에 설치하고, `python3 scripts/mysql84-test.py`로 실제 SQL/Flyway/JDBC 회귀와 패키징된 JAR의 전용 모드를 검증한다. Docker·시스템 MySQL·운영 RDS를 사용하지 않는다. 이 단계 실패 시 JAR 아티팩트 게시가 중단된다. 로컬 실행 전에는 `./gradlew --no-daemon test bootJar`로 JAR를 준비한다. 자세한 절차는 [DB 마이그레이션](database-migrations.md)을 따른다.
 
 ## 권한·캐시·동시 실행
 

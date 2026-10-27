@@ -9,6 +9,7 @@ from pathlib import Path
 import pwd
 import re
 import signal
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -20,6 +21,9 @@ CONFIG = Path('/etc/mongle/deploy.json')
 STATE_DIR = Path('/var/lib/mongle-deploy')
 APP_DIR = Path('/opt/mongle')
 SHA = re.compile(r'[0-9a-f]{40}')
+MIGRATION_CACHE = Path('/var/lib/mongle-migration')
+MIGRATION_ENV = Path('/etc/mongle-migration/migration.env')
+MIGRATION_UNIT = 'mongle-db-migration.service'
 
 
 def emit(event, **values):
@@ -68,7 +72,9 @@ def executable_jar(path):
 
 def parameters(environment):
     values = {key: environment.get('SSM_' + key, '') for key in
-              ('CommitSha', 'JarSha256', 'RunId', 'RunNumber', 'RunAttempt')}
+              ('CommitSha', 'JarSha256', 'RunId', 'RunNumber', 'RunAttempt', 'MigrationProtocol')}
+    if values['MigrationProtocol'] != 'flyway-v1':
+        raise ValueError('Flyway deployment protocol is required')
     if not SHA.fullmatch(values['CommitSha']) or not re.fullmatch(r'[0-9a-f]{64}', values['JarSha256']):
         raise ValueError('Invalid commit/checksum')
     for key in ('RunId', 'RunNumber', 'RunAttempt'):
@@ -85,7 +91,8 @@ def load_config(path=CONFIG):
     if (not re.fullmatch(r'[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]', config['bucket'])
             or config['region'] != 'ap-northeast-2' or config['prefix'] != 'releases/'
             or config['aws'] not in ('/snap/bin/aws', '/usr/local/bin/aws')
-            or config['publicHealth'] != 'https://api.mongle.art/actuator/health'):
+            or config['publicHealth'] != 'https://api.mongle.art/actuator/health'
+            or config.get('databaseMigration') is not True):
         raise ValueError('Invalid fixed deployment configuration')
     return config
 
@@ -101,6 +108,66 @@ class Runtime:
                        check=True, timeout=120, stdout=subprocess.DEVNULL,
                        env={**os.environ, 'AWS_PAGER': '', 'AWS_MAX_ATTEMPTS': '3',
                             'AWS_RETRY_MODE': 'standard'})
+
+    def migration_account(self):
+        account = pwd.getpwnam('mongle-migrate')
+        app_account = pwd.getpwnam('mongle')
+        cache = MIGRATION_CACHE.lstat()
+        secret = MIGRATION_ENV.lstat()
+        if (account.pw_uid in (0, app_account.pw_uid) or account.pw_gid in (0, app_account.pw_gid)
+                or not stat.S_ISDIR(cache.st_mode) or cache.st_uid != 0
+                or cache.st_gid != account.pw_gid or cache.st_mode & 0o027
+                or not stat.S_ISREG(secret.st_mode) or secret.st_uid != 0 or secret.st_mode & 0o077):
+            raise ValueError('Install the protected migration account, cache and environment first')
+        return account
+
+    def migrate(self, jar, checksum):
+        account = self.migration_account()
+        # App-owned releases are not executable with migration secrets. Copy and re-hash into
+        # a root-owned directory that neither the app nor the migrator can modify.
+        protected = MIGRATION_CACHE / jar.name
+        with tempfile.NamedTemporaryFile(dir=MIGRATION_CACHE, delete=False) as temporary:
+            staged = Path(temporary.name)
+        try:
+            shutil.copyfile(jar, staged)
+            if digest(staged) != checksum:
+                raise ValueError('Migration JAR checksum mismatch')
+            executable_jar(staged)
+            os.chown(staged, 0, account.pw_gid)
+            os.chmod(staged, 0o640)
+            with staged.open('rb') as source:
+                os.fsync(source.fileno())
+            os.replace(staged, protected)
+            sync_directory(MIGRATION_CACHE)
+        finally:
+            staged.unlink(missing_ok=True)
+        command = ['/usr/bin/systemd-run', '--quiet', '--wait', '--pipe', '--collect',
+                   '--service-type=exec', '--unit=' + MIGRATION_UNIT,
+                   '--property=User=mongle-migrate', '--property=Group=mongle-migrate',
+                   '--property=WorkingDirectory=' + str(MIGRATION_CACHE),
+                   '--property=EnvironmentFile=' + str(MIGRATION_ENV),
+                   # Primary deadline; MigrationSettings.socketTimeout is the 250s fallback.
+                   '--property=RuntimeMaxSec=240', '--property=TimeoutStopSec=15',
+                   '--property=KillMode=control-group', '--property=NoNewPrivileges=true',
+                   '--property=PrivateTmp=true', '--property=ProtectSystem=strict',
+                   '--property=ProtectHome=true', '--property=InaccessiblePaths=/etc/mongle /var/lib/mongle-deploy',
+                   '--property=UMask=0077', '/usr/bin/java', '-Xms32m', '-Xmx256m',
+                   '-jar', str(protected), '--db-migration=migrate']
+        try:
+            result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True,
+                                    text=True, timeout=270)
+            if result.returncode != 0:
+                raise RuntimeError('Database migration failed; inspect migration history before retrying')
+            value = json.loads(result.stdout)
+            if (value.get('event') != 'migration-completed' or value.get('operation') != 'migrate'
+                    or type(value.get('migrationsExecuted')) is not int or value['migrationsExecuted'] < 0):
+                raise ValueError('Migration completion evidence missing')
+            emit('database-migrated', migrationsExecuted=value['migrationsExecuted'])
+        except BaseException:
+            with ignored_signals():
+                subprocess.run(['/usr/bin/systemctl', 'stop', MIGRATION_UNIT], capture_output=True, timeout=30)
+            # Never print child output, JDBC errors, SQL or environment-file contents.
+            raise RuntimeError('Database migration did not complete; application was not switched') from None
 
     def restart(self):
         subprocess.run(['/usr/bin/systemctl', 'restart', 'mongle.service'], check=True, timeout=45)
@@ -214,6 +281,17 @@ class Deployer:
         if not self.runtime.healthy(timeout=20):
             raise RuntimeError('Previous release is not healthy; automatic deployment refused')
         state.update(highestSequence=list(sequence), lastCommit=commit, runId=values['RunId'])
+        state['migration'] = {'commit': commit, 'status': 'running'}
+        self.save(state)
+        try:
+            self.runtime.migrate(target, values['JarSha256'])
+        except BaseException:
+            with ignored_signals():
+                state['migration']['status'] = 'failed'
+                self.save(state)
+            raise
+        state['migration']['status'] = 'applied'
+        self.save(state)
         if target == previous:
             state['activeJar'] = target.name
             self.save(state)

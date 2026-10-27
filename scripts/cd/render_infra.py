@@ -36,18 +36,20 @@ def render(bucket, instance):
         pattern = '[0-9a-f]{40}' if name == 'CommitSha' else (
             '[0-9a-f]{64}' if name == 'JarSha256' else '[1-9][0-9]{0,19}')
         parameters[name] = {'type': 'String', 'interpolationType': 'ENV_VAR', 'allowedPattern': '^' + pattern + '$'}
+    parameters['MigrationProtocol'] = {'type': 'String', 'interpolationType': 'ENV_VAR',
+                                       'allowedPattern': '^flyway-v1$'}
     ssm = {'schemaVersion': '2.2', 'description': 'Deploy one verified Mongle JAR using the root-installed deployer',
            'parameters': parameters, 'mainSteps': [{
                'action': 'aws:runShellScript', 'name': 'deployMongle',
                'precondition': {'StringEquals': ['platformType', 'Linux']},
                'inputs': {'timeoutSeconds': '900', 'runCommand': [
-                   'set -eu', '/usr/bin/python3 -I /usr/local/libexec/mongle/deploy.py']}}]}
+                   'set -eu', '/usr/bin/python3 -I /usr/local/libexec/mongle/deploy-flyway.py']}}]}
     bucket_policy = {'Version': '2012-10-17', 'Statement': [{
         'Sid': 'DenyInsecureTransport', 'Effect': 'Deny', 'Principal': '*', 'Action': 's3:*',
         'Resource': [f'arn:aws:s3:::{bucket}', f'arn:aws:s3:::{bucket}/*'],
         'Condition': {'Bool': {'aws:SecureTransport': 'false'}}}]}
     config = {'bucket': bucket, 'region': REGION, 'prefix': 'releases/', 'aws': '/snap/bin/aws',
-              'publicHealth': 'https://api.mongle.art/actuator/health'}
+              'publicHealth': 'https://api.mongle.art/actuator/health', 'databaseMigration': True}
     return {'github-trust.json': trust, 'github-policy.json': github_policy,
             'ec2-policy.json': ec2_policy, 'ssm-deploy.json': ssm,
             'bucket-policy.json': bucket_policy, 'deploy.json': config}

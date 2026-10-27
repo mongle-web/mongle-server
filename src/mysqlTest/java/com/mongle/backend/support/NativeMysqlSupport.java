@@ -1,6 +1,9 @@
 package com.mongle.backend.support;
 
 import org.springframework.test.context.DynamicPropertyRegistry;
+import com.mongle.backend.migration.MigrationSettings;
+import com.mongle.backend.migration.MigrationEngine;
+import java.util.Map;
 
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -15,8 +18,26 @@ public final class NativeMysqlSupport {
         int value = Integer.parseInt(port);
         if (value < 1
                 || value > 65535
-                || !List.of("credit_test", "payment_test").contains(database)) {
+                || !List.of("credit_test", "payment_test", "flyway_jpa").contains(database)) {
             throw new IllegalStateException("Invalid disposable MySQL fixture");
+        }
+        if (!"flyway_jpa".equals(database)) {
+            // Only the loopback disposable fixtures enter this path; never a production baseline.
+            var settings = MigrationSettings.fromEnvironment(Map.of(
+                    "MONGLE_MIGRATION_DB_URL", "jdbc:mysql://127.0.0.1:" + value + "/" + database,
+                    "MONGLE_MIGRATION_EXPECTED_HOST", "127.0.0.1",
+                    "MONGLE_MIGRATION_EXPECTED_DATABASE", database,
+                    "MONGLE_MIGRATION_DB_USERNAME", "mongle_migrator",
+                    "MONGLE_MIGRATION_DB_PASSWORD", required("MONGLE_MYSQL_MIGRATOR_PASSWORD"),
+                    "MONGLE_MIGRATION_TRUSTSTORE_URL", required("DB_TRUSTSTORE_URL"),
+                    "MONGLE_MIGRATION_TRUSTSTORE_PASSWORD", required("DB_TRUSTSTORE_PASSWORD")));
+            var engine = new MigrationEngine(settings.dataSource(), database);
+            try {
+                if (Boolean.FALSE.equals(engine.execute("info").get("historyExists"))) engine.execute("baseline");
+                engine.execute("migrate");
+            } catch (java.sql.SQLException exception) {
+                throw new IllegalStateException("Disposable fixture migration failed");
+            }
         }
         registry.add(
                 "spring.datasource.url", () -> "jdbc:mysql://127.0.0.1:" + value + "/" + database);

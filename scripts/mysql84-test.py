@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run mysqlTest against a disposable native MySQL 8.4 server, never an external DB."""
 import os
+import json
 from pathlib import Path
 import secrets
 import shutil
@@ -89,10 +90,22 @@ def main():
                 with (base / "admin.cnf").open("a") as handle:
                     handle.write(f"password={admin_password}\n")
                 sql(f"CREATE USER 'mongle_test'@'127.0.0.1' IDENTIFIED BY '{password}' REQUIRE SSL;")
+                migration_password = secrets.token_hex(24)
+                sql(f"CREATE USER 'mongle_migrator'@'127.0.0.1' IDENTIFIED BY '{migration_password}' REQUIRE SSL;")
+                migration_databases = ("flyway_fresh", "flyway_existing", "flyway_drift", "flyway_failed",
+                                       "flyway_checksum", "flyway_privilege", "flyway_jpa", "flyway_v1", "flyway_cli", "flyway_check")
                 schema = (repo / "src/main/resources/db/schema-initial.sql").read_text()
+                for database in migration_databases:
+                    sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
+                    sql(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {database}.* TO 'mongle_test'@'127.0.0.1';")
+                    sql(f"GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES ON {database}.* TO 'mongle_migrator'@'127.0.0.1';")
+                    if database in ("flyway_existing", "flyway_drift", "flyway_privilege", "flyway_check"):
+                        sql(schema, database)
                 for database in ("credit_test", "payment_test", "upgrade_test", "credit_migration_test"):
                     sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
                     sql(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {database}.* TO 'mongle_test'@'127.0.0.1';")
+                    if database in ("credit_test", "payment_test"):
+                        sql(f"GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES ON {database}.* TO 'mongle_migrator'@'127.0.0.1';")
                     if database not in ("upgrade_test", "credit_migration_test"):
                         sql(schema, database)
                 credit_prefix, credit_marker, _ = schema.partition("CREATE TABLE IF NOT EXISTS credit_accounts")
@@ -123,11 +136,37 @@ def main():
                 if sql("SELECT nickname FROM users WHERE email='preserved@test.invalid';", "upgrade_test").strip() != "keep":
                     raise RuntimeError("Upgrade did not preserve the fixture row.")
                 env.update(MONGLE_MYSQL_TEST_PORT=str(port), MONGLE_MYSQL_TEST_PASSWORD=password,
+                           MONGLE_MYSQL_MIGRATOR_PASSWORD=migration_password,
                            DB_URL=f"jdbc:mysql://127.0.0.1:{port}/credit_test", DB_USERNAME="mongle_test", DB_PASSWORD=password,
                            DB_TRUSTSTORE_URL=(base / "truststore.p12").as_uri())
-                print("MySQL 8.4: fresh schema and 29→33 upgrade match; running JDBC regressions.", flush=True)
-                result = subprocess.run([str(repo / "gradlew"), "mysqlTest", "--rerun-tasks"], cwd=repo, env=env)
-                return result.returncode
+                print("MySQL 8.4: fresh schema and 29→33 upgrade match; running JDBC/Flyway regressions.", flush=True)
+                result = subprocess.run([str(repo / "gradlew"), "--no-daemon", "mysqlTest", "--rerun-tasks"], cwd=repo, env=env)
+                if result.returncode:
+                    return result.returncode
+                jars = [path for path in (repo / "build/libs").glob("*.jar") if not path.name.endswith("-plain.jar")]
+                if len(jars) != 1:
+                    raise RuntimeError("Build one bootJar before running native MySQL verification.")
+                cli_env = {**env,
+                           "MONGLE_MIGRATION_DB_URL": f"jdbc:mysql://127.0.0.1:{port}/flyway_cli",
+                           "MONGLE_MIGRATION_EXPECTED_HOST": "127.0.0.1",
+                           "MONGLE_MIGRATION_EXPECTED_DATABASE": "flyway_cli",
+                           "MONGLE_MIGRATION_DB_USERNAME": "mongle_migrator",
+                           "MONGLE_MIGRATION_DB_PASSWORD": migration_password,
+                           "MONGLE_MIGRATION_TRUSTSTORE_URL": (base / "truststore.p12").as_uri(),
+                           "MONGLE_MIGRATION_TRUSTSTORE_PASSWORD": env["DB_TRUSTSTORE_PASSWORD"]}
+                for operation in ("info", "migrate", "migrate"):
+                    process_result = subprocess.run(["java", "-Xmx256m", "-jar", str(jars[0]),
+                                                     "--db-migration=" + operation],
+                                                    cwd=repo, env=cli_env, capture_output=True, text=True, timeout=120)
+                    if process_result.returncode:
+                        raise RuntimeError("Packaged migration process failed; raw output suppressed.")
+                    outcome = json.loads(process_result.stdout)
+                    if outcome.get("event") != "migration-completed" or outcome.get("operation") != operation:
+                        raise RuntimeError("Packaged migration completion evidence missing.")
+                if outcome.get("migrationsExecuted") != 0:
+                    raise RuntimeError("Repeated packaged migration was not idempotent.")
+                print("Packaged JAR: info/migrate/repeat completed without application startup.", flush=True)
+                return 0
             except (Exception, KeyboardInterrupt):
                 # Raw SQL/client output may contain generated secrets; never dump fixture.log.
                 print("Disposable MySQL verification failed; temporary data will be removed.", file=sys.stderr)
