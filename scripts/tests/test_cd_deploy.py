@@ -26,9 +26,16 @@ class FakeRuntime:
         self.source, self.restarts = source, 0
         self.health = [True, True]
         self.interrupt = False
+        self.migrations = []
+        self.migration_failure = False
 
     def download(self, _key, destination):
         shutil.copyfile(self.source, destination)
+
+    def migrate(self, jar, checksum):
+        self.migrations.append((jar, checksum))
+        if self.migration_failure:
+            raise RuntimeError('simulated database migration failure')
 
     def restart(self):
         self.restarts += 1
@@ -56,7 +63,7 @@ class DeployTest(unittest.TestCase):
         self.runtime = FakeRuntime(self.source)
         self.engine = deploy.Deployer(self.app, self.state, {'prefix': 'releases/'}, self.runtime)
         self.values = {'CommitSha': 'a' * 40, 'JarSha256': deploy.digest(self.source),
-                       'RunId': '100', 'RunNumber': '10', 'RunAttempt': '1'}
+                       'RunId': '100', 'RunNumber': '10', 'RunAttempt': '1', 'MigrationProtocol': 'flyway-v1'}
         self.sentinel = self.root / 'mongle.env'
         self.sentinel.write_text('unchanged secret sentinel')
         self.sentinel.chmod(0o640)
@@ -69,8 +76,34 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(record['highestSequence'], [10, 1])
         self.assertNotIn('pending', record)
         self.assertEqual(self.runtime.restarts, 1)
+        self.assertEqual(len(self.runtime.migrations), 1)
+        self.assertEqual(record['migration']['status'], 'applied')
         self.assertEqual(self.sentinel.read_text(), 'unchanged secret sentinel')
         self.assertEqual(self.sentinel.stat().st_mode & 0o777, 0o640)
+
+    def test_migration_failure_keeps_old_jar_and_never_restarts_or_rewinds_run_order(self):
+        self.runtime.migration_failure = True
+        with self.assertRaises(RuntimeError):
+            self.engine.run(self.values)
+        self.assertEqual(self.engine.target(), self.previous)
+        self.assertEqual(self.runtime.restarts, 0)
+        state = json.loads(self.engine.state_file.read_text())
+        self.assertEqual(state['migration']['status'], 'failed')
+        self.assertNotIn('pending', state)
+        with self.assertRaises(ValueError):
+            self.engine.run({**self.values, 'RunNumber': '9'})
+        self.runtime.migration_failure = False
+        self.runtime.health = [True, True]
+        self.engine.run(self.values)
+        self.assertEqual(self.runtime.restarts, 1)
+
+    def test_migration_runs_before_the_application_link_is_switched(self):
+        def migrate(jar, checksum):
+            self.assertEqual(self.engine.target(), self.previous)
+            self.assertEqual(deploy.digest(jar), checksum)
+            self.assertEqual(self.runtime.restarts, 0)
+        self.runtime.migrate = migrate
+        self.engine.run(self.values)
 
     def test_failed_health_rolls_back_but_reports_failure(self):
         self.runtime.health = [True, False, True]
@@ -79,6 +112,8 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(self.engine.target(), self.previous)
         self.assertEqual(self.runtime.restarts, 2)
         self.assertNotIn('pending', json.loads(self.engine.state_file.read_text()))
+        self.assertEqual(len(self.runtime.migrations), 1)
+        self.assertEqual(json.loads(self.engine.state_file.read_text())['migration']['status'], 'applied')
 
     def test_restart_interruption_recovers_before_exiting(self):
         self.runtime.interrupt = True
@@ -166,6 +201,8 @@ class DeployTest(unittest.TestCase):
     def test_parameter_injection_is_refused(self):
         environment = {'SSM_' + k: v for k, v in self.values.items()}
         self.assertEqual(deploy.parameters(environment), self.values)
+        with self.assertRaises(ValueError):
+            deploy.parameters({**environment, 'SSM_MigrationProtocol': ''})
         for key, value in [('CommitSha', 'a' * 40 + ';id'), ('RunId', '1\n2'), ('RunAttempt', '-1')]:
             with self.assertRaises(ValueError):
                 deploy.parameters({**environment, 'SSM_' + key: value})

@@ -150,7 +150,9 @@ class InfrastructureTest(unittest.TestCase):
         self.assertEqual(trust['token.actions.githubusercontent.com:sub'], render_infra.SUBJECT)
         document = result['ssm-deploy.json']
         self.assertEqual(document['mainSteps'][0]['inputs']['runCommand'][-1],
-                         '/usr/bin/python3 -I /usr/local/libexec/mongle/deploy.py')
+                         '/usr/bin/python3 -I /usr/local/libexec/mongle/deploy-flyway.py')
+        self.assertEqual(document['parameters']['MigrationProtocol']['allowedPattern'], '^flyway-v1$')
+        self.assertIs(result['deploy.json']['databaseMigration'], True)
         self.assertTrue(all(p['interpolationType'] == 'ENV_VAR' for p in document['parameters'].values()))
 
     def test_invalid_resource_and_document_version_cannot_enter_command(self):
@@ -222,6 +224,7 @@ class DispatchTest(unittest.TestCase):
         self.assertEqual(sent[sent.index('--document-version') + 1], '3')
         self.assertEqual(sent[sent.index('--document-hash') + 1], 'b' * 64)
         self.assertEqual(sent[sent.index('--instance-ids') + 1], 'i-' + 'a' * 17)
+        self.assertEqual(json.loads(sent[sent.index('--parameters') + 1])['MigrationProtocol'], ['flyway-v1'])
         record = json.loads((self.root / 'build/deployment-result.json').read_text())
         self.assertEqual(record['commandId'], 'a-command-id')
         self.assertEqual(record['status'], 'Success')

@@ -61,6 +61,7 @@ def main():
     parameters = {key: [identity[value]] for key, value in
                   [('CommitSha', 'commit'), ('JarSha256', 'sha256'), ('RunId', 'run_id'),
                    ('RunNumber', 'run_number'), ('RunAttempt', 'run_attempt')]}
+    parameters['MigrationProtocol'] = ['flyway-v1']
     command = aws('ssm', 'send-command', '--document-name', 'Mongle-DeployV1',
                   '--document-version', settings['SSM_DOCUMENT_VERSION'],
                   '--document-hash', settings['SSM_DOCUMENT_SHA256'], '--document-hash-type', 'Sha256',
