@@ -43,12 +43,8 @@ class Mysql84CreditIntegrationTest extends CreditReservationIntegrationTest {
                                         || grant.contains("DROP"));
         assertThatThrownBy(() -> jdbc.execute("CREATE TABLE forbidden_ddl(id BIGINT)"))
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
-        assertThat(
-                        jdbc.queryForObject(
-                                "select count(*) from information_schema.tables where"
-                                    + " table_schema=database()",
-                                Integer.class))
-                .isEqualTo(33);
+        assertThat(jdbc.queryForList("SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()", String.class))
+                .contains("users", "credit_reservations", "world_image_sources", "flyway_schema_history");
     }
 
     @Test

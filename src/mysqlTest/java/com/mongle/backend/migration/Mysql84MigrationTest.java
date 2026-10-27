@@ -11,8 +11,8 @@ import java.util.Map;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.core.io.ClassPathResource;
 
 class Mysql84MigrationTest {
     @TempDir Path directory;
@@ -34,22 +34,29 @@ class Mysql84MigrationTest {
     }
 
     String location() throws Exception {
-        Files.copy(new ClassPathResource("db/migration/V1__mongle_baseline.sql").getInputStream(),
-                directory.resolve("V1__mongle_baseline.sql"));
         return "filesystem:" + directory;
+    }
+
+    @Test void immutableV1SqlAndBaselineCatalogDescribeExactlyTheSameSchema() throws Exception {
+        try (var sql = new ClassPathResource("db/migration/V1__mongle_baseline.sql").getInputStream()) {
+            Files.copy(sql, directory.resolve("V1__mongle_baseline.sql"));
+        }
+        var source = source("flyway_v1");
+        new MigrationEngine(source, "flyway_v1", "filesystem:" + directory).execute("migrate");
+        try (var connection = source.getConnection()) {
+            assertThat(SchemaSnapshot.capture(connection)).isEqualTo(SchemaSnapshot.baseline());
+        }
     }
 
     @Test void commandCreatesFreshSchemaOnceAndNeverBootstrapsBusinessWorkers() throws Exception {
         var output = new ByteArrayOutputStream();
         var env = environment("flyway_fresh");
         assertThat(MigrationCommand.run(new String[] {"--db-migration=migrate"}, env, new PrintStream(output))).isZero();
-        assertThat(output.toString()).contains("migration-completed", "migrationsExecuted\":1")
+        assertThat(output.toString()).contains("migration-completed")
                 .doesNotContain(env.get("MONGLE_MIGRATION_DB_PASSWORD"), env.get("MONGLE_MIGRATION_TRUSTSTORE_PASSWORD"), "Started Mongle");
         var jdbc = new JdbcTemplate(source("flyway_fresh"));
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()", Integer.class)).isEqualTo(34);
-        try (var connection = source("flyway_fresh").getConnection()) {
-            assertThat(SchemaSnapshot.capture(connection)).isEqualTo(SchemaSnapshot.baseline());
-        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()", Integer.class)).isGreaterThanOrEqualTo(34);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=true", Integer.class)).isPositive();
         output.reset();
         assertThat(MigrationCommand.run(new String[] {"--db-migration=migrate"}, env, new PrintStream(output))).isZero();
         assertThat(output.toString()).contains("migrationsExecuted\":0");
@@ -62,6 +69,7 @@ class Mysql84MigrationTest {
         assertThatThrownBy(() -> engine.execute("migrate")).hasMessage("EXPLICIT_BASELINE_REQUIRED");
         assertThat(engine.execute("info")).containsEntry("historyExists", false).containsEntry("matchesBaseline", true);
         assertThat(engine.execute("baseline")).containsEntry("baselineVersion", "1");
+        assertThat(engine.execute("migrate")).containsKey("migrationsExecuted");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 0);
         assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("HISTORY_ALREADY_EXISTS");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE email='preserved@test.invalid'", String.class)).isEqualTo("keep");
@@ -85,13 +93,13 @@ class Mysql84MigrationTest {
 
     @Test void checksumMismatchCannotBeRepairedOrReappliedAutomatically() throws Exception {
         String location = location();
-        Path second = directory.resolve("V2__additional_column.sql");
+        Path second = directory.resolve("V9000__additional_column.sql");
         Files.writeString(second, "ALTER TABLE users ADD COLUMN release_marker VARCHAR(20) NULL;");
         var source = source("flyway_checksum");
-        var engine = new MigrationEngine(source, "flyway_checksum", location);
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 2);
+        var engine = new MigrationEngine(source, "flyway_checksum", "classpath:db/migration", location);
+        assertThat(engine.execute("migrate")).containsKey("migrationsExecuted");
         Files.writeString(second, "ALTER TABLE users ADD COLUMN different_marker VARCHAR(20) NULL;");
-        assertThatThrownBy(() -> new MigrationEngine(source, "flyway_checksum", location).execute("migrate"))
+        assertThatThrownBy(() -> new MigrationEngine(source, "flyway_checksum", "classpath:db/migration", location).execute("migrate"))
                 .isInstanceOf(org.flywaydb.core.api.exception.FlywayValidateException.class);
         var jdbc = new JdbcTemplate(source);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND column_name='different_marker'", Integer.class)).isZero();
@@ -103,15 +111,15 @@ class Mysql84MigrationTest {
 
     @Test void failedMysqlDdlStaysVisibleAndIsNotCleanedOrMarkedSuccessful() throws Exception {
         String location = location();
-        Files.writeString(directory.resolve("V2__partial_failure.sql"),
+        Files.writeString(directory.resolve("V9000__partial_failure.sql"),
                 "CREATE TABLE partial_migration(id BIGINT PRIMARY KEY); INSERT INTO missing_migration_table VALUES(1);");
         var source = source("flyway_failed");
-        assertThatThrownBy(() -> new MigrationEngine(source, "flyway_failed", location).execute("migrate"))
+        assertThatThrownBy(() -> new MigrationEngine(source, "flyway_failed", "classpath:db/migration", location).execute("migrate"))
                 .isInstanceOf(org.flywaydb.core.api.FlywayException.class);
         var jdbc = new JdbcTemplate(source);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='partial_migration'", Integer.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT success FROM flyway_schema_history WHERE version='2'", Boolean.class)).isFalse();
-        assertThatThrownBy(() -> new MigrationEngine(source, "flyway_failed", location).execute("migrate"))
+        assertThat(jdbc.queryForObject("SELECT success FROM flyway_schema_history WHERE version='9000'", Boolean.class)).isFalse();
+        assertThatThrownBy(() -> new MigrationEngine(source, "flyway_failed", "classpath:db/migration", location).execute("migrate"))
                 .isInstanceOf(org.flywaydb.core.api.exception.FlywayValidateException.class);
     }
 

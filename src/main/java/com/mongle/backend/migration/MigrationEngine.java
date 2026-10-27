@@ -16,10 +16,10 @@ public final class MigrationEngine {
         this(source, database, "classpath:db/migration");
     }
 
-    MigrationEngine(DataSource source, String database, String location) {
+    MigrationEngine(DataSource source, String database, String... locations) {
         this.source = source;
         this.database = database;
-        flyway = Flyway.configure().dataSource(source).locations(location)
+        flyway = Flyway.configure().dataSource(source).locations(locations)
                 .defaultSchema(database).schemas(database).createSchemas(false)
                 .baselineVersion("1").baselineDescription("Mongle verified 33-table baseline")
                 .baselineOnMigrate(false).cleanDisabled(true).outOfOrder(false)
