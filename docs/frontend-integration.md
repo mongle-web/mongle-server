@@ -11,11 +11,11 @@
 | 공통 API 접두사 | /api/v1 |
 | 운영 health | https://api.mongle.art/actuator/health — 이번 확인 HTTP200/UP |
 | 운영 Swagger | https://api.mongle.art/swagger-ui.html — UI200 확인 |
-| 운영 OpenAPI JSON | https://api.mongle.art/v3/api-docs — HTTP200, 실제 배포 커밋의 명세 표시 |
+| 운영 OpenAPI JSON | https://api.mongle.art/v3/api-docs — HTTP200, 47경로·58개 API 확인 |
 | 로컬 Swagger | http://localhost:8080/swagger-ui.html |
 | 로컬 OpenAPI JSON | http://localhost:8080/v3/api-docs |
 
-이번 공개 요청 점검에서는 `https://www.mongle.art`의 Bearer GET preflight가 HTTP200 및 정확한 Allow-Origin으로 응답했다. 모든 메서드·실제 인증·브라우저 기능 연동 완료까지 뜻하지 않는다. CD 실행40491244847에서는 develop `c325ce097ac2dcc2e6f15d2e055986569770161d` JAR 배포와 내부·공개 health가 성공했다. 이후 #77의 `21f6489` 배포(40497224862)는 후보 헬스체크 실패로 이전 `c325ce0` JAR로 롤백됐다. #77의 SQL 적용 여부와 EC2 기동 오류를 확인해야 하며, #79도 이후 배포가 필요하다.
+이번 공개 요청 점검에서는 `https://www.mongle.art`의 Bearer GET preflight가 HTTP200 및 정확한 Allow-Origin으로 응답했다. 모든 메서드·실제 인증·브라우저 기능 연동 완료까지 뜻하지 않는다. CD 실행40521111651에서 develop `21f6489427c8559b12abd62e62c458860cbe54f8` 배포가 성공했고, 외부 health HTTP200/UP 및 Swagger HTTP200을 재확인했다. 운영 OpenAPI에는 #77의 세계관 이미지 생성·상태·다운로드 API를 포함한 58개 API가 반영됐다. #79의 Google 코드 제거는 별도 머지·배포가 필요하다.
 
 공통 설정에서는 문서가 기본 비활성이지만 현재 운영은 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 공개했다. 문서 열람과 실제 기능 활성화·로그인 성공은 구분한다.
 
