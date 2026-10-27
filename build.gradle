@@ -18,6 +18,8 @@ repositories {
 }
 
 dependencies {
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-mysql'
 	implementation platform('software.amazon.awssdk:bom:2.57.2')
 	implementation('software.amazon.awssdk:s3') {
 		exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
