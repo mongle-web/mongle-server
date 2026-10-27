@@ -23,7 +23,7 @@ EC2·SSM 온라인·GitHub OIDC 공급자·GitHub 배포 역할·서울 배포 S
 5. 업로드 후 develop HEAD를 다시 확인하고 지정 EC2·`Mongle-DeployV1`의 **고정 숫자 버전과 SHA256**으로 SSM 명령을 보낸다. GitHub 역할은 임의 Document/서버/셸을 실행하거나 Document를 수정하지 못한다.
 6. root가 설치한 고정 `deploy-flyway.py`가 `flock`으로 동시에 하나만 실행한다. SSM 입력은 숫자/해시와 고정 `MigrationProtocol=flyway-v1`만 허용하며 `ENV_VAR` 보간으로 전달한다. 버킷·실행 파일·서비스·경로·URL을 명령 파라미터로 바꿀 수 없다.
 7. 진행 중이던 배포의 `pending` 기록이 있으면 먼저 이전 릴리스로 복구한다. CI run number/attempt보다 오래된 명령은 거절한다. 실행 번호는 같은 Server CI 워크플로 기준이다.
-8. 다운로드된 동일 JAR를 전용 계정·보호된 복사본으로 실행해 Flyway 검증/적용을 먼저 수행한다. 실패하면 링크 교체를 중단하며 DB를 자동 되돌리지 않는다. JAR를 다운로드·SHA256·BootJar 형식 검증한 뒤 배치한다. 기존 릴리스가 정상인지 확인하고 복구 지점을 디스크에 기록한 후 링크를 교체한다. 다운로드 중에는 서비스를 중지하지 않는다.
+8. JAR를 다운로드해 SHA256·BootJar 형식을 검증하고 배치한 뒤 기존 릴리스 health를 확인한다. 같은 검증 JAR의 보호된 복사본을 전용 계정으로 실행해 Flyway를 검증/적용한다. 실패하면 링크 교체를 중단한다. 성공하면 앱 복구 지점을 기록하고 링크를 교체한다. 다운로드·마이그레이션 동안 앱을 중지하지 않으며 DB를 자동 되돌리지 않는다.
 9. `systemctl restart mongle.service` 후 내부·공개 HTTPS health가 같은 회차에 모두 HTTP200/UP인지 확인한다. 실패·예외·TERM/INT는 이전 링크 복구·재시작·health 재확인 후 실패로 종료한다. 복구 실패 기록은 다음 배포까지 보존한다.
 10. GitHub는 SSM 완료 결과를 확인하고 CI SHA/체크섬/Command ID/결과만 30일 보관한다. 결과 불명확/시간 초과 시 명령을 취소하거나 새 배포를 자동 발행하지 않는다.
 
