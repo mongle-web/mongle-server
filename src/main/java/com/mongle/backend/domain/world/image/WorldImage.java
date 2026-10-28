@@ -28,6 +28,8 @@ public class WorldImage extends BaseEntity {
     @Column(nullable = false, length = 30) private GenerationStatus status;
     @Column(name = "attempt_id", nullable = false, length = 36) private String attemptId;
     @Column(name = "credit_reservation_id") private Long creditReservationId;
+    @Column(name = "free_regeneration_used", nullable = false) private boolean freeRegenerationUsed;
+    @Column(name = "free_regeneration_attempt", nullable = false) private boolean freeRegenerationAttempt;
     @JdbcTypeCode(SqlTypes.TIMESTAMP) @Column(name = "lease_until") private Instant leaseUntil;
     @Column(name = "failure_code", length = 50) private String failureCode;
     @Column(name = "storage_key", length = 255) private String storageKey;
@@ -47,11 +49,14 @@ public class WorldImage extends BaseEntity {
         compositionRevision = revision; this.style = style; this.mood = mood;
         status = GenerationStatus.PROCESSING; attemptId = UUID.randomUUID().toString();
         leaseUntil = now.plusSeconds(120); failureCode = null;
+        creditReservationId = null;
+        freeRegenerationAttempt = storageKey != null && !freeRegenerationUsed;
     }
     public void reserve(Long id) { creditReservationId = id; }
     public boolean active(Instant now) { return status == GenerationStatus.PROCESSING && leaseUntil != null && leaseUntil.isAfter(now); }
     public boolean accepts(String attempt) { return status == GenerationStatus.PROCESSING && Objects.equals(attemptId, attempt); }
     public void finish(String key, ImagePayload payload) {
+        if (freeRegenerationAttempt) freeRegenerationUsed = true;
         storageKey = key; contentType = payload.contentType(); width = payload.width(); height = payload.height();
         resultCompositionRevision = compositionRevision; resultStyle = style; resultMood = mood;
         resultSourceDeleted = false; status = GenerationStatus.COMPLETED; leaseUntil = null; failureCode = null;

@@ -30,6 +30,7 @@ public class WorldImageTransactions {
     private final ImageOptions options;
     private final WorldImageProperties properties;
     private final Clock authClock;
+    private final ImageRegenerationPolicy regenerationPolicy;
 
     public record Reservation(WorldImageResponse response, ImageGenerator.Input input) {}
     public record Completion(WorldImageResponse response, boolean stored) {}
@@ -63,10 +64,15 @@ public class WorldImageTransactions {
         var image = prior.orElseGet(()->WorldImage.create(user,world));
         release(image); registerAttempt(image);
         image.start(composition.getCompositionRevision(),request.style(),request.mood(),authClock.instant());
-        var receipt = reservations.reserve(user,"world-image:"+image.getAttemptId(),
-                request.regenerate()?CreditUsage.WORLD_IMAGE_REGENERATION:CreditUsage.WORLD_IMAGE_GENERATION,
-                "world-image:"+world+":"+image.getAttemptId(),image.getLeaseUntil());
-        image.reserve(receipt.reservationId()); images.saveAndFlush(image);
+        if (image.isFreeRegenerationAttempt()) {
+            regenerationPolicy.requireFreeAttemptAllowed(user);
+        } else {
+            var receipt = reservations.reserve(user,"world-image:"+image.getAttemptId(),
+                    image.getStorageKey()!=null?CreditUsage.WORLD_IMAGE_REGENERATION:CreditUsage.WORLD_IMAGE_GENERATION,
+                    "world-image:"+world+":"+image.getAttemptId(),image.getLeaseUntil());
+            image.reserve(receipt.reservationId());
+        }
+        images.saveAndFlush(image);
         sources.deleteLane(image.getId(),true);
         sources.saveAll(snapshot.references().stream().map(ref->WorldImageSource.create(image,ref)).toList());
         sources.flush();
@@ -85,7 +91,7 @@ public class WorldImageTransactions {
         if (failure!=null) { release(image); image.fail(failure); }
         else {
             String previousKey=image.getStorageKey();
-            reservations.settle(image.getUserId(),image.getCreditReservationId(),key);
+            if (!image.isFreeRegenerationAttempt()) reservations.settle(image.getUserId(),image.getCreditReservationId(),key);
             sources.deleteLane(image.getId(),false); sources.publish(image.getId());
             image.finish(key,payload);
             if (previousKey!=null && !previousKey.equals(key))
@@ -128,6 +134,7 @@ public class WorldImageTransactions {
         return null;
     }
     private String settlementFailure(WorldImage image) {
+        if(image.isFreeRegenerationAttempt()) return credits.balance(image.getUserId()).spendingBlocked()?"CREDIT_PAYMENT_REVIEW":null;
         if(image.getCreditReservationId()==null) return "CREDIT_RESERVATION_MISSING";
         var r=reservations.get(image.getUserId(),image.getCreditReservationId());
         if(r.state()!=CreditReservation.State.RESERVED || !r.expiresAt().isAfter(authClock.instant())) return "CREDIT_RESERVATION_EXPIRED";
@@ -151,7 +158,9 @@ public class WorldImageTransactions {
                 image.getCompositionRevision(),image.getResultCompositionRevision(),composition.isEmpty()||composition.get().getCompositionRevision()!=visible,
                 sources.sourceChanged(image.getId()),image.isResultSourceDeleted(),
                 image.getStorageKey()!=null && image.getStatus()!=GenerationStatus.COMPLETED,
-                image.getStyle(),image.getMood(),image.getResultStyle(),image.getResultMood(),image.getContentType(),image.getWidth(),image.getHeight());
+                image.getStyle(),image.getMood(),image.getResultStyle(),image.getResultMood(),image.getContentType(),image.getWidth(),image.getHeight(),
+                image.getStorageKey()!=null && !image.isFreeRegenerationUsed(),
+                regenerationPolicy.nextCost(image.getStorageKey()!=null,image.isFreeRegenerationUsed(),CreditUsage.WORLD_IMAGE_REGENERATION));
     }
     private WorldImage owned(Long user, Long image) { return images.findByIdAndUserId(image,user).orElseThrow(()->new BusinessException(WorldImageErrorCode.NOT_FOUND)); }
     private void folder(Long user, Long world) { folders.findByIdAndUserId(world,user).orElseThrow(()->new BusinessException(WorldFolderErrorCode.NOT_FOUND)); }

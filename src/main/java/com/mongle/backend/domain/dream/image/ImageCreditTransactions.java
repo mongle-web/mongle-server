@@ -14,11 +14,16 @@ public class ImageCreditTransactions {
     private final CreditReservationService reservations;
     private final CreditService credits;
     private final Clock authClock;
+    private final ImageRegenerationPolicy regenerationPolicy;
 
-    public void reserve(DreamImage image, boolean regenerate) {
+    public void reserve(DreamImage image) {
+        if (image.isFreeRegenerationAttempt()) {
+            regenerationPolicy.requireFreeAttemptAllowed(image.getUser().getId());
+            return;
+        }
         var receipt = reservations.reserve(image.getUser().getId(),
                 "dream-image:" + image.getAttemptId(),
-                regenerate ? CreditUsage.DREAM_IMAGE_REGENERATION : CreditUsage.DREAM_IMAGE_GENERATION,
+                image.getStorageKey() != null ? CreditUsage.DREAM_IMAGE_REGENERATION : CreditUsage.DREAM_IMAGE_GENERATION,
                 "dream-image:" + image.getAnalysis().getId() + ":" + image.getAttemptId(),
                 image.getLeaseUntil());
         image.attachCreditReservation(receipt.reservationId());
@@ -26,6 +31,8 @@ public class ImageCreditTransactions {
 
     /** 예외로 트랜잭션을 오염시키기 전에 예약·사용 보류를 확인한다. */
     public String settlementFailure(DreamImage image) {
+        if (image.isFreeRegenerationAttempt())
+            return credits.balance(image.getUser().getId()).spendingBlocked() ? "CREDIT_PAYMENT_REVIEW" : null;
         if (image.getCreditReservationId() == null) return "CREDIT_RESERVATION_MISSING";
         var receipt = reservations.get(image.getUser().getId(), image.getCreditReservationId());
         if (receipt.state() != CreditReservation.State.RESERVED
@@ -35,6 +42,7 @@ public class ImageCreditTransactions {
     }
 
     public void settle(DreamImage image, String key) {
+        if (image.isFreeRegenerationAttempt()) return;
         reservations.settle(image.getUser().getId(), image.getCreditReservationId(), key);
     }
 
