@@ -27,6 +27,8 @@ java -jar <검증한-JAR> --db-migration=migrate
 
 ## 코드 검증
 
+이미지 무료 재생성 정책은 `V3__image_regeneration_policy.sql`로 적용한다. V3는 꿈/세계관 이미지에 무료 재생성 사용 여부와 현재 무료 시도 여부 컬럼을 추가한다. 기존 행의 기본값은 false이며 기존 성공 파일은 보존하고, 도입 이후 무료 재생성 1회를 제공한다. 기존 이미지 작업을 종료/만료 복구한 뒤 새 버전을 배포한다. V1 기준 등록은 종전 구조에서 먼저 수행하며, 최신 스키마를 V1 메타데이터로 다시 baseline하지 않는다. #85의 종합 해석 마이그레이션이 V2를 사용하므로 #85를 먼저 머지하고 이 변경을 통합한다. 통합 배포 JAR에는 V1·V2·V3 SQL을 모두 포함한다. [정책과 배포 경계](image-generation-policy.md)를 참고한다.
+
 ```sh
 ./gradlew --no-daemon test bootJar
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'

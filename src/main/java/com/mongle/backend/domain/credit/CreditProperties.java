@@ -27,13 +27,17 @@ public record CreditProperties(@DefaultValue("false") boolean enabled,
     public long cost(CreditUsage usage) {
         requireEnabled();
         if (usage == null) throw new BusinessException(CreditErrorCode.INVALID_INPUT);
-        Long amount = switch (usage) {
+        Long amount = configuredCost(usage);
+        if (amount == null) throw new BusinessException(CreditErrorCode.UNAVAILABLE);
+        return amount;
+    }
+    /** 조회용 가격이며 기능 활성화나 실제 생성 가능 여부를 뜻하지 않는다. */
+    public Long configuredCost(CreditUsage usage) {
+        return switch (usage) {
             case DREAM_IMAGE_GENERATION -> dreamImageGeneration;
             case DREAM_IMAGE_REGENERATION -> dreamImageRegeneration;
             case WORLD_IMAGE_GENERATION -> worldImageGeneration;
             case WORLD_IMAGE_REGENERATION -> worldImageRegeneration;
         };
-        if (amount == null) throw new BusinessException(CreditErrorCode.UNAVAILABLE);
-        return amount;
     }
 }

@@ -26,13 +26,14 @@ class OpenAiImageConfigurationTest {
             "mongle.image.openai.style-prompts[test-style]=watercolor","mongle.image.openai.mood-prompts[test-mood]=calm",
             "mongle.image.execution.max-concurrent-calls=4"};
 
-    @Test void defaultsDisableProviderWithoutInventingModelOrOptions() {
+    @Test void barePropertiesDisableProviderAndSupplyTheConfirmedStylePrompts() {
         runner.run(context->{
             assertThat(context).hasNotFailed().hasSingleBean(ImageGenerator.class);
             assertThat(context.getBean(ImageGenerator.class).available()).isFalse();
             var properties=context.getBean(OpenAiImageProperties.class);
             assertThat(properties.model()).isEmpty(); assertThat(properties.size()).isEmpty(); assertThat(properties.quality()).isEmpty();
-            assertThat(properties.stylePrompts()).isEmpty(); assertThat(properties.moodPrompts()).isEmpty();
+            assertThat(properties.stylePrompts()).containsOnlyKeys("surrealism", "geometric-cubism", "expressive-brushwork", "modern-pop-art");
+            assertThat(properties.moodPrompts()).isEmpty();
         });
     }
     @Test void explicitValidConfigurationCreatesProviderWithoutSendingRequestsAndClosesIt() {

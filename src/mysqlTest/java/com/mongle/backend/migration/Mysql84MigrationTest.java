@@ -57,6 +57,10 @@ class Mysql84MigrationTest {
         var jdbc = new JdbcTemplate(source("flyway_fresh"));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()", Integer.class)).isGreaterThanOrEqualTo(34);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success=true", Integer.class)).isPositive();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version='3' AND success=true", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() "
+                + "AND table_name IN ('dream_images','world_images') AND column_name IN ('free_regeneration_used','free_regeneration_attempt') "
+                + "AND is_nullable='NO' AND column_default='0'", Integer.class)).isEqualTo(4);
         output.reset();
         assertThat(MigrationCommand.run(new String[] {"--db-migration=migrate"}, env, new PrintStream(output))).isZero();
         assertThat(output.toString()).contains("migrationsExecuted\":0");

@@ -127,6 +127,50 @@ class WorldImageIntegrationTest {
         assertThatThrownBy(action).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(code);
     }
 
+    @Test void freeRegenerationAtZeroBalanceIsSerializedAcrossConcurrentRequests() throws Exception {
+        credits.grant(user,CreditSource.PAYMENT,"world-zero:"+user,2);
+        var f=world(ready(1),ready(2));var first=generate(f.worldId());
+        generator.pending=new CompletableFuture<>();var request=regenerate(f.worldId());
+        try(var pool=Executors.newFixedThreadPool(2)) {
+            var one=pool.submit(()->images.generate(user,f.worldId(),request));
+            var two=pool.submit(()->images.generate(user,f.worldId(),request));
+            var call1=one.get(5,TimeUnit.SECONDS);var call2=two.get(5,TimeUnit.SECONDS);
+            assertThat(generator.calls).hasValue(2);assertThat(credits.balance(user).reserved()).isZero();
+            generator.pending.complete(OpenAiTestServer.image("png"));await(call1);await(call2);
+        }
+        var done=transactions.latest(user,f.worldId());
+        assertThat(done.freeRegenerationAvailable()).isFalse();assertThat(done.nextRegenerationCost()).isEqualTo(3);
+        assertThat(ledger("SETTLE")).isEqualTo(1);assertThat(credits.balance(user).available()).isZero();
+        error(()->images.generate(user,f.worldId(),regenerate(f.worldId())),CreditErrorCode.INSUFFICIENT);
+        assertThat(generator.calls).hasValue(2);
+    }
+
+    @Test void expiredFreeAttemptCannotConsumeAllowanceOrOverwriteItsRetry() throws Exception {
+        fund();var f=world(ready(1),ready(2));generate(f.worldId());generator.pending=new CompletableFuture<>();
+        var pending=images.generate(user,f.worldId(),regenerate(f.worldId()));var oldInput=generator.last;
+        jdbc.update("update world_images set lease_until=? where id=?",java.sql.Timestamp.from(Instant.EPOCH),oldInput.imageId());
+        recovery.recoverExpired();recovery.recoverExpired();
+        assertThat(transactions.latest(user,f.worldId()).freeRegenerationAvailable()).isTrue();
+        generator.pending.complete(OpenAiTestServer.image("png"));assertThat(await(pending).failureCode()).isEqualTo("ATTEMPT_EXPIRED");
+        generator.pending=null;
+        var done=await(images.generate(user,f.worldId(),regenerate(f.worldId())));
+        assertThat(done.freeRegenerationAvailable()).isFalse();assertThat(ledger("SETTLE")).isEqualTo(1);
+        assertThat(transactions.finish(oldInput,"world-images/discarded",ImagePayload.parse(OpenAiTestServer.image("png"))).stored()).isFalse();
+    }
+
+    @Test void compositionChangesAndDreamDeletionDoNotResetUsedFreeAllowance() throws Exception {
+        fund();var a=ready(1);var b=ready(2);var f=world(a,b);generate(f.worldId());
+        await(images.generate(user,f.worldId(),regenerate(f.worldId())));
+        build(f.worldId());
+        assertThat(transactions.latest(user,f.worldId()).freeRegenerationAvailable()).isFalse();
+        dreams.delete(user,b.dreamId(),b.revision());
+        var changed=transactions.latest(user,f.worldId());
+        assertThat(changed.freeRegenerationAvailable()).isFalse();assertThat(changed.nextRegenerationCost()).isEqualTo(3);
+        assertThat(generator.calls).hasValue(2);
+        var paid=await(images.generate(user,f.worldId(),regenerate(f.worldId())));
+        assertThat(paid.status()).isEqualTo(GenerationStatus.COMPLETED);assertThat(credits.balance(user).available()).isEqualTo(95);
+    }
+
     @Test void usesPublishedDateOrderedStoriesRatherThanChangedSelectionAndChargesOnce() throws Exception {
         fund();var a=ready(1);var b=ready(2);var c=ready(3);var f=world(b,a);
         f=folders.exclude(user,f.worldId(),a.dreamId(),f.revision());folders.select(user,f.worldId(),c.dreamId(),f.revision());
@@ -149,11 +193,15 @@ class WorldImageIntegrationTest {
         transactions.finish(generator.last,storage.stored.keySet().iterator().next(),ImagePayload.parse(OpenAiTestServer.image("png")));
         assertThat(result.status()).isEqualTo(GenerationStatus.COMPLETED);assertThat(ledger("SETTLE")).isEqualTo(1);
     }
-    @Test void paidRegenerationReplacesOnlyOnSuccessAndQueuesPreviousFile() throws Exception {
+    @Test void firstRegenerationIsFreeThenPaidAndQueuesPreviousFile() throws Exception {
         fund();var f=world(ready(1),ready(2));var first=generate(f.worldId());String old=storage.stored.keySet().iterator().next();
         var result=await(images.generate(user,f.worldId(),regenerate(f.worldId())));
-        assertThat(result.imageId()).isEqualTo(first.imageId());assertThat(credits.balance(user).available()).isEqualTo(95);
-        assertThat(ledger("SETTLE")).isEqualTo(2);
+        assertThat(result.imageId()).isEqualTo(first.imageId());assertThat(credits.balance(user).available()).isEqualTo(98);
+        assertThat(first.freeRegenerationAvailable()).isTrue();assertThat(first.nextRegenerationCost()).isZero();
+        assertThat(result.freeRegenerationAvailable()).isFalse();assertThat(result.nextRegenerationCost()).isEqualTo(3);
+        assertThat(ledger("SETTLE")).isEqualTo(1);
+        assertThat(await(images.generate(user,f.worldId(),regenerate(f.worldId()))).status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(credits.balance(user).available()).isEqualTo(95);assertThat(ledger("SETTLE")).isEqualTo(2);
         assertThat(jdbc.queryForObject("select reason from image_cleanup_requests where storage_key=?",String.class,old)).isEqualTo("REPLACED_RESULT");
         assertThat(jdbc.queryForObject("select count(*) from world_image_sources where image_id=? and candidate=false",Long.class,first.imageId())).isEqualTo(2);
         assertThat(transactions.latest(user,f.worldId()).hasPreviousResult()).isFalse();
@@ -162,6 +210,7 @@ class WorldImageIntegrationTest {
         fund();var f=world(ready(1),ready(2));var first=generate(f.worldId());generator.output=new byte[]{1};
         var failed=await(images.generate(user,f.worldId(),regenerate(f.worldId())));
         assertThat(failed.failureCode()).isEqualTo("INVALID_OUTPUT");assertThat(failed.hasPreviousResult()).isTrue();
+        assertThat(failed.freeRegenerationAvailable()).isTrue();assertThat(failed.nextRegenerationCost()).isZero();
         assertThat(failed.resultCompositionRevision()).isEqualTo(first.resultCompositionRevision());
         assertThat(credits.balance(user).available()).isEqualTo(98);assertThat(credits.balance(user).reserved()).isZero();
         assertThat(images.downloadUrl(user,f.worldId()).url()).startsWith("https://");
@@ -231,6 +280,7 @@ class WorldImageIntegrationTest {
         try {
             generator.pending.complete(OpenAiTestServer.image("png"));assertThatThrownBy(()->await(pending)).isInstanceOf(BusinessException.class);
             assertThat(transactions.latest(user,f.worldId()).hasPreviousResult()).isTrue();assertThat(storage.stored).hasSize(1);
+            assertThat(transactions.latest(user,f.worldId()).freeRegenerationAvailable()).isTrue();
             assertThat(ledger("SETTLE")).isEqualTo(1);assertThat(credits.balance(user).available()).isEqualTo(98);
         } finally {jdbc.execute("alter table world_images drop constraint fail_world_image_publish");}
     }

@@ -17,7 +17,8 @@ import java.util.concurrent.*;
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:credit-reservations;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
     "mongle.credit.enabled=true", "mongle.credit.expiry-policy=NO_EXPIRY",
-    "mongle.credit.dream-image-generation=12", "mongle.credit.dream-image-regeneration=7"})
+    "mongle.credit.dream-image-generation=12", "mongle.credit.dream-image-regeneration=7",
+    "mongle.credit.world-image-generation="})
 @ActiveProfiles("test")
 class CreditReservationIntegrationTest {
     @Autowired CreditService credits;
