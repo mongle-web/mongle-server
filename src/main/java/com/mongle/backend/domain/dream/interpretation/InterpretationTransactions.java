@@ -18,6 +18,9 @@ public class InterpretationTransactions {
     private final RecentInterpretationRepository interpretations;
     private final InterpretationTargets targets;
     private final Clock authClock;
+    private final com.mongle.backend.domain.dream.gateway.DreamGenerationSettings settings;
+
+    public record Reservation(InterpretationResponse response, InterpretationGenerator.Input input) {}
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public InterpretationResponse get(Long userId) {
@@ -25,6 +28,46 @@ public class InterpretationTransactions {
         var row = interpretations.findByUserId(userId).orElse(null);
         if (row != null) sanitize(userId, row);
         return response(row, targets.current(userId));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Reservation begin(Long userId, boolean available) {
+        var user = lock(userId);
+        var row = interpretations.findByUserId(userId).orElse(null);
+        if (row != null) sanitize(userId, row);
+        var target = targets.current(userId);
+        if (target.empty() || (row != null && (row.active(authClock.instant())
+                || row.matches(target.fingerprint()) || row.isEverCompleted())))
+            return new Reservation(response(row, target), null);
+        if (!available) throw new BusinessException(InterpretationErrorCode.UNAVAILABLE);
+        if (target.evidenceJson().length() > 120000)
+            throw new BusinessException(InterpretationErrorCode.CONTEXT_TOO_LARGE);
+        if (row == null) row = RecentInterpretation.create(user);
+        row.start(target.fingerprint(), targets.encodeIds(target.dreamIds()), settings.capture(), authClock.instant());
+        interpretations.saveAndFlush(row);
+        return new Reservation(response(row, target), new InterpretationGenerator.Input(userId, row.getAttemptId(), target));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public InterpretationResponse finish(InterpretationGenerator.Input input, String body) {
+        lock(input.userId());
+        var row = interpretations.findByUserId(input.userId()).orElseThrow();
+        sanitize(input.userId(), row);
+        var target = targets.current(input.userId());
+        if (row.accepts(input.attemptId())) {
+            if (!target.fingerprint().equals(input.target().fingerprint())) row.fail("SOURCE_CHANGED");
+            else row.finish(body, targets.encodeSources(input.target().sources()), authClock.instant());
+        }
+        return response(row, target);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public InterpretationResponse fail(InterpretationGenerator.Input input, String code) {
+        lock(input.userId());
+        var row = interpretations.findByUserId(input.userId()).orElseThrow();
+        sanitize(input.userId(), row);
+        if (row.accepts(input.attemptId())) row.fail(code);
+        return response(row, targets.current(input.userId()));
     }
 
     /** DreamService와 동일한 사용자 잠금 안에서 호출한다. 결과/진행 중 출처를 함께 정리한다. */
@@ -59,7 +102,7 @@ public class InterpretationTransactions {
                 row == null || empty ? null : row.getBody(), row == null || empty ? null : row.getGeneratedAt(),
                 row == null || empty ? null : row.getPromptVersion(),
                 !empty && row != null && row.isEverCompleted() && !row.matches(target.fingerprint()),
-                target.limitedEvidence(), target.from(), target.to(), target.sources().size(),
+                (row != null && row.getBody() != null ? targets.decodeSources(row.getResultSources()).size() < 3 : target.limitedEvidence()), target.from(), target.to(), target.sources().size(),
                 row == null || empty ? List.of() : targets.decodeSources(row.getResultSources()));
     }
 

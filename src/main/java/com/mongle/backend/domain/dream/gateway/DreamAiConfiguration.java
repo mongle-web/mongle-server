@@ -17,7 +17,8 @@ public class DreamAiConfiguration {
 
     @Bean
     DreamGenerationResources dreamGenerationResources(
-            DreamAiProperties properties, AnalysisTransactions analysis, StoryTransactions story) {
+            DreamAiProperties properties, AnalysisTransactions analysis, StoryTransactions story,
+            com.mongle.backend.domain.dream.interpretation.InterpretationTransactions interpretation) {
         // 저장 서비스·DB 자원보다 먼저 완료 작업의 종료를 기다린다.
         return new DreamGenerationResources(properties.maxConcurrentCalls());
     }

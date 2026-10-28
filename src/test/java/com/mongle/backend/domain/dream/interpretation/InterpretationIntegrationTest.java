@@ -21,7 +21,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "spring.datasource.url=jdbc:h2:mem:interpretations;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")
+        properties = {"spring.datasource.url=jdbc:h2:mem:interpretations;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE", "mongle.analysis.interpretation.enabled=true"})
 @ActiveProfiles("test")
 @Import(InterpretationIntegrationTest.Config.class)
 class InterpretationIntegrationTest {
@@ -35,7 +35,19 @@ class InterpretationIntegrationTest {
         @Bean @Primary StructureGenerator structureGenerator() {
             return input -> CompletableFuture.completedFuture(STRUCTURE);
         }
+        @Bean @Primary FakeGenerator fakeInterpretationGenerator() { return new FakeGenerator(); }
         @Bean @Primary MutableClock interpretationClock() { return new MutableClock(); }
+    }
+    static final String VALID = "{\"interpretation\":\"관찰 자료가 적습니다. 바다와 자유로운 이동이 관찰됩니다.\"}";
+    static class FakeGenerator implements InterpretationGenerator {
+        final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        volatile boolean available = true;
+        volatile java.util.function.Function<Input, CompletableFuture<String>> action = i -> CompletableFuture.completedFuture(VALID);
+        public boolean available() { return available; }
+        public CompletableFuture<String> generate(Input input) {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            calls.incrementAndGet(); return action.apply(input);
+        }
     }
     static class MutableClock extends Clock {
         volatile Instant now = Instant.parse("2026-10-28T03:00:00Z");
@@ -43,6 +55,8 @@ class InterpretationIntegrationTest {
         public Clock withZone(ZoneId zone) { return Clock.fixed(now, zone); }
         public Instant instant() { return now; }
     }
+    @Autowired InterpretationService service;
+    @Autowired FakeGenerator generator;
     @Autowired InterpretationTransactions transactions;
     @Autowired InterpretationTargets targets;
     @Autowired RecentInterpretationRepository rows;
@@ -56,6 +70,7 @@ class InterpretationIntegrationTest {
 
     @BeforeEach void setup() {
         clock.now = Instant.parse("2026-10-28T03:00:00Z");
+        generator.calls.set(0); generator.available = true; generator.action = i -> CompletableFuture.completedFuture(VALID);
         user = users.saveAndFlush(User.create(UUID.randomUUID()+"@test.invalid", "테스터")).getId();
     }
     DreamResponse analyzed(LocalDate date) {
@@ -123,4 +138,84 @@ class InterpretationIntegrationTest {
         assertThat(transactions.get(user).refreshNeeded()).isTrue();
         assertThat(transactions.get(user).interpretation()).isNull();
     }
+    @Test void firstEntryGeneratesOnceAndGetNeverCallsAi() {
+        assertThat(await(service.ensure(user)).status()).isEqualTo(InterpretationResponse.State.EMPTY);
+        assertThat(generator.calls).hasValue(0);
+        analyzed(today);
+        var result = await(service.ensure(user));
+        assertThat(result.status()).isEqualTo(InterpretationResponse.State.COMPLETED);
+        assertThat(result.interpretation()).contains("바다");
+        assertThat(result.generatedAt()).isEqualTo(clock.instant());
+        assertThat(result.sources()).hasSize(1);
+        await(service.ensure(user)); transactions.get(user);
+        assertThat(generator.calls).hasValue(1);
+        generator.available = false;
+        assertThat(await(service.ensure(user)).interpretation()).isEqualTo(result.interpretation());
+    }
+    @Test void changedTargetsDoNotRegenerateOnEntryAfterSuccessfulResult() {
+        analyzed(today); await(service.ensure(user));
+        analyzed(today.minusDays(1));
+        assertThat(await(service.ensure(user)).refreshNeeded()).isTrue();
+        assertThat(generator.calls).hasValue(1);
+    }
+    @Test void concurrentFirstEntriesShareOneAttempt() {
+        analyzed(today);
+        var pending = new CompletableFuture<String>(); generator.action = i -> pending;
+        var first = service.ensure(user);
+        var duplicate = await(service.ensure(user));
+        assertThat(duplicate.status()).isEqualTo(InterpretationResponse.State.PROCESSING);
+        assertThat(generator.calls).hasValue(1);
+        pending.complete(VALID);
+        assertThat(await(first).status()).isEqualTo(InterpretationResponse.State.COMPLETED);
+    }
+    @Test void failedFirstGenerationCanBeRetriedAndProviderTextIsNotExposed() {
+        analyzed(today); generator.action = i -> CompletableFuture.failedFuture(new IllegalStateException("private response"));
+        assertThat(await(service.ensure(user)).failureCode()).isEqualTo("CALL_FAILED");
+        generator.action = i -> CompletableFuture.completedFuture("{\"interpretation\":7}");
+        assertThat(await(service.ensure(user)).failureCode()).isEqualTo("INVALID_OUTPUT");
+        generator.action = i -> CompletableFuture.completedFuture(VALID);
+        assertThat(await(service.ensure(user)).status()).isEqualTo(InterpretationResponse.State.COMPLETED);
+        assertThat(generator.calls).hasValue(3);
+    }
+    @Test void editsDuringGenerationRejectOldResultsWithoutHoldingSourceLocks() {
+        var dream = analyzed(today);
+        var pending = new CompletableFuture<String>(); generator.action = i -> pending;
+        var first = service.ensure(user);
+        var update = new DreamUpdateRequest(); update.setRevision(dream.revision()); update.setEmotions(List.of(DreamEmotion.SAD));
+        dreams.update(user, dream.dreamId(), update);
+        pending.complete(VALID);
+        var failed = await(first);
+        assertThat(failed.failureCode()).isEqualTo("SOURCE_CHANGED");
+        assertThat(failed.interpretation()).isNull();
+    }
+    @Test void deletedSourcesRejectLateCompletionAndPurgeStoredReferences() {
+        var dream = analyzed(today);
+        var pending = new CompletableFuture<String>(); generator.action = i -> pending;
+        var first = service.ensure(user);
+        dreams.delete(user, dream.dreamId(), dream.revision());
+        pending.complete(VALID);
+        assertThat(await(first).interpretation()).isNull();
+        var row = rows.findByUserId(user).orElseThrow();
+        assertThat(row.getAttemptDreamIds()).isNull();
+        assertThat(row.getBody()).isNull();
+        assertThat(row.getFailureCode()).isEqualTo("SOURCE_DELETED");
+    }
+    @Test void expiredAttemptCannotReplaceNewerCompletedResult() {
+        analyzed(today);
+        var pending = new CompletableFuture<String>(); generator.action = i -> pending;
+        var first = service.ensure(user);
+        clock.now = clock.now.plusSeconds(121);
+        generator.action = i -> CompletableFuture.completedFuture(VALID.replace("바다", "새 결과"));
+        var newer = await(service.ensure(user));
+        pending.complete(VALID);
+        assertThat(await(first).interpretation()).isEqualTo(newer.interpretation());
+        assertThat(generator.calls).hasValue(2);
+    }
+    @Test void missingCredentialsRejectNewCallsBeforeReservation() {
+        analyzed(today); generator.available = false;
+        assertThatThrownBy(() -> service.ensure(user)).isInstanceOfSatisfying(BusinessException.class,
+                ex -> assertThat(ex.getErrorCode()).isEqualTo(InterpretationErrorCode.UNAVAILABLE));
+        assertThat(rows.findByUserId(user)).isEmpty();
+    }
+
 }
