@@ -71,17 +71,20 @@ mongle:
     enabled: ${MONGLE_CREDIT_ENABLED:false}
     expiry-policy: ${MONGLE_CREDIT_EXPIRY_POLICY:NO_EXPIRY}
     signup-amount: ${MONGLE_CREDIT_SIGNUP_AMOUNT:}
-    dream-image-generation: ${MONGLE_CREDIT_DREAM_IMAGE_GENERATION:}
-    dream-image-regeneration: ${MONGLE_CREDIT_DREAM_IMAGE_REGENERATION:}
-    world-image-generation: ${MONGLE_CREDIT_WORLD_IMAGE_GENERATION:}
-    world-image-regeneration: ${MONGLE_CREDIT_WORLD_IMAGE_REGENERATION:}
+    dream-image-generation: ${MONGLE_CREDIT_DREAM_IMAGE_GENERATION:3}
+    dream-image-regeneration: ${MONGLE_CREDIT_DREAM_IMAGE_REGENERATION:1}
+    world-image-generation: ${MONGLE_CREDIT_WORLD_IMAGE_GENERATION:3}
+    world-image-regeneration: ${MONGLE_CREDIT_WORLD_IMAGE_REGENERATION:1}
   image:
+    # 기본 화풍은 없다. 생성 요청마다 사용자가 선택한 코드를 전달한다.
+    styles: [surrealism, geometric-cubism, expressive-brushwork, modern-pop-art]
+    moods: []
     openai:
       enabled: ${MONGLE_IMAGE_OPENAI_ENABLED:false}
       api-key: ${OPENAI_API_KEY:}
-      model: ${MONGLE_IMAGE_OPENAI_MODEL:}
-      size: ${MONGLE_IMAGE_OPENAI_SIZE:}
-      quality: ${MONGLE_IMAGE_OPENAI_QUALITY:}
+      model: ${MONGLE_IMAGE_OPENAI_MODEL:gpt-image-2.5-flare}
+      size: ${MONGLE_IMAGE_OPENAI_SIZE:1024x1024}
+      quality: ${MONGLE_IMAGE_OPENAI_QUALITY:medium}
       output-format: ${MONGLE_IMAGE_OPENAI_OUTPUT_FORMAT:png}
       connect-timeout: ${MONGLE_IMAGE_OPENAI_CONNECT_TIMEOUT:3s}
       total-timeout: ${MONGLE_IMAGE_OPENAI_TOTAL_TIMEOUT:60s}
@@ -110,7 +113,7 @@ mongle:
       batch-size: ${MONGLE_IMAGE_RECOVERY_BATCH_SIZE:20}
     execution:
       # 외부 응답 대기를 포함한 작업 수이며, 결과 처리 스레드 수와 별개다.
-      max-concurrent-calls: ${MONGLE_IMAGE_MAX_CONCURRENT_CALLS:16}
+      max-concurrent-calls: ${MONGLE_IMAGE_MAX_CONCURRENT_CALLS:4}
       result-threads: ${MONGLE_IMAGE_RESULT_THREADS:2}
   dream:
     generation:

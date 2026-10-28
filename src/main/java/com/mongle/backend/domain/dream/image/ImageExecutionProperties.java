@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /** 호출 대기와 파일 처리까지 포함한 인스턴스별 이미지 작업 한도. */
 @ConfigurationProperties("mongle.image.execution")
 public record ImageExecutionProperties(
-        @DefaultValue("16") int maxConcurrentCalls,
+        @DefaultValue("4") int maxConcurrentCalls,
         @DefaultValue("2") int resultThreads) {
     public ImageExecutionProperties {
         if (maxConcurrentCalls < 1 || maxConcurrentCalls > 64) {

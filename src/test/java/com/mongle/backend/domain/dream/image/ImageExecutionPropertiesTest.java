@@ -11,11 +11,11 @@ import java.util.Map;
 
 class ImageExecutionPropertiesTest {
     @Test
-    void missingConfigurationSeparatesSixteenCallsFromTwoThreads() {
+    void missingConfigurationSeparatesFourCallsFromTwoThreads() {
         var binder = new Binder(new MapConfigurationPropertySource(Map.of()));
         var properties = binder.bindOrCreate(
                 "mongle.image.execution", Bindable.of(ImageExecutionProperties.class));
-        assertThat(properties.maxConcurrentCalls()).isEqualTo(16);
+        assertThat(properties.maxConcurrentCalls()).isEqualTo(4);
         assertThat(properties.resultThreads()).isEqualTo(2);
     }
 
