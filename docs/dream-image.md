@@ -87,7 +87,7 @@ DB와 외부 저장소는 원자적이지 않다. 프로세스 중단과 보상 
 
 ## SQL 및 검증
 
-현재 신규/기존 DB는 [Flyway 배포](database-migrations.md)로 V1+V2를 적용한다. 다음은 V1 이전 과거 안내다. 초기 스키마는 `db/schema-initial.sql`, 기존 MySQL 8 DB는 앞선 #19 SQL 적용 후 `db/migrations/20261006-dream-image.sql`을 수동 적용했다. `dream_images` 신규 테이블만 만든다. 기존에 같은 이름의 테이블이 있다면 실제 컬럼을 비교해야 하며 CREATE IF NOT EXISTS가 호환성을 검증하지는 않는다. 앱/AI 호출 중지 및 백업 상태에서 실행하고 Hibernate validate로 확인한다. 실행 스크립트는 운영 SQL을 자동 실행하지 않는다.
+현재 신규/기존 DB는 [Flyway 배포](database-migrations.md)로 이미지 정책 V3를 적용한다. 다음은 V1 이전 과거 안내다. 초기 스키마는 `db/schema-initial.sql`, 기존 MySQL 8 DB는 앞선 #19 SQL 적용 후 `db/migrations/20261006-dream-image.sql`을 수동 적용했다. `dream_images` 신규 테이블만 만든다. 기존에 같은 이름의 테이블이 있다면 실제 컬럼을 비교해야 하며 CREATE IF NOT EXISTS가 호환성을 검증하지는 않는다. 앱/AI 호출 중지 및 백업 상태에서 실행하고 Hibernate validate로 확인한다. 실행 스크립트는 운영 SQL을 자동 실행하지 않는다.
 
 H2 MySQL 모드에서 전체 회귀 테스트와 초기 스키마 validate를 검증한다. 실제 MySQL 실행, 이미지 Provider 호출, 운영 S3 접속 및 PM 옵션은 검증되지 않았다. #54 S3 어댑터는 SDK 모의 전송과 로컬 HTTP로 검증한다. 이 항목이 준비되기 전에는 이미지 기능이 운영 완료된 것으로 취급하지 않는다.
 
@@ -112,4 +112,4 @@ H2 MySQL 모드에서 전체 회귀 테스트와 초기 스키마 validate를 �
 
 ## 이미지 정책 (#83)
 
-최초 생성 3크레딧, 꿈별 첫 재생성 성공 1회 무료, 이후 1크레딧을 적용한다. 무료 실패·만료는 횟수를 쓰지 않고 기존 성공 이미지를 유지한다. 수정은 AI를 자동 호출하거나 무료 이력을 초기화하지 않는다. 응답에 `freeRegenerationAvailable`, `nextRegenerationCost`를 추가한다. [세부 계약·프론트 연결·V2 배포](image-generation-policy.md)를 따른다.
+최초 생성 3크레딧, 꿈별 첫 재생성 성공 1회 무료, 이후 1크레딧을 적용한다. 무료 실패·만료는 횟수를 쓰지 않고 기존 성공 이미지를 유지한다. 수정은 AI를 자동 호출하거나 무료 이력을 초기화하지 않는다. 응답에 `freeRegenerationAvailable`, `nextRegenerationCost`를 추가한다. [세부 계약·프론트 연결·V3 배포](image-generation-policy.md)를 따른다.

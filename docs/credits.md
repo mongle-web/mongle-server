@@ -67,7 +67,7 @@ CREDIT_400_1 내부 입력, CREDIT_400_2 페이지, CREDIT_404_1 없음/다른 �
 CREDIT_409_1 잔액 부족, CREDIT_409_2 요청 충돌, CREDIT_409_3 예약 상태 충돌,
 CREDIT_409_4 수량 범위 초과, CREDIT_503_1 미준비/미설정이다. 공개 API의 형식 오류는 기존 COMMON 오류 계약도 따른다.
 
-현재 신규/기존 DB는 [Flyway 배포](database-migrations.md)로 V1+V2를 적용한다. 과거 V1 이전에는 새 DB의 schema-initial.sql, 기존 DB의 db/migrations/20261026-credit-ledger.sql을 수동 적용했다. 기존 꿈/AI 테이블을 변경하지 않는다. 운영 DB에는 자동 실행하지 않는다. H2 MySQL 모드에서 초기 스키마·재실행을 검증했으며 실제 MySQL/RDS 검증은 별도다.
+현재 신규/기존 DB는 [Flyway 배포](database-migrations.md)로 이미지 정책 V3를 적용한다. 과거 V1 이전에는 새 DB의 schema-initial.sql, 기존 DB의 db/migrations/20261026-credit-ledger.sql을 수동 적용했다. 기존 꿈/AI 테이블을 변경하지 않는다. 운영 DB에는 자동 실행하지 않는다. H2 MySQL 모드에서 초기 스키마·재실행을 검증했으며 실제 MySQL/RDS 검증은 별도다.
 
 ## 외부 결제 확인 중 사용 보류 (#62)
 
@@ -99,4 +99,4 @@ CREDIT_409_4 수량 범위 초과, CREDIT_503_1 미준비/미설정이다. 공�
 - 이미지 응답의 `freeRegenerationAvailable`은 성공 결과가 있고 무료 이력이 남았는지를 뜻한다. `nextRegenerationCost`는 현재 이력 기준 0 또는 설정된 유료 비용이며, 성공 파일/가격 설정이 없으면 null이다. 이 값은 Provider·잔액·구성·진행 중 여부까지 보장하는 실행 허가가 아니다. 처리 중에는 상태를 조회하고 성공 후 최신 비용을 다시 표시한다.
 - 무료는 Mongle 크레딧에만 해당한다. OpenAI 호출 비용은 서비스에 발생한다.
 
-신규/기존 DB 모두 [Flyway 배포 절차](database-migrations.md)로 `V2__image_regeneration_policy.sql`을 적용한다. V1·기준 메타데이터·과거 초기 스키마는 변경하지 않는다. 기존 이미지에도 도입 이후 무료 1회를 부여하며, 이전 유료 재생성 횟수를 소급 차감하지 않는다. 기존 진행 작업을 종료/만료 복구한 뒤 새 정책을 배포하고, 정책이 다른 구버전 이미지 워커와 혼용하지 않는다.
+신규/기존 DB 모두 [Flyway 배포 절차](database-migrations.md)로 `V3__image_regeneration_policy.sql`을 적용한다. V1·기준 메타데이터·과거 초기 스키마는 변경하지 않는다. 기존 이미지에도 도입 이후 무료 1회를 부여하며, 이전 유료 재생성 횟수를 소급 차감하지 않는다. 기존 진행 작업을 종료/만료 복구한 뒤 새 정책을 배포하고, 정책이 다른 구버전 이미지 워커와 혼용하지 않는다.

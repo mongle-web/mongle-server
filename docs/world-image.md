@@ -77,4 +77,4 @@
 
 ## 이미지 정책 (#83)
 
-[공통 정책](image-generation-policy.md)에 따라 최초 생성 3크레딧, 세계관별 첫 재생성 성공 1회 무료, 이후 1크레딧이다. 응답은 `freeRegenerationAvailable`, `nextRegenerationCost`를 포함한다. 구성 교체·부분 반영·꿈 삭제는 무료 이력을 초기화하지 않는다. 무료 시도도 기존 만료·중복·결제 보류·이전 결과 보존 규칙을 따른다. 최신 신규/기존 DB는 Flyway V1→V2 경로로 생성/업데이트한다. 앞의 날짜별 SQL 안내는 V1 이전 과거 참고용이다.
+[공통 정책](image-generation-policy.md)에 따라 최초 생성 3크레딧, 세계관별 첫 재생성 성공 1회 무료, 이후 1크레딧이다. 응답은 `freeRegenerationAvailable`, `nextRegenerationCost`를 포함한다. 구성 교체·부분 반영·꿈 삭제는 무료 이력을 초기화하지 않는다. 무료 시도도 기존 만료·중복·결제 보류·이전 결과 보존 규칙을 따른다. 최신 신규/기존 DB는 Flyway로 생성/업데이트하며 이미지 정책은 V3로 적용한다. 앞의 날짜별 SQL 안내는 V1 이전 과거 참고용이다.
