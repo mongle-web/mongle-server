@@ -69,6 +69,28 @@ class ImageCreditIntegrationTest {
     long count(String kind) { return jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind=?",Long.class,user,kind); }
     Long reservation(Long image) { return jdbc.queryForObject("select credit_reservation_id from dream_images where id=?",Long.class,image); }
 
+    @Test void missingRegenerationPriceRejectsFreeAttemptWithoutChangingImageOrCredits() {
+        fund(2);var dream=ready();var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        var storedKeys=Set.copyOf(storage.stored.keySet());
+        var persisted=jdbc.queryForMap("select * from dream_images where id=?",first.imageId());
+        org.mockito.Mockito.doReturn(null).when(creditProperties).configuredCost(CreditUsage.DREAM_IMAGE_REGENERATION);
+
+        assertThatThrownBy(() -> images.generate(user,dream.dreamId(),regenerate(dream,first)))
+                .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(CreditErrorCode.UNAVAILABLE);
+        var unchanged=transactions.latest(user,dream.dreamId());
+        assertThat(unchanged.freeRegenerationAvailable()).isTrue();assertThat(unchanged.nextRegenerationCost()).isNull();
+        assertThat(jdbc.queryForMap("select * from dream_images where id=?",first.imageId())).isEqualTo(persisted);
+        assertThat(credits.balance(user).available()).isZero();assertThat(credits.balance(user).reserved()).isZero();
+        assertThat(count("RESERVE")).isEqualTo(1);assertThat(count("SETTLE")).isEqualTo(1);assertThat(count("RELEASE")).isZero();
+        assertThat(generator.calls).hasValue(1);assertThat(storage.stored.keySet()).isEqualTo(storedKeys);
+        assertThat(await(images.generate(user,dream.dreamId(),request(dream)))).isEqualTo(unchanged);
+
+        org.mockito.Mockito.doCallRealMethod().when(creditProperties).configuredCost(CreditUsage.DREAM_IMAGE_REGENERATION);
+        var free=await(images.generate(user,dream.dreamId(),regenerate(dream,unchanged)));
+        assertThat(free.freeRegenerationAvailable()).isFalse();assertThat(credits.balance(user).available()).isZero();
+        assertThat(generator.calls).hasValue(2);assertThat(count("RESERVE")).isEqualTo(1);
+    }
+
     @Test void freeRegenerationWorksAtZeroBalanceAndConcurrentDuplicatesCallProviderOnce() throws Exception {
         fund(2); var dream=ready(); var first=await(images.generate(user,dream.dreamId(),request(dream)));
         assertThat(credits.balance(user).available()).isZero();
