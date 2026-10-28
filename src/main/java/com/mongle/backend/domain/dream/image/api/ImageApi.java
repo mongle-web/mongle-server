@@ -36,7 +36,9 @@ public interface ImageApi {
                     Provider/스토리지/스타일 미설정은 503입니다. 처리 실패는 status=FAILED와 failureCode로 표시합니다.
                     Provider 실패는 인증/요청 제한/시간 초과/연결 불가/요청 거절로 분류하며 자동 재호출하지 않습니다.
                     새 생성은 크레딧을 예약하고 성공 이미지 저장과 함께 차감을 확정합니다. 실패·만료 시 예약을 해제합니다.
-                    기존 결과 조회·재사용과 진행 요청 중복은 추가 차감하지 않습니다. 명시적 재생성은 새 생성으로 과금합니다.
+                    기본 정책은 최초 생성 3크레딧, 꿈별 첫 재생성 성공 1회 무료, 이후 1크레딧입니다.
+                    기존 결과 조회·재사용과 진행 요청 중복은 추가 차감하지 않습니다. 실패·만료는 무료 횟수를 소진하지 않습니다.
+                    freeRegenerationAvailable/nextRegenerationCost로 다음 비용을 표시합니다. 원문·감정 변경은 무료 횟수를 초기화하지 않습니다.
                     재생성 실패 시 이전 성공 결과를 유지합니다. 생성 도중 결제 사용 보류 시 CREDIT_PAYMENT_REVIEW로 실패합니다.
                     """)
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="200", description="완료 또는 실패 상태, 기존 결과 재사용", useReturnTypeSchema=true)

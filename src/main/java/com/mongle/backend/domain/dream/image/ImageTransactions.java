@@ -37,6 +37,7 @@ public class ImageTransactions {
     private final DreamGenerationGuard generationGuard;
     private final ImageCreditTransactions credits;
     private final ImageCleanupRegistration cleanupRegistration;
+    private final ImageRegenerationPolicy regenerationPolicy;
 
     public record Reservation(ImageResponse response, ImageGenerator.Input input) {}
 
@@ -125,7 +126,7 @@ public class ImageTransactions {
                 request.style(),
                 request.mood(),
                 authClock.instant());
-        credits.reserve(image, request.regenerate());
+        credits.reserve(image);
         images.saveAndFlush(image);
         var input =
                 new ImageGenerator.Input(
@@ -282,7 +283,10 @@ public class ImageTransactions {
                 image.getResultMood(),
                 image.getContentType(),
                 image.getWidth(),
-                image.getHeight());
+                image.getHeight(),
+                image.getStorageKey() != null && !image.isFreeRegenerationUsed(),
+                regenerationPolicy.nextCost(image.getStorageKey() != null, image.isFreeRegenerationUsed(),
+                        com.mongle.backend.domain.credit.CreditUsage.DREAM_IMAGE_REGENERATION));
     }
 
     private static String hash(String text) {

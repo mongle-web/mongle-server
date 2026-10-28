@@ -24,4 +24,8 @@ public record ImageResponse(
         String resultMood,
         String contentType,
         Integer width,
-        Integer height) {}
+        Integer height,
+        @io.swagger.v3.oas.annotations.media.Schema(description = "성공 결과가 있고 무료 재생성을 아직 사용하지 않았는지. 처리 중에는 새 요청 대신 진행 중 결과를 조회합니다.")
+        boolean freeRegenerationAvailable,
+        @io.swagger.v3.oas.annotations.media.Schema(description = "현재 이력 기준 다음 재생성 비용. 무료 0, 성공 결과나 가격 설정이 없으면 null. 기능 활성화·처리 중·입력 변경 여부는 별도로 확인합니다.", nullable = true)
+        Long nextRegenerationCost) {}

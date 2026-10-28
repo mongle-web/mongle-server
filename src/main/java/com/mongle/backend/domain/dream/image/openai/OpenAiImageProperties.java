@@ -27,7 +27,7 @@ public record OpenAiImageProperties(
     public OpenAiImageProperties {
         apiKey = clean(apiKey); model = clean(model); size = clean(size); quality = clean(quality);
         outputFormat = clean(outputFormat);
-        stylePrompts = stylePrompts == null ? Map.of() : Map.copyOf(stylePrompts);
+        stylePrompts = stylePrompts == null ? ImageStylePrompts.defaults() : Map.copyOf(stylePrompts);
         moodPrompts = moodPrompts == null ? Map.of() : Map.copyOf(moodPrompts);
         if (connectTimeout == null || totalTimeout == null
                 || connectTimeout.compareTo(Duration.ofMillis(100)) < 0

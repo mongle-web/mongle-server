@@ -24,7 +24,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** V1 baseline → V2 → Hibernate validate 이후 DML 전용 계정의 실제 저장·잠금·삭제를 검증한다. */
+/** V1 baseline → V3 → V4 → Hibernate validate 이후 DML 전용 계정의 실제 저장·잠금·삭제를 검증한다. */
 @SpringBootTest(properties = "mongle.analysis.interpretation.enabled=true")
 @ActiveProfiles("mysql")
 @Import(InterpretationMysql84Test.Config.class)
@@ -102,7 +102,7 @@ class InterpretationMysql84Test {
     void migratedSchemaSupportsUnicodeReuseRefreshFailureAndSourceDeletionWithDmlOnly() {
         assertThat(
                         jdbc.queryForObject(
-                                "select success from flyway_schema_history where version='2'",
+                                "select success from flyway_schema_history where version='4'",
                                 Boolean.class))
                 .isTrue();
         var dream = analyzed(today);

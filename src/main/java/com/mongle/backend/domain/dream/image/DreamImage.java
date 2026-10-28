@@ -64,6 +64,12 @@ public class DreamImage extends BaseEntity {
     @Column(name = "credit_reservation_id")
     private Long creditReservationId;
 
+    @Column(name = "free_regeneration_used", nullable = false)
+    private boolean freeRegenerationUsed;
+
+    @Column(name = "free_regeneration_attempt", nullable = false)
+    private boolean freeRegenerationAttempt;
+
     @JdbcTypeCode(SqlTypes.TIMESTAMP)
     @Column(name = "lease_until")
     private Instant leaseUntil;
@@ -110,6 +116,8 @@ public class DreamImage extends BaseEntity {
         attemptId = UUID.randomUUID().toString();
         leaseUntil = now.plus(Duration.ofMinutes(2));
         failureCode = null;
+        creditReservationId = null;
+        freeRegenerationAttempt = storageKey != null && !freeRegenerationUsed;
         // 이전 성공 파일은 새 결과 저장이 끝날 때까지 유지한다.
     }
 
@@ -128,6 +136,7 @@ public class DreamImage extends BaseEntity {
     }
 
     public void finish(String key, ImagePayload payload) {
+        if (freeRegenerationAttempt) freeRegenerationUsed = true;
         storageKey = key;
         contentType = payload.contentType();
         width = payload.width();

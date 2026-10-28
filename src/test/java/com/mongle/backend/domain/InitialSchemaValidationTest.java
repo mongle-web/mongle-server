@@ -11,13 +11,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:mongle-schema;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "spring.sql.init.mode=always",
-        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V2__recent_interpretations.sql",
+        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql,classpath:db/migration/V4__recent_interpretations.sql",
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @ActiveProfiles("test")
 class InitialSchemaValidationTest {
 
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private com.mongle.backend.domain.dream.image.ImageOptions imageOptions;
+    @Autowired private com.mongle.backend.domain.dream.image.openai.OpenAiImageProperties imageProvider;
+    @Autowired private com.mongle.backend.domain.credit.CreditProperties imageCredits;
+    @Autowired private com.mongle.backend.domain.dream.image.ImageExecutionProperties imageExecution;
+
+    @Test void confirmedImageDefaultsHaveExactlyFourStylesAndAnActivatableBudget() {
+        assertThat(imageOptions.styles()).containsExactly("surrealism","geometric-cubism","expressive-brushwork","modern-pop-art");
+        assertThat(imageProvider.stylePrompts()).containsOnlyKeys(imageOptions.styles());
+        assertThat(imageProvider.model()).isEqualTo("gpt-image-2.5-flare");assertThat(imageProvider.size()).isEqualTo("1024x1024");
+        assertThat(imageProvider.quality()).isEqualTo("medium");assertThat(imageProvider.outputFormat()).isEqualTo("png");
+        assertThat(imageCredits.dreamImageGeneration()).isEqualTo(3);assertThat(imageCredits.worldImageGeneration()).isEqualTo(3);
+        assertThat(imageCredits.dreamImageRegeneration()).isEqualTo(1);assertThat(imageCredits.worldImageRegeneration()).isEqualTo(1);
+        assertThat(imageExecution.maxConcurrentCalls()).isEqualTo(4);
+        var enabled=new com.mongle.backend.domain.dream.image.openai.OpenAiImageProperties(true,"fake-key",imageProvider.model(),imageProvider.size(),
+                imageProvider.quality(),imageProvider.outputFormat(),imageProvider.connectTimeout(),imageProvider.totalTimeout(),imageProvider.responseThreads(),
+                imageProvider.stylePrompts(),imageProvider.moodPrompts());
+        enabled.validateActivation(imageOptions,imageExecution,new com.mongle.backend.domain.dream.image.s3.ImageS3Properties(false,"","",java.time.Duration.ofSeconds(2),java.time.Duration.ofSeconds(4),java.time.Duration.ofSeconds(10),2));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->imageOptions.requireAllowed(null,null))
+                .isInstanceOf(com.mongle.backend.global.error.BusinessException.class);
+    }
 
     @Test
     void creditMigrationIsRepeatableAndKeepsReservationTrace() {

@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.List;
 
-/** PM 확정 전에는 옵션을 제공하지 않는다. 운영 환경에서 확정한 키만 설정한다. */
+/** 허용된 화풍 중 하나를 사용자가 선택한다. 기본 화풍으로 대체하지 않는다. */
 @ConfigurationProperties(prefix = "mongle.image")
 public record ImageOptions(List<String> styles, List<String> moods) {
     public ImageOptions {
@@ -25,7 +25,7 @@ public record ImageOptions(List<String> styles, List<String> moods) {
 
     public void requireAllowed(String style, String mood) {
         if (styles.isEmpty()) throw new BusinessException(ImageErrorCode.UNAVAILABLE);
-        if (!styles.contains(style) || (mood != null && !moods.contains(mood))) {
+        if (style == null || !styles.contains(style) || (mood != null && !moods.contains(mood))) {
             throw new BusinessException(ImageErrorCode.INVALID_OPTION);
         }
     }

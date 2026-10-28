@@ -69,6 +69,84 @@ class ImageCreditIntegrationTest {
     long count(String kind) { return jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind=?",Long.class,user,kind); }
     Long reservation(Long image) { return jdbc.queryForObject("select credit_reservation_id from dream_images where id=?",Long.class,image); }
 
+    @Test void freeRegenerationWorksAtZeroBalanceAndConcurrentDuplicatesCallProviderOnce() throws Exception {
+        fund(2); var dream=ready(); var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        assertThat(credits.balance(user).available()).isZero();
+        generator.pending=new CompletableFuture<>();
+        try(var pool=Executors.newFixedThreadPool(2)) {
+            var request=regenerate(dream,first);
+            var one=pool.submit(() -> images.generate(user,dream.dreamId(),request));
+            var two=pool.submit(() -> images.generate(user,dream.dreamId(),request));
+            var call1=one.get(5,TimeUnit.SECONDS); var call2=two.get(5,TimeUnit.SECONDS);
+            assertThat(generator.calls).hasValue(2); assertThat(count("RESERVE")).isEqualTo(1);
+            generator.pending.complete(ImagePayloadTest.png());
+            await(call1); await(call2);
+        }
+        var done=transactions.latest(user,dream.dreamId());
+        transactions.finish(generator.last,storage.stored.keySet().iterator().next(),ImagePayload.parse(ImagePayloadTest.png()));
+        assertThat(done.freeRegenerationAvailable()).isFalse();assertThat(done.nextRegenerationCost()).isEqualTo(3);
+        assertThat(count("SETTLE")).isEqualTo(1);assertThat(credits.balance(user).available()).isZero();
+        assertThatThrownBy(() -> images.generate(user,dream.dreamId(),regenerate(dream,done)))
+            .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(CreditErrorCode.INSUFFICIENT);
+        assertThat(generator.calls).hasValue(2);
+    }
+
+    @Test void failedAndExpiredFreeAttemptsDoNotConsumeAllowanceIncludingOrdinaryRetry() {
+        fund(2);var dream=ready();var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        generator.action=input -> new byte[]{1};
+        var failed=await(images.generate(user,dream.dreamId(),regenerate(dream,first)));
+        assertThat(failed.freeRegenerationAvailable()).isTrue();assertThat(failed.hasPreviousResult()).isTrue();
+        generator.action=input -> ImagePayloadTest.png();generator.pending=new CompletableFuture<>();
+        var expired=images.generate(user,dream.dreamId(),request(dream));
+        expireImage(generator.last.imageId());recovery.recoverExpired();
+        var oldInput=generator.last;
+        generator.pending.complete(ImagePayloadTest.png());assertThat(await(expired).failureCode()).isEqualTo("ATTEMPT_EXPIRED");
+        assertThat(transactions.latest(user,dream.dreamId()).freeRegenerationAvailable()).isTrue();
+        generator.pending=null;
+        var done=await(images.generate(user,dream.dreamId(),request(dream)));
+        assertThat(done.freeRegenerationAvailable()).isFalse();assertThat(count("SETTLE")).isEqualTo(1);
+        assertThat(transactions.finish(oldInput,"dream-images/discarded",ImagePayload.parse(ImagePayloadTest.png())).stored()).isFalse();
+        assertThat(credits.balance(user).available()).isZero();assertThat(count("RESERVE")).isEqualTo(1);
+    }
+
+    @Test void freeAllowanceRollsBackWhenSuccessfulImageCannotBePersisted() {
+        fund(2);var dream=ready();var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        generator.pending=new CompletableFuture<>();var call=images.generate(user,dream.dreamId(),regenerate(dream,first));
+        jdbc.execute("alter table dream_images add constraint free_image_publish_failure check(id<>"+first.imageId()+" or status<>'COMPLETED')");
+        try {
+            generator.pending.complete(ImagePayloadTest.png());assertThatThrownBy(() -> await(call)).isInstanceOf(BusinessException.class);
+            var failed=transactions.latest(user,dream.dreamId());
+            assertThat(failed.freeRegenerationAvailable()).isTrue();assertThat(failed.hasPreviousResult()).isTrue();
+            assertThat(count("SETTLE")).isEqualTo(1);assertThat(storage.stored).hasSize(1);
+        } finally {jdbc.execute("alter table dream_images drop constraint free_image_publish_failure");}
+        generator.pending=null;
+        assertThat(await(images.generate(user,dream.dreamId(),request(dream))).freeRegenerationAvailable()).isFalse();
+    }
+
+    @Test void regenerationFlagAfterFailedInitialGenerationStillChargesInitialPrice() {
+        fund(10);var dream=ready();generator.action=input -> new byte[]{1};
+        var failed=await(images.generate(user,dream.dreamId(),request(dream)));
+        assertThat(failed.freeRegenerationAvailable()).isFalse();assertThat(failed.nextRegenerationCost()).isNull();
+        generator.action=input -> ImagePayloadTest.png();
+        var first=await(images.generate(user,dream.dreamId(),regenerate(dream,failed)));
+        assertThat(first.freeRegenerationAvailable()).isTrue();assertThat(credits.balance(user).available()).isEqualTo(8);
+        assertThat(jdbc.queryForObject("select amount from credit_reservations where id=?",Long.class,reservation(first.imageId()))).isEqualTo(2);
+    }
+
+    @Test void sourceAndEmotionEditsDoNotResetUsedAllowanceOrCallImageProvider() {
+        fund(10);var dream=ready();var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        var free=await(images.generate(user,dream.dreamId(),regenerate(dream,first)));
+        var edit=new DreamUpdateRequest();edit.setRevision(dream.revision());edit.setOriginalText("바다를 오래 보았다");
+        dreams.update(user,dream.dreamId(),edit);
+        var current=dreams.get(user,dream.dreamId());
+        var emotions=new DreamUpdateRequest();emotions.setRevision(current.revision());emotions.setEmotions(List.of(DreamEmotion.HAPPY,DreamEmotion.SAD));
+        dreams.update(user,current.dreamId(),emotions);
+        var stale=transactions.latest(user,dream.dreamId());
+        assertThat(stale.imageId()).isEqualTo(free.imageId());assertThat(stale.sourceChanged()).isTrue();
+        assertThat(stale.freeRegenerationAvailable()).isFalse();assertThat(stale.nextRegenerationCost()).isEqualTo(3);
+        assertThat(generator.calls).hasValue(2);
+    }
+
     @Test void successReuseAndExplicitRegenerationHaveDifferentCharges() {
         fund(10); var dream=ready();
         var first=await(images.generate(user,dream.dreamId(),request(dream)));
@@ -78,17 +156,25 @@ class ImageCreditIntegrationTest {
         assertThat(count("RESERVE")).isEqualTo(1); assertThat(count("SETTLE")).isEqualTo(1);
         var second=await(images.generate(user,dream.dreamId(),regenerate(dream,first)));
         assertThat(second.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(first.freeRegenerationAvailable()).isTrue(); assertThat(first.nextRegenerationCost()).isZero();
+        assertThat(second.freeRegenerationAvailable()).isFalse(); assertThat(second.nextRegenerationCost()).isEqualTo(3);
+        assertThat(credits.balance(user).available()).isEqualTo(8);
+        assertThat(reservation(second.imageId())).isNull();
+        var third=await(images.generate(user,dream.dreamId(),regenerate(dream,second)));
+        assertThat(third.status()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(credits.balance(user).available()).isEqualTo(5);
-        assertThat(generator.calls).hasValue(2); assertThat(count("SETTLE")).isEqualTo(2);
+        assertThat(generator.calls).hasValue(3); assertThat(count("SETTLE")).isEqualTo(2);
     }
     @Test void unavailableCostBlocksNewGenerationButDoesNotBlockFreeReuse() {
         fund(10); var dream=ready(); var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        first=await(images.generate(user,dream.dreamId(),regenerate(dream,first)));
+        final var paid=first;
         org.mockito.Mockito.doThrow(new BusinessException(CreditErrorCode.UNAVAILABLE))
             .when(creditProperties).cost(CreditUsage.DREAM_IMAGE_REGENERATION);
         assertThat(await(images.generate(user,dream.dreamId(),request(dream)))).isEqualTo(first);
-        assertThatThrownBy(() -> images.generate(user,dream.dreamId(),regenerate(dream,first)))
+        assertThatThrownBy(() -> images.generate(user,dream.dreamId(),regenerate(dream,paid)))
             .isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(CreditErrorCode.UNAVAILABLE);
-        assertThat(count("RESERVE")).isEqualTo(1); assertThat(generator.calls).hasValue(1);
+        assertThat(count("RESERVE")).isEqualTo(1); assertThat(generator.calls).hasValue(2);
         assertThat(transactions.latest(user,dream.dreamId())).isEqualTo(first);
     }
     @Test void reservationSaveFailureRollsBackImageStartAndBalance() {
