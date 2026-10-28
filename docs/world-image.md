@@ -44,7 +44,7 @@
 
 ## 과금·실패·경합
 
-`WORLD_IMAGE_GENERATION`과 `WORLD_IMAGE_REGENERATION`에 설정된 양만 사용한다. 임의의 운영 가격·모델·스타일을 추가하지 않는다. 잔액 부족·단가 미설정·Provider/스토리지 미준비·큰 입력은 외부 유료 호출 전에 거절한다.
+유료 시도는 `WORLD_IMAGE_GENERATION`과 `WORLD_IMAGE_REGENERATION`에 설정된 양을 사용한다. 기본값은 최초3·이후 재생성1이며 첫 재생성 성공1회는 무료다. 무료 시도에는 잔액을 요구하지 않는다. 유료 잔액 부족·단가 미설정·Provider/스토리지 미준비·큰 입력은 외부 호출 전에 거절한다.
 
 사용자 행 잠금 안에서 시도와 예약을 함께 저장하고 잠금을 놓은 뒤 외부 IO를 실행한다. 성공 파일 공개와 사용 확정은 같은 트랜잭션이다. 실패·구성 변경·삭제·만료·결제 사용 보류는 새 성공을 공개하지 않고 예약을 해제한다. DB 저장 실패도 새 결과·사용 확정을 롤백하고 이전 성공을 유지한다. 제공자에게 이미 발생한 외부 비용을 취소한다는 뜻은 아니다.
 
@@ -58,7 +58,7 @@
 
 - `MONGLE_WORLD_IMAGE_ENABLED`: 신규 시도 허용, 기본 true. 실제 호출에는 기존 Provider/S3/크레딧 활성화와 각 비용 설정이 모두 필요하다.
 - `MONGLE_WORLD_IMAGE_MAX_INPUT_CHARACTERS`: 세계관 이야기·연결의 JSON 입력 상한, 기본 24000, 허용 1000~24000. 큰 입력을 자동 AI 요약하거나 잘라내지 않고 WORLD_IMAGE_400_1로 거절한다. 최종 Provider 프롬프트의 기존 32000자 상한도 유지한다.
-- `MONGLE_CREDIT_WORLD_IMAGE_GENERATION`, `MONGLE_CREDIT_WORLD_IMAGE_REGENERATION`: 신규 시도 비용. 기본 미설정이며 사용을 거절한다.
+- `MONGLE_CREDIT_WORLD_IMAGE_GENERATION`, `MONGLE_CREDIT_WORLD_IMAGE_REGENERATION`: 신규 시도 비용. 기본값은 각각 3, 1이며 세계관별 첫 재생성 성공 1회는 무료다.
 - 기존 이미지 동시 호출/결과 처리 풀·Provider timeout·이미지 복구/정리 워커 설정을 공유한다. 개별 꿈 이미지와 세계관 이미지를 합쳐 동일 실행 한도를 적용한다.
 
 전용 객체 키는 `world-images/{userId}/{imageId}/{attemptId}.png|jpg`다. S3 키 검증과 IAM 허용 경로에 이 접두사를 추가한다. [권한 예시](iam-image-s3-policy.example.json)를 참고한다. 버킷 공개 권한은 추가하지 않는다.
@@ -74,3 +74,7 @@
 ### 로컬 검증 기록
 
 2026-10-26, Java 21에서 전체 689개 테스트(실패/오류/스킵 0)와 bootJar 빌드가 통과했다. 신규 세계관 이미지 통합 17개·Provider HTTP 2개·마이그레이션 1개 및 S3 전용 경로 검증을 포함한다. Python 배포 검증 스크립트 구문·IAM JSON·git diff --check도 확인했다. 로컬 MySQL 실행 파일이 없어 네이티브 MySQL/RDS 검증은 이번 작업에서 실행하지 않았다.
+
+## 이미지 정책 (#83)
+
+[공통 정책](image-generation-policy.md)에 따라 최초 생성 3크레딧, 세계관별 첫 재생성 성공 1회 무료, 이후 1크레딧이다. 응답은 `freeRegenerationAvailable`, `nextRegenerationCost`를 포함한다. 구성 교체·부분 반영·꿈 삭제는 무료 이력을 초기화하지 않는다. 무료 시도도 기존 만료·중복·결제 보류·이전 결과 보존 규칙을 따른다. 최신 신규/기존 DB는 Flyway V1→V2 경로로 생성/업데이트한다. 앞의 날짜별 SQL 안내는 V1 이전 과거 참고용이다.

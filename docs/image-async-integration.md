@@ -52,13 +52,13 @@ DB/외부 저장소의 비원자성, 프로세스 중단·보상과 정리 기�
 
 | 설정 | 기본값 | 적용 범위 |
 | --- | --- | --- |
-| MONGLE_IMAGE_MAX_CONCURRENT_CALLS | 16 | Provider 대기부터 파일/DB/보상 처리까지 진행 이미지 시도 |
+| MONGLE_IMAGE_MAX_CONCURRENT_CALLS | 4 | Provider 대기부터 파일/DB/보상 처리까지 진행 이미지 시도 (#83 예산 조정) |
 | MONGLE_IMAGE_RESULT_THREADS | 2 | Provider 응답 뒤 이미지 검증/업로드/DB 완료 스레드 |
 | MONGLE_IMAGE_CLEANUP_ENABLED | false | 별도로 기록된 파일 정리 요청 워커 활성화 |
 | MONGLE_IMAGE_CLEANUP_MAX_CONCURRENT_CALLS | 2 | 이미지 정리 워커의 외부 삭제 실행 수 |
 
 image.execution과 image.cleanup은 같은 YAML image 아래에 공존하지만 별도 실행 자원이다.
-동시 이미지 작업 16과 결과 스레드 2는 서로 다른 제한이다. 정리 워커 2도 Provider 작업 상한이 아니다.
+동시 이미지 작업 4와 결과 스레드 2는 서로 다른 제한이다. 정리 워커 2도 Provider 작업 상한이 아니다.
 값은 설정 가능하며 실제 Provider/스토리지 시간 제한·메모리·호출 한도 측정 뒤 조정한다.
 기본 스토리지/생성기는 unavailable이고 정리 워커는 기본 비활성이다. 이번 통합만으로 실 이미지 운영 연결이 되지는 않는다.
 

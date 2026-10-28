@@ -2,8 +2,7 @@
 
 ## 범위와 기본 상태
 
-미병합 #55의 `feat/54-s3-image-storage`를 기반으로 `OpenAiImageGenerator`를 추가한다.
-실제 모델·크기·품질·화면의 스타일/분위기는 **사용자 확인상 미정**이다. 운영 기본값을 임의로 채우지 않는다.
+기존 `OpenAiImageGenerator`에 #83의 확정 설정을 적용한다. 기본 생성 설정은 `gpt-image-2.5-flare`·`1024x1024`·`medium`·PNG다. 화풍은 사용자 필수 선택이며 기본 화풍은 없다.
 `MONGLE_IMAGE_OPENAI_ENABLED=false`가 기본이며 이 상태에서는 unavailable 생성기를 사용한다.
 Provider 비활성 시 OpenAI HTTP 클라이언트·응답 실행기·타이머를 만들지 않는다.
 기존 테스트/사용자 정의 ImageGenerator가 있으면 기본 어댑터 생성을 생략한다.
@@ -46,9 +45,8 @@ Spring 의존 순서로 Provider 통신 종료 → 이미지 완료 풀 종료 �
 ×2는 각 결과의 업로드와 필요한 보상 삭제, 5초는 완료 처리 여유다.
 이 검사는 DB/CPU/OS 지연을 시간 제한으로 강제하거나 실제 완료를 보장하지 않는다. 늦은 시도는 기존 완료 시점 검사로 거절/보상한다.
 가짜/다른 ImageAssetStore를 쓸 때도 해당 저장소가 설정된 S3 total 이하의 IO 제한을 지키도록 공급해야 한다.
-기존 기본 진행 상한16/결과스레드2와 S3 total10초는 Provider 활성화 예산에 맞지 않는다.
-예를 들어 호출 상한4/결과스레드2·Provider60초·S3 total10초는 `60+2×20+5=105초`로 검사에 맞는다.
-이 수치는 동작 가능한 구성 예시이며 운영 모델/부하의 확정 추천값은 아니다.
+기본 진행 상한을4/결과스레드2로 설정한다. Provider60초·S3 total10초는 `60+2×20+5=105초`로 검사에 맞는다.
+이 상한은 활성화 예산에 맞춘 시작값이며 실환경 처리량을 측정한 값은 아니다. 기존 환경변수에16이 남아 있으면 별도로 수정해야 한다.
 공식 가이드는 복잡한 생성이 2분까지 걸릴 수 있다고 설명한다. 실제 품질/지연/실패율 측정 뒤 모델/옵션/실행 예산 또는 별도 lease 정책을 결정한다.
 
 ## 재사용·실패·유료 호출
@@ -82,9 +80,9 @@ BYTES_RECEIVED는 base64 바이트 수신 완료이며 실제 이미지 검증/D
 | --- | --- | --- |
 | MONGLE_IMAGE_OPENAI_ENABLED | false | Provider 활성화 |
 | OPENAI_API_KEY | 빈 값 | 환경에서 주입하는 인증 값 |
-| MONGLE_IMAGE_OPENAI_MODEL | 빈 값 | 명시적으로 선택할 지원 모델 |
-| MONGLE_IMAGE_OPENAI_SIZE | 빈 값 | 1024x1024 / 1536x1024 / 1024x1536 |
-| MONGLE_IMAGE_OPENAI_QUALITY | 빈 값 | 선택 모델이 지원하는 품질 |
+| MONGLE_IMAGE_OPENAI_MODEL | gpt-image-2.5-flare | 명시적으로 선택할 지원 모델 |
+| MONGLE_IMAGE_OPENAI_SIZE | 1024x1024 | 1024x1024 / 1536x1024 / 1024x1536 |
+| MONGLE_IMAGE_OPENAI_QUALITY | medium | 선택 모델이 지원하는 품질 |
 | MONGLE_IMAGE_OPENAI_OUTPUT_FORMAT | png | png/jpeg 바이트 형식 |
 | MONGLE_IMAGE_OPENAI_CONNECT_TIMEOUT | 3s | 연결 제한, 100ms~10s |
 | MONGLE_IMAGE_OPENAI_TOTAL_TIMEOUT | 60s | 전체 제한, connect보다 길고 90초 이하 |
@@ -93,9 +91,9 @@ BYTES_RECEIVED는 base64 바이트 수신 완료이며 실제 이미지 검증/D
 지원 모델 allowlist는 확인한 GPT Image의 1-mini/1.5/2/2.5 계열과 해당 명시적 스냅샷, chatgpt-image-latest다.
 퇴역 모델은 거절하며 새 모델은 문서/호환성 검증 후 allowlist에 추가한다.
 기본 품질 허용값 low/medium/high/auto, 2.5 계열은 xhigh/max도 허용한다. 호환되는 공통 크기 3종만 이번 범위에서 지원한다.
-스타일과 분위기는 기존 `mongle.image.styles/moods` 목록 및 `mongle.image.openai.style-prompts/mood-prompts` 맵을 운영 YAML 등에 함께 공급한다.
+화풍 4종은 `mongle.image.styles`에 등록하고 `ImageStylePrompts`의 기법 설명을 기본 매핑한다. 사용자 정의 `style-prompts` 맵을 공급하면 전체 기본 맵을 대체한다. 허용 목록도 함께 맞춘다. `mood`는 기존 선택 필드로 유지하고 현재 기본 목록/매핑은 비어 있다. 추가 분위기 상품 선택은 이 작업에서 확정하지 않는다.
 styles는 비어 있으면 안 되고 두 목록/매핑 키 집합이 정확히 일치해야 한다. moods는 양쪽 모두 비울 수 있다.
-선택지와 설명을 이슈나 코드에서 임의로 확정하지 않는다. API 키/비밀번호는 채팅·이슈·저장소에 넣지 않는다.
+[화풍 코드와 크레딧 정책](image-generation-policy.md)을 따른다. API 키/비밀번호는 채팅·이슈·저장소에 넣지 않는다.
 S3 및 정리 워커 활성화 값은 각각 별개로 기본 false다. 실제 계정/버킷/도메인/인프라 준비와 실환경 검증은 별도다.
 
 ## 검증
@@ -104,7 +102,7 @@ S3 및 정리 워커 활성화 값은 각각 별개로 기본 false다. 실제 �
 통합 회귀는 중복/성공 재사용·명시적 새 생성·이전 성공 보존·원본 생성 보호·삭제 뒤 늦은 업로드/보상 실패/워커 완료를 확인한다.
 실제 OpenAI 유료 호출·AWS 접속·운영 DB/SQL/권한 변경은 실행하지 않는다. 실품질/비용/권한/쿼터 검증을 마친 상태로 표현하지 않는다.
 
-## 공식 참고 (2026-10-24 확인)
+## 공식 참고 (2026-10-28 설정 지원 재확인)
 
 - [OpenAI Images API](https://developers.openai.com/api/reference/resources/images/methods/generate)
 - [OpenAI 이미지 생성 가이드](https://developers.openai.com/api/docs/guides/image-generation)
