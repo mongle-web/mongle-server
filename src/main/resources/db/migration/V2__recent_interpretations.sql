@@ -21,4 +21,4 @@ CREATE TABLE recent_interpretations (
     PRIMARY KEY (id),
     CONSTRAINT uk_recent_interpretation_user UNIQUE (user_id),
     CONSTRAINT fk_recent_interpretation_user FOREIGN KEY (user_id) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+);

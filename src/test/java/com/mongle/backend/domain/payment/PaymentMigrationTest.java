@@ -6,7 +6,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:payment-schema;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
-        "spring.sql.init.mode=always","spring.sql.init.schema-locations=classpath:db/schema-initial.sql","spring.jpa.hibernate.ddl-auto=validate"})
+        "spring.sql.init.mode=always","spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V2__recent_interpretations.sql","spring.jpa.hibernate.ddl-auto=validate"})
 @ActiveProfiles("test")
 class PaymentMigrationTest {
     @Autowired JdbcTemplate jdbc;

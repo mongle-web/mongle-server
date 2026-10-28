@@ -74,6 +74,8 @@ class Mysql84MigrationTest {
         assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("HISTORY_ALREADY_EXISTS");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE email='preserved@test.invalid'", String.class)).isEqualTo("keep");
         assertThat(jdbc.queryForObject("SELECT type FROM flyway_schema_history WHERE version='1'", String.class)).isEqualTo("BASELINE");
+        assertThat(jdbc.queryForObject("SELECT success FROM flyway_schema_history WHERE version='2'", Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recent_interpretations", Integer.class)).isZero();
     }
 
     @Test void baselineRejectsColumnIndexAndForeignKeyDriftEvenWith33Tables() throws Exception {

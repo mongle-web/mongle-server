@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:mongle-schema;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "spring.sql.init.mode=always",
-        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql",
+        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V2__recent_interpretations.sql",
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @ActiveProfiles("test")

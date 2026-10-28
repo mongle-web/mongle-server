@@ -1,5 +1,6 @@
 package com.mongle.backend.domain.dream.interpretation;
 
+import com.mongle.backend.domain.dream.gateway.DreamGenerationSettings;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
@@ -21,7 +22,7 @@ public class InterpretationTransactions {
     private final RecentInterpretationRepository interpretations;
     private final InterpretationTargets targets;
     private final Clock authClock;
-    private final com.mongle.backend.domain.dream.gateway.DreamGenerationSettings settings;
+    private final DreamGenerationSettings settings;
 
     public record Reservation(
             InterpretationResponse response, InterpretationGenerator.Input input) {}
@@ -120,32 +121,30 @@ public class InterpretationTransactions {
     private InterpretationResponse response(
             RecentInterpretation row, InterpretationTargets.Target target) {
         boolean empty = target.empty();
-        var state =
-                empty
-                        ? InterpretationResponse.State.EMPTY
-                        : row == null
-                                ? InterpretationResponse.State.NOT_GENERATED
-                                : row.getStatus() == GenerationStatus.PENDING
-                                        ? InterpretationResponse.State.NOT_GENERATED
-                                        : InterpretationResponse.State.valueOf(
-                                                row.getStatus().name());
+        var state = InterpretationResponse.State.NOT_GENERATED;
+        if (empty) state = InterpretationResponse.State.EMPTY;
+        else if (row != null && row.getStatus() != GenerationStatus.PENDING)
+            state = InterpretationResponse.State.valueOf(row.getStatus().name());
+        boolean hasBody = !empty && row != null && row.getBody() != null;
+        var sources =
+                hasBody
+                        ? targets.decodeSources(row.getResultSources())
+                        : List.<InterpretationTargets.Source>of();
         return new InterpretationResponse(
                 state,
                 row == null || empty ? null : row.getFailureCode(),
-                row == null || empty ? null : row.getBody(),
-                row == null || empty ? null : row.getGeneratedAt(),
-                row == null || empty ? null : row.getPromptVersion(),
+                hasBody ? row.getBody() : null,
+                hasBody ? row.getGeneratedAt() : null,
+                hasBody ? row.getPromptVersion() : null,
                 !empty
                         && row != null
                         && row.isEverCompleted()
                         && !row.matches(target.fingerprint()),
-                (!empty && row != null && row.getBody() != null
-                        ? targets.decodeSources(row.getResultSources()).size() < 3
-                        : target.limitedEvidence()),
+                hasBody ? sources.size() < 3 : target.limitedEvidence(),
                 target.from(),
                 target.to(),
                 target.sources().size(),
-                row == null || empty ? List.of() : targets.decodeSources(row.getResultSources()));
+                sources);
     }
 
     private User lock(Long userId) {

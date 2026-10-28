@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.dream.service;
 
 import com.mongle.backend.domain.dream.analysis.DreamAnalysis;
+import com.mongle.backend.domain.dream.interpretation.InterpretationTransactions;
 import com.mongle.backend.domain.dream.dto.*;
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.domain.dream.exception.DreamErrorCode;
@@ -34,7 +35,7 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class DreamService {
     private static final ZoneId KOREA = ZoneId.of("Asia/Seoul");
-    private final com.mongle.backend.domain.dream.interpretation.InterpretationTransactions interpretations;
+    private final InterpretationTransactions interpretations;
     private final DreamRepository dreams;
     private final UserRepository users;
     private final DreamAnalysisRepository analyses;

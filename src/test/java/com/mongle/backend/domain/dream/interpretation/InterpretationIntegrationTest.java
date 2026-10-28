@@ -556,4 +556,19 @@ class InterpretationIntegrationTest {
             assertThat(rows.findByUserId(user)).isPresent();
         }
     }
+
+    @Test
+    void failedDreamDeletionRollsBackInterpretationPurgeTogether() {
+        var dream = analyzed(today);
+        var completed = await(service.ensure(user));
+        new TransactionTemplate(transactionManager)
+                .executeWithoutResult(
+                        status -> {
+                            dreams.delete(user, dream.dreamId(), dream.revision());
+                            status.setRollbackOnly();
+                        });
+        assertThat(dreams.get(user, dream.dreamId()).dreamId()).isEqualTo(dream.dreamId());
+        assertThat(transactions.get(user).interpretation()).isEqualTo(completed.interpretation());
+        assertThat(transactions.get(user).refreshNeeded()).isFalse();
+    }
 }

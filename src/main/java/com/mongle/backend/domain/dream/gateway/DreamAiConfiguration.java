@@ -3,6 +3,7 @@ package com.mongle.backend.domain.dream.gateway;
 import com.mongle.backend.domain.ai.gateway.AiGateway;
 import com.mongle.backend.domain.ai.liner.config.LinerProperties;
 import com.mongle.backend.domain.dream.analysis.AnalysisTransactions;
+import com.mongle.backend.domain.dream.interpretation.InterpretationTransactions;
 import com.mongle.backend.domain.dream.story.StoryTransactions;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -17,8 +18,10 @@ public class DreamAiConfiguration {
 
     @Bean
     DreamGenerationResources dreamGenerationResources(
-            DreamAiProperties properties, AnalysisTransactions analysis, StoryTransactions story,
-            com.mongle.backend.domain.dream.interpretation.InterpretationTransactions interpretation) {
+            DreamAiProperties properties,
+            AnalysisTransactions analysis,
+            StoryTransactions story,
+            InterpretationTransactions interpretation) {
         // 저장 서비스·DB 자원보다 먼저 완료 작업의 종료를 기다린다.
         return new DreamGenerationResources(properties.maxConcurrentCalls());
     }

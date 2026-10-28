@@ -22,7 +22,7 @@ public interface AnalysisRecordApi {
     @Operation(
             summary = "최근 꿈 해석 대상 조회",
             description =
-                    "현재 꿈이 존재하는 성공 분석만 꿈 날짜 기준 최근 30일·최대 10건입니다. 3건 미만이면 limitedEvidence=true이며 해석 문장 생성은 후속 Gateway 연동에서 구현합니다.")
+                    "현재 꿈이 존재하는 성공 분석만 꿈 날짜 기준 최근 30일·최대 10건입니다. 3건 미만이면 limitedEvidence=true입니다. 이 API는 분석 목록만 반환하며 종합 해석 생성·조회·갱신은 /analysis-records/interpretation API를 사용합니다.")
     ResponseEntity<ApiResponse<AnalysisRecordService.Recent>> recent(
             @Parameter(hidden = true) Jwt jwt);
 }

@@ -10,6 +10,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.concurrent.CompletableFuture;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/analysis-records/interpretation")
@@ -19,17 +21,15 @@ public class InterpretationController implements InterpretationApi {
 
     @Override
     @PostMapping
-    public java.util.concurrent.CompletableFuture<
-                    ResponseEntity<ApiResponse<InterpretationResponse>>>
-            ensure(@AuthenticationPrincipal Jwt jwt) {
+    public CompletableFuture<ResponseEntity<ApiResponse<InterpretationResponse>>> ensure(
+            @AuthenticationPrincipal Jwt jwt) {
         return service.ensure(Long.valueOf(jwt.getSubject())).thenApply(this::result);
     }
 
     @Override
     @PostMapping("/refresh")
-    public java.util.concurrent.CompletableFuture<
-                    ResponseEntity<ApiResponse<InterpretationResponse>>>
-            refresh(@AuthenticationPrincipal Jwt jwt) {
+    public CompletableFuture<ResponseEntity<ApiResponse<InterpretationResponse>>> refresh(
+            @AuthenticationPrincipal Jwt jwt) {
         return service.refresh(Long.valueOf(jwt.getSubject())).thenApply(this::result);
     }
 
