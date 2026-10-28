@@ -3,10 +3,14 @@ package com.mongle.backend.domain.dream.interpretation;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.global.common.BaseEntity;
 import com.mongle.backend.global.common.GenerationStatus;
+
 import jakarta.persistence.*;
+
 import lombok.*;
+
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+
 import java.time.*;
 import java.util.Objects;
 import java.util.UUID;
@@ -14,27 +18,63 @@ import java.util.UUID;
 /** 회원별 최신 완성본 한 개와 진행 중 시도를 분리한다. 입력 원문/분석 본문은 복제하지 않는다. */
 @Getter
 @Entity
-@Table(name = "recent_interpretations", uniqueConstraints =
-        @UniqueConstraint(name = "uk_recent_interpretation_user", columnNames = "user_id"))
+@Table(
+        name = "recent_interpretations",
+        uniqueConstraints =
+                @UniqueConstraint(name = "uk_recent_interpretation_user", columnNames = "user_id"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RecentInterpretation extends BaseEntity {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false) private User user;
-    @Enumerated(EnumType.STRING) @JdbcTypeCode(SqlTypes.VARCHAR)
-    @Column(nullable = false, length = 30) private GenerationStatus status;
-    @Column(name = "ever_completed", nullable = false) private boolean everCompleted;
-    @Column(name = "attempt_id", length = 36) private String attemptId;
-    @JdbcTypeCode(SqlTypes.TIMESTAMP) @Column(name = "lease_until") private Instant leaseUntil;
-    @Column(name = "target_fingerprint", length = 64) private String targetFingerprint;
-    @Column(name = "attempt_dream_ids", columnDefinition = "TEXT") private String attemptDreamIds;
-    @Column(name = "generation_settings", columnDefinition = "TEXT") private String generationSettings;
-    @Column(name = "failure_code", length = 50) private String failureCode;
-    @Column(columnDefinition = "TEXT") private String body;
-    @JdbcTypeCode(SqlTypes.TIMESTAMP) @Column(name = "generated_at") private Instant generatedAt;
-    @Column(name = "result_fingerprint", length = 64) private String resultFingerprint;
-    @Column(name = "result_sources", columnDefinition = "TEXT") private String resultSources;
-    @Column(name = "prompt_version", length = 50) private String promptVersion;
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 30)
+    private GenerationStatus status;
+
+    @Column(name = "ever_completed", nullable = false)
+    private boolean everCompleted;
+
+    @Column(name = "attempt_id", length = 36)
+    private String attemptId;
+
+    @JdbcTypeCode(SqlTypes.TIMESTAMP)
+    @Column(name = "lease_until")
+    private Instant leaseUntil;
+
+    @Column(name = "target_fingerprint", length = 64)
+    private String targetFingerprint;
+
+    @Column(name = "attempt_dream_ids", columnDefinition = "TEXT")
+    private String attemptDreamIds;
+
+    @Column(name = "generation_settings", columnDefinition = "TEXT")
+    private String generationSettings;
+
+    @Column(name = "failure_code", length = 50)
+    private String failureCode;
+
+    @Column(columnDefinition = "TEXT")
+    private String body;
+
+    @JdbcTypeCode(SqlTypes.TIMESTAMP)
+    @Column(name = "generated_at")
+    private Instant generatedAt;
+
+    @Column(name = "result_fingerprint", length = 64)
+    private String resultFingerprint;
+
+    @Column(name = "result_sources", columnDefinition = "TEXT")
+    private String resultSources;
+
+    @Column(name = "prompt_version", length = 50)
+    private String promptVersion;
+
     @Version private long version;
 
     public static RecentInterpretation create(User user) {

@@ -1,24 +1,37 @@
 package com.mongle.backend.domain.dream.interpretation;
 
 import com.mongle.backend.global.error.BusinessException;
+
 import org.springframework.stereotype.Component;
+
 import tools.jackson.databind.*;
 import tools.jackson.databind.json.JsonMapper;
 
 @Component
 public class InterpretationValidator {
-    private final JsonMapper json = JsonMapper.builder()
-            .enable(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();
+    private final JsonMapper json =
+            JsonMapper.builder()
+                    .enable(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                    .build();
+
     public String parse(String raw) {
         try {
             if (raw == null || raw.length() > 16000) throw new IllegalArgumentException();
-            JsonNode root = json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(raw);
-            if (root == null || !root.isObject() || root.size() != 1 || !root.has("interpretation")
+            JsonNode root =
+                    json.reader()
+                            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                            .readTree(raw);
+            if (root == null
+                    || !root.isObject()
+                    || root.size() != 1
+                    || !root.has("interpretation")
                     || !root.get("interpretation").isString()) throw new IllegalArgumentException();
             String body = root.get("interpretation").asString().strip();
-            if (body.codePoints().noneMatch(c -> !Character.isWhitespace(c) && !Character.isSpaceChar(c))
+            if (body.codePoints()
+                            .noneMatch(c -> !Character.isWhitespace(c) && !Character.isSpaceChar(c))
                     || body.codePointCount(0, body.length()) > 2000
-                    || body.codePoints().anyMatch(c -> Character.isISOControl(c) && c != '\n' && c != '\t'))
+                    || body.codePoints()
+                            .anyMatch(c -> Character.isISOControl(c) && c != '\n' && c != '\t'))
                 throw new IllegalArgumentException();
             return body;
         } catch (RuntimeException ex) {
