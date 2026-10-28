@@ -34,6 +34,7 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class DreamService {
     private static final ZoneId KOREA = ZoneId.of("Asia/Seoul");
+    private final com.mongle.backend.domain.dream.interpretation.InterpretationTransactions interpretations;
     private final DreamRepository dreams;
     private final UserRepository users;
     private final DreamAnalysisRepository analyses;
@@ -146,6 +147,7 @@ public class DreamService {
 
         // 연결 결과를 먼저 제거한다. 같은 사용자 잠금으로 늦은 완료 저장과 직렬화한다.
         // 새로 인접한 꿈 사이의 연결 문장은 생성하지 않는다.
+        interpretations.dreamDeleted(userId, id);
         worldCompositions.dreamDeleted(userId,id);
         bridges.deleteForDream(userId, id);
 
