@@ -450,7 +450,8 @@ class InterpretationIntegrationTest {
     @Test
     void httpContractEnforcesAuthenticationAndDocumentsAllThreeOperations() throws Exception {
         clock.now = Instant.now();
-        analyzed(today);
+        var currentDate = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")));
+        analyzed(currentDate);
         String token = tokens.login(user).response().accessToken();
         var json = tools.jackson.databind.json.JsonMapper.builder().build();
         try (var client = java.net.http.HttpClient.newHttpClient()) {
@@ -475,7 +476,7 @@ class InterpretationIntegrationTest {
             assertThat(created.statusCode()).isEqualTo(200);
             assertThat(json.readTree(created.body()).path("data").path("status").asString())
                     .isEqualTo("COMPLETED");
-            analyzed(today.minusDays(1));
+            analyzed(currentDate.minusDays(1));
             var pending = new CompletableFuture<String>();
             generator.action = input -> pending;
             var first = service.refresh(user);
