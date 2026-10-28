@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:mongle-ai-logging;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "spring.sql.init.mode=always",
-        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql",
+        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql,classpath:db/migration/V4__recent_interpretations.sql",
         "spring.jpa.hibernate.ddl-auto=validate",
         "mongle.ai.liner.api-key=logging-test-key",
         "mongle.ai.liner.connect-timeout=300ms",

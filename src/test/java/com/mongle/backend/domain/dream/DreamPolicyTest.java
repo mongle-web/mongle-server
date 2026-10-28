@@ -89,6 +89,7 @@ class DreamPolicyTest {
         when(dreams.save(any(Dream.class))).thenAnswer(invocation -> invocation.getArgument(0));
         var service =
                 new DreamService(
+                        org.mockito.Mockito.mock(com.mongle.backend.domain.dream.interpretation.InterpretationTransactions.class),
                         dreams,
                         users,
                         mock(DreamAnalysisRepository.class),
@@ -117,6 +118,7 @@ class DreamPolicyTest {
                 .thenReturn(Optional.of(User.create("test@example.com", "몽글")));
         var service =
                 new DreamService(
+                        org.mockito.Mockito.mock(com.mongle.backend.domain.dream.interpretation.InterpretationTransactions.class),
                         mock(DreamRepository.class),
                         users,
                         mock(DreamAnalysisRepository.class),

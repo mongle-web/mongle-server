@@ -73,11 +73,23 @@ class Mysql84MigrationTest {
         assertThatThrownBy(() -> engine.execute("migrate")).hasMessage("EXPLICIT_BASELINE_REQUIRED");
         assertThat(engine.execute("info")).containsEntry("historyExists", false).containsEntry("matchesBaseline", true);
         assertThat(engine.execute("baseline")).containsEntry("baselineVersion", "1");
-        assertThat(engine.execute("migrate")).containsKey("migrationsExecuted");
+        // #86이 #85보다 먼저 배포된 실제 순서: V3까지만 적용된 DB에서 V4로 전진한다.
+        var priorRelease = Files.createDirectory(directory.resolve("prior-image-release"));
+        for (String name : java.util.List.of("V1__mongle_baseline.sql", "V3__image_regeneration_policy.sql")) {
+            try (var sql = new ClassPathResource("db/migration/" + name).getInputStream()) {
+                Files.copy(sql, priorRelease.resolve(name));
+            }
+        }
+        assertThat(new MigrationEngine(source, "flyway_existing", "filesystem:" + priorRelease).execute("migrate"))
+                .containsEntry("targetVersion", "3");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='recent_interpretations'", Integer.class)).isZero();
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 1).containsEntry("targetVersion", "4");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 0);
         assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("HISTORY_ALREADY_EXISTS");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE email='preserved@test.invalid'", String.class)).isEqualTo("keep");
         assertThat(jdbc.queryForObject("SELECT type FROM flyway_schema_history WHERE version='1'", String.class)).isEqualTo("BASELINE");
+        assertThat(jdbc.queryForObject("SELECT success FROM flyway_schema_history WHERE version='4'", Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM recent_interpretations", Integer.class)).isZero();
     }
 
     @Test void baselineRejectsColumnIndexAndForeignKeyDriftEvenWith33Tables() throws Exception {

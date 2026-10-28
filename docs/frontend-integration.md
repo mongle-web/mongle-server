@@ -1,6 +1,6 @@
 # 몽글 프론트엔드 연동 전달본
 
-2026-10-27 #79 기준. 카카오 단독 로그인 코드로 정리하고 작업 중 머지된 #77 세계관 이미지 API를 통합했다. 이번 인증 변경은 API를 추가하지 않으며 통합 코드의 API는 58개다. #79는 별도 머지·배포가 필요하다. **현재 구현 계약과 최종 MVP 예정 기능, 운영 활성 상태를 구분한다.**
+2026-10-28 #84 코드 기준. 종합 해석 조회·최초 생성·명시적 갱신을 추가해 통합 명세는49경로·61개 API다. #84는 머지·배포 전이며, 운영 명세는 실제 배포된 커밋 기준으로 확인한다. **현재 구현 계약과 운영 활성 상태를 구분한다.**
 
 ## 주소와 명세 전달
 
@@ -15,7 +15,7 @@
 | 로컬 Swagger | http://localhost:8080/swagger-ui.html |
 | 로컬 OpenAPI JSON | http://localhost:8080/v3/api-docs |
 
-이번 공개 요청 점검에서는 `https://www.mongle.art`의 Bearer GET preflight가 HTTP200 및 정확한 Allow-Origin으로 응답했다. 모든 메서드·실제 인증·브라우저 기능 연동 완료까지 뜻하지 않는다. CD 실행40521111651에서 develop `21f6489427c8559b12abd62e62c458860cbe54f8` 배포가 성공했고, 외부 health HTTP200/UP 및 Swagger HTTP200을 재확인했다. 운영 OpenAPI에는 #77의 세계관 이미지 생성·상태·다운로드 API를 포함한 58개 API가 반영됐다. #79의 Google 코드 제거는 별도 머지·배포가 필요하다.
+최근 운영 인계에서는 #82 merge commit `18cd8f7e66bdb015b4fc9fd63df4df686fd9fdfb`의 CI40562597777/CD40563276306 성공과 외부 health·Swagger200을 확인했다. www의 Bearer GET preflight도 허용된 상태지만 실제 카카오 로그인과 업무 기능의 브라우저 연동 성공까지 뜻하지 않는다. 위 운영 API 개수는 #84 배포 전 확인값이며 #84의 신규3개 API는 머지·배포 후 확인한다.
 
 공통 설정에서는 문서가 기본 비활성이지만 현재 운영은 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 공개했다. 문서 열람과 실제 기능 활성화·로그인 성공은 구분한다.
 
@@ -38,7 +38,7 @@ API 클라이언트가 위 환경변수를 실제로 읽도록 연결한다. 경
 
 ## 카카오 로그인과 온보딩
 
-서비스 정책과 #79 코드는 **카카오 로그인만 제공**이다. 프론트에 Google 버튼을 추가하지 않는다. Google 로그인 등록·OIDC 처리·계정 제공자 enum은 제거했고, #79 머지/배포 후 운영에 반영된다.
+서비스 정책과 #79 코드는 **카카오 로그인만 제공**이다. 프론트에 Google 버튼을 추가하지 않는다. Google 로그인 등록·OIDC 처리·계정 제공자 enum은 #79에서 제거했다.
 
 1. 로그인 버튼에서 아래 주소로 브라우저 전체 이동한다. fetch/axios로 인증 화면을 호출하지 않는다.
 
@@ -51,7 +51,7 @@ API 클라이언트가 위 환경변수를 실제로 읽도록 연결한다. 경
 6. `POST /api/v1/users/me/onboarding`에 `{"nickname":"몽글러"}`를 Bearer 인증으로 보낸다. 닉네임은 한글·영문·숫자2~10자다. 성공 응답으로 프론트 회원 상태를 갱신한다. 서버가 현재 DB의 온보딩 상태를 확인하므로 완료 직후 별도의 Refresh는 필수가 아니다.
 7. `GET /api/v1/users/me`로 현재 회원 상태를 확인한다.
 
-**프론트 로그인 완료·실패 경로는 아직 확정 정보가 없다.** `/auth/callback`, `/login`은 제안 경로였으며 이미 구현/배포됐다고 가정하지 않는다. 프론트에서 실제 경로를 확정한 뒤 백엔드의 `MONGLE_OAUTH_SUCCESS_URL`, `MONGLE_OAUTH_FAILURE_URL`에 www 도메인의 정확한 절대 URL을 넣고 배포해야 한다.
+백엔드 운영 복귀 주소는 성공 `https://www.mongle.art/auth/callback`, 실패 `https://www.mongle.art/login`으로 설정됐다는 인계를 받았다. 프론트의 실제 페이지 구현·배포와 계정 로그인 종단 검증은 별도로 확인한다. 카카오 콘솔 Redirect URI는 백엔드 Callback을 유지한다.
 
 Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·중복 인터셉터·여러 API의401 처리로 같은 Refresh 쿠키를 동시에 사용하지 않는다. 여러 탭도 갱신을 조율해야 한다. 쿠키 인증 요청에는 공통 인터셉터가 만료된 Bearer 토큰을 덧붙이지 않도록 분리한다. 갱신 실패 시 무한 재시도하지 않고 로그인으로 안내한다.
 
@@ -149,16 +149,16 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | 항목 | 현재 상태 |
 |---|---|
 | 판매·이용권·이미지 과금 정책 | 페이앱 답변 후 확정·연결. 기존 크레딧 추가 정책 구현 보류 |
-| 스타일4개 고정 카탈로그·프롬프트 | 후속 구현 필요, 모델/옵션 검증 상준 담당 |
+| 스타일4개 고정 카탈로그·프롬프트 | #86 구현·머지. 키·표시 이름은 docs/image-generation-policy.md 참고, 실제 생성 품질 검증 별도 |
 | 세계관 전체 이미지 | #77 구현·통합. 정확한 SQL 적용과 운영 활성화·실검증은 별도 |
-| 무료 종합 해석 생성/저장/갱신 | 미구현. recent-context는 최근 분석 대상 조회다 |
-| Google 완전 제거 | #79 코드 반영, 머지·배포 후 운영 적용 |
+| 무료 종합 해석 생성/저장/갱신 | #84 구현. 기본 비활성, LINER 실검증 및 프론트 연동 필요 |
+| Google 완전 제거 | #79 머지·운영 반영 완료 |
 | 회원탈퇴/카카오 연결 해제 | 미구현 |
 | 실결제·AI·이미지 | API/어댑터 구현과 실제 계정 활성화·실검증을 구분 |
 
-종합 해석은 첫 진입 자동 생성·동일 대상 재사용·변경 안내 후 버튼 갱신·무료로 확정됐지만 현재 조회 API를 생성 API로 사용하지 않는다. 실물 상품·광고 보상은 이번 MVP 대상이 아니다.
+종합 해석은 첫 진입 POST → 상태 GET → 변경 안내 후 명시적 refresh POST를 사용한다. 동일 대상 재사용·무료이며 recent-context 자체는 생성 API가 아니다. [상세 계약](recent-interpretation.md)을 따른다. 실물 상품·광고 보상은 이번 MVP 대상이 아니다.
 
-운영의 AI/이미지/S3/크레딧/결제/워커는 마지막 인계에서 비활성이다. 배포 전용 S3가 만들어졌다고 이미지용 S3까지 구성된 것은 아니다. 플래그와 실계정 검증 결과를 기능별로 별도 공유한다.
+운영의 AI/이미지/S3/크레딧/결제/워커는 마지막 인계에서 비활성이다. 이미지용 S3도 별도 구축·객체 테스트 완료 인계를 받았다. 버킷 생성과 애플리케이션의 실제 저장 성공은 별도로 확인한다. 플래그와 실계정 검증 결과를 기능별로 별도 공유한다.
 
 ## 프론트에서 함께 확정할 정보
 
@@ -167,7 +167,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 3. 완료 화면의 CSRF→Refresh·온보딩·401 갱신 공통 처리 및 긴 생성 요청의 상태 복구.
 4. 남은 기능 API가 추가될 때 이 명세를 갱신하는 시점. 현재 JSON은 먼저 구현된 기능 연동용이며 최종 MVP 전체 명세가 아니다.
 
-## 현재 58개 API 목록
+## 현재 61개 API 목록
 
 요청 본문·필수값·쿼리·응답 스키마는 함께 전달한 JSON을 기준으로 한다. OAuth 시작/콜백과 health/Swagger는 이 업무 API 집계에 포함하지 않는다.
 
@@ -176,6 +176,9 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | GET | `/api/v1/analyses/{analysisId}` | 내 분석 조회 |
 | GET | `/api/v1/analysis-records/monthly` | 월별 꿈 요소 및 선택 감정 통계 |
 | GET | `/api/v1/analysis-records/recent-context` | 최근 꿈 해석 대상 조회 |
+| GET | `/api/v1/analysis-records/interpretation` | 종합 해석·갱신 필요 여부 조회 |
+| POST | `/api/v1/analysis-records/interpretation` | 첫 진입 종합 해석 생성 |
+| POST | `/api/v1/analysis-records/interpretation/refresh` | 종합 해석 명시적 갱신 |
 | GET | `/api/v1/archives` | Archive 목록 조회 |
 | GET | `/api/v1/archives/calendar` | 꿈 캘린더 월별 조회 |
 | GET | `/api/v1/archives/{dreamId}` | Archive 상세 조회 |

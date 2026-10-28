@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "interpretation": {"type": "string", "minLength": 1, "maxLength": 2000}
+  },
+  "required": ["interpretation"],
+  "additionalProperties": false
+}

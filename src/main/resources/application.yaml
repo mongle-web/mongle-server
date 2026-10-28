@@ -43,6 +43,9 @@ mongle:
     web:
       success-url: ${MONGLE_OAUTH_SUCCESS_URL:}
       failure-url: ${MONGLE_OAUTH_FAILURE_URL:}
+  analysis:
+    interpretation:
+      enabled: ${MONGLE_RECENT_INTERPRETATION_ENABLED:false}
   world:
     image:
       enabled: ${MONGLE_WORLD_IMAGE_ENABLED:true}
