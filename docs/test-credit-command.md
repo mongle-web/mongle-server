@@ -50,7 +50,7 @@ JDBC URL은 `jdbc:mysql://호스트[:포트]/DB` 형식이다. URL의 인증정�
 1. 이 기능을 포함한 PR의 CI·머지·CD 성공 후 실행한다. 기존 `mongle.service`는 중지하지 않는다.
 2. 실제 테스트할 카카오 계정으로 로그인·닉네임 등록을 완료한다. 로그인 응답 또는 인증된 `GET /api/v1/users/me`의 본인 ID를 확인한다. 이메일로 추측하거나 다른 계정 ID를 넣지 않는다.
 3. 인프라 담당자는 기존 운영 파일에서 `MONGLE_CREDIT_ENABLED=true`, 유효기간 `NO_EXPIRY`를 확인한다. 변경이 필요하면 정상 운영 설정 절차로 반영하고 앱도 재시작한다. 명령만 강제로 활성화해서 앱의 과금 설정과 다르게 운영하지 않는다. 이 작업을 위해 PayApp 결제를 활성화할 필요는 없다.
-4. `sudo readlink -f /opt/mongle/current.jar`로 검증한 릴리스의 절대 경로를 확인한다. 아래 `<확인한 릴리스 JAR 경로>`와 계정 ID·요청 키를 바꾼다. 프리뷰와 지급에 같은 JAR·입력을 사용한다.
+4. `sudo readlink -f /opt/mongle/current.jar`로 검증한 릴리스의 절대 경로를 확인한다. 아래 `<확인한 릴리스 JAR 경로>`와 계정 ID·요청 키를 바꾼다. 프리뷰와 지급에 같은 JAR·입력을 사용한다. 아래 `mongle-db.example.invalid`는 가상 호스트이므로 AWS RDS 콘솔의 연결 정보 또는 보호된 운영 설정에서 실제 호스트를 확인해 교체한다. 환경 파일 전체를 출력하지 않는다.
 
 ```bash
 sudo /usr/bin/systemd-run --quiet --wait --pipe --collect \
@@ -62,7 +62,7 @@ sudo /usr/bin/systemd-run --quiet --wait --pipe --collect \
   --property=ProtectSystem=strict --property=ProtectHome=true \
   --property=RuntimeMaxSec=90 --property=TimeoutStopSec=15 \
   --setenv=MONGLE_TEST_CREDIT_ENABLED=true \
-  --setenv=MONGLE_TEST_CREDIT_EXPECTED_HOST=mongle-prod-db.c7caskqkw2ty.ap-northeast-2.rds.amazonaws.com \
+  --setenv=MONGLE_TEST_CREDIT_EXPECTED_HOST=mongle-db.example.invalid \
   --setenv=MONGLE_TEST_CREDIT_EXPECTED_DATABASE=mongle \
   /usr/bin/java -Xms32m -Xmx256m -jar <확인한 릴리스 JAR 경로> \
   --test-credit=preview --user-id=123 --amount=100 --request-key=qa-20261029-user123-01
