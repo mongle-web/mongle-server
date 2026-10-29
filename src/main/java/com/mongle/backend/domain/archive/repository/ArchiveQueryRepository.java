@@ -8,6 +8,7 @@ import com.mongle.backend.domain.dream.entity.Dream;
 import com.mongle.backend.domain.dream.entity.DreamRecordStatus;
 import com.mongle.backend.domain.dream.image.DreamImage;
 import com.mongle.backend.domain.dream.story.DreamStory;
+import com.mongle.backend.global.common.SearchQuery;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -53,12 +54,17 @@ public class ArchiveQueryRepository {
         String direction = oldest ? " asc" : " desc";
         String jpql = "select d from Dream d where d.user.id=:user and d.recordStatus=:completed";
         if (search.from() != null) jpql += " and d.dreamedAt between :from and :to";
+        if (!search.query().isEmpty())
+            jpql += " and (lower(d.title) like :query escape '!' or lower(d.originalText) like :query escape '!'"
+                    + " or exists(select 1 from DreamAnalysis a join a.displayKeywords keyword"
+                    + " where a.user.id=:user and a.dream=d and lower(keyword) like :query escape '!'))";
         if (search.position() != null)
             jpql += " and (d.dreamedAt" + comparison + ":lastDate or (d.dreamedAt=:lastDate and d.id"
                     + comparison + ":lastId))";
         var query = em.createQuery(jpql + " order by d.dreamedAt" + direction + ", d.id" + direction, Dream.class)
                 .setParameter("user", userId).setParameter("completed", DreamRecordStatus.COMPLETED);
         if (search.from() != null) query.setParameter("from", search.from()).setParameter("to", search.to());
+        if (!search.query().isEmpty()) query.setParameter("query", SearchQuery.containsPattern(search.query()));
         if (search.position() != null)
             query.setParameter("lastDate", search.position().dreamedAt()).setParameter("lastId", search.position().dreamId());
         // 한 행을 더 읽어 hasNext를 판단한다. 무제한 조회와 별도 전체 count를 피한다.

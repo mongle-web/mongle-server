@@ -34,8 +34,9 @@ public class ArchiveController implements ArchiveApi {
     public ResponseEntity<ApiResponse<ArchivePage>> list(@AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) String month, @RequestParam(required = false) String date,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String cursor, @RequestParam(defaultValue = "20") int size) {
-        return ok(archives.list(Long.valueOf(jwt.getSubject()), month, date, sort, cursor, size));
+            @RequestParam(required = false) String cursor, @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String query) {
+        return ok(archives.list(Long.valueOf(jwt.getSubject()), month, date, sort, cursor, size, query));
     }
 
     @Override

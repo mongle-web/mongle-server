@@ -11,6 +11,8 @@ import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.*;
 import org.springframework.boot.test.system.*;
@@ -126,6 +128,127 @@ class ImageCleanupWorkerIntegrationTest {
         return dream;
     }
     ImageRequest imageRequest(DreamResponse dream) { return new ImageRequest(dream.revision(), "test-style", null, false, null); }
+    ImageRequest regeneration(DreamResponse dream, ImageResponse image) {
+        return new ImageRequest(dream.revision(), "test-style", null, true, image.imageVersion());
+    }
+    String imageKey(ImageGenerator.Input input) {
+        return "dream-images/"+user+"/"+input.imageId()+"/"+input.attemptId()+".png";
+    }
+
+    @Test
+    void freeAndPaidReplacementsDeleteOnlyOldFilesAndDreamDeletionRemovesTheLastFile() throws Exception {
+        var dream = ready();
+        var image = await(images.generate(user, dream.dreamId(), imageRequest(dream)));
+        assertThat(requests.count()).isZero();
+        store.objects.add("unrelated-object");
+        for (int attempt = 0; attempt < 2; attempt++) {
+            String previousKey = imageTransactions.assetKey(user, image.imageId());
+            image = await(images.generate(user, dream.dreamId(), regeneration(dream, image)));
+            String currentKey = imageTransactions.assetKey(user, image.imageId());
+            var cleanup = requests.findAll().stream()
+                    .filter(r -> r.getStorageKey().equals(previousKey)).findFirst().orElseThrow();
+            assertThat(cleanup.getReason()).isEqualTo(ImageCleanupRequest.Reason.REPLACED_RESULT);
+            assertThat(cleanup.getDreamId()).isEqualTo(dream.dreamId());
+            assertThat(cleanup.getImageId()).isEqualTo(image.imageId());
+            assertThat(cleanup.getStatus()).isEqualTo(ImageCleanupRequest.Status.PENDING);
+            assertThat(currentKey).isNotEqualTo(previousKey);
+            assertThat(store.objects).contains(previousKey, currentKey);
+            run();
+            assertThat(request(cleanup.getId()).getStatus()).isEqualTo(ImageCleanupRequest.Status.COMPLETED);
+            assertThat(store.objects).containsExactlyInAnyOrder(currentKey, "unrelated-object");
+        }
+        assertThat(credits.balance(user).available()).isEqualTo(995);
+        assertThat(credits.balance(user).reserved()).isZero();
+        dreams.delete(user, dream.dreamId(), dream.revision());
+        run();
+        assertThat(store.objects).containsExactly("unrelated-object");
+        assertThat(requests.findAll()).hasSize(3)
+                .allMatch(r -> r.getStatus() == ImageCleanupRequest.Status.COMPLETED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void duplicateCompletionAndSameKeyNeverEnqueueTheCurrentFile(boolean sameKey) throws Exception {
+        var dream = ready();
+        var image = await(images.generate(user, dream.dreamId(), imageRequest(dream)));
+        String previousKey = imageTransactions.assetKey(user, image.imageId());
+        var input = imageTransactions.begin(user, dream.dreamId(), regeneration(dream, image), true).input();
+        String key = sameKey ? previousKey : imageKey(input);
+        var payload = ImagePayload.parse(ImagePayloadTest.png());
+        store.put(key, payload);
+        assertThat(imageTransactions.finish(input, key, payload).stored()).isTrue();
+        assertThat(imageTransactions.finish(input, key, payload).stored()).isTrue();
+        assertThat(requests.count()).isEqualTo(sameKey ? 0 : 1);
+        assertThat(requests.existsByStorageKey(key)).isFalse();
+        run();
+        assertThat(store.objects).containsExactly(key);
+        assertThat(imageTransactions.finish(input, key, payload).stored()).isTrue();
+        assertThat(requests.findAll()).allMatch(r -> r.getStatus() == ImageCleanupRequest.Status.COMPLETED);
+        assertThat(credits.balance(user).available()).isEqualTo(998);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void failedOrExpiredRegenerationKeepsThePreviousFileAndFreeAllowance(boolean expired) throws Exception {
+        var dream = ready();
+        var image = await(images.generate(user, dream.dreamId(), imageRequest(dream)));
+        String previousKey = imageTransactions.assetKey(user, image.imageId());
+        var input = imageTransactions.begin(user, dream.dreamId(), regeneration(dream, image), true).input();
+        if (expired) {
+            clock.advance(Duration.ofMinutes(3));
+            assertThat(imageTransactions.expire(user, image.imageId())).isTrue();
+        } else {
+            imageTransactions.fail(input, "CALL_FAILED");
+        }
+        run();
+        assertThat(requests.existsByStorageKey(previousKey)).isFalse();
+        assertThat(store.objects).containsExactly(previousKey);
+        assertThat(imageTransactions.assetKey(user, image.imageId())).isEqualTo(previousKey);
+        var failed = imageTransactions.latest(user, dream.dreamId());
+        assertThat(failed.freeRegenerationAvailable()).isTrue();
+        assertThat(failed.hasPreviousResult()).isTrue();
+        assertThat(credits.balance(user).available()).isEqualTo(998);
+        assertThat(credits.balance(user).reserved()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void cleanupRegistrationFailureRollsBackReplacementAndFreeOrPaidSettlement(boolean paid) throws Exception {
+        var dream = ready();
+        var image = await(images.generate(user, dream.dreamId(), imageRequest(dream)));
+        if (paid) {
+            image = await(images.generate(user, dream.dreamId(), regeneration(dream, image)));
+            run();
+        }
+        String previousKey = imageTransactions.assetKey(user, image.imageId());
+        var input = imageTransactions.begin(user, dream.dreamId(), regeneration(dream, image), true).input();
+        String key = imageKey(input);
+        var payload = ImagePayload.parse(ImagePayloadTest.png());
+        store.put(key, payload);
+        var beforeImage = jdbc.queryForMap("select * from dream_images where id=?", image.imageId());
+        var beforeBalance = credits.balance(user);
+        var beforeLedger = jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user);
+        jdbc.execute("alter table image_cleanup_requests add constraint reject_replacement_cleanup check(user_id<>"
+                +user+" or storage_key<>'"+previousKey+"')");
+        try {
+            assertThatThrownBy(() -> imageTransactions.finish(input, key, payload)).isInstanceOf(RuntimeException.class);
+            assertThat(jdbc.queryForMap("select * from dream_images where id=?", image.imageId())).isEqualTo(beforeImage);
+            assertThat(credits.balance(user)).isEqualTo(beforeBalance);
+            assertThat(jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user)).isEqualTo(beforeLedger);
+            assertThat(requests.existsByStorageKey(previousKey)).isFalse();
+            run();
+            assertThat(store.objects).contains(previousKey, key);
+        } finally {
+            jdbc.execute("alter table image_cleanup_requests drop constraint reject_replacement_cleanup");
+        }
+        var completion = imageTransactions.finish(input, key, payload);
+        assertThat(completion.stored()).isTrue();
+        assertThat(completion.response().freeRegenerationAvailable()).isFalse();
+        assertThat(credits.balance(user).available()).isEqualTo(paid ? 995 : 998);
+        assertThat(credits.balance(user).reserved()).isZero();
+        run();
+        assertThat(store.objects).containsExactly(key);
+    }
 
     @Test
     void deletedDreamFileIsRemovedOnlyAfterCommitWithoutAffectingOtherObjects() throws Exception {

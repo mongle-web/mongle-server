@@ -1,6 +1,6 @@
 # 몽글 프론트엔드 연동 전달본
 
-2026-10-29 #95 코드 기준. 세계관 AI 제목·공통 키워드·반복 감정의 무료 생성·조회 API를 추가했으며 현재 코드의 로컬 명세는 50경로·63개 API다. #95는 머지·배포·운영 활성화 후 사용할 수 있으며, 운영 명세는 실제 배포된 커밋 기준으로 확인한다. **현재 구현 계약과 운영 활성 상태를 구분한다.**
+2026-10-29 백엔드 코드 기준. 구현된 API와 확정 정책의 프론트 연동 계약을 정리한다. 각 기능의 사용 가능 여부와 최신 명세는 실제 배포 커밋·운영 설정·Swagger를 기준으로 확인한다. **코드 구현과 운영 활성 상태를 구분하며, 이 문서 수정만으로 운영 배포·외부 서비스 검증을 완료한 것으로 보지 않는다.**
 
 ## 주소와 명세 전달
 
@@ -9,15 +9,15 @@
 | 프론트 대표 주소 | https://www.mongle.art |
 | API 기본 주소 | https://api.mongle.art |
 | 공통 API 접두사 | /api/v1 |
-| 운영 health | https://api.mongle.art/actuator/health — 이번 확인 HTTP200/UP |
-| 운영 Swagger | https://api.mongle.art/swagger-ui.html — UI200 확인 |
-| 운영 OpenAPI JSON | https://api.mongle.art/v3/api-docs — HTTP200, 49경로·61개 API 확인 |
+| 운영 health | https://api.mongle.art/actuator/health — 아래 과거 운영 확인 기록 참고 |
+| 운영 Swagger | https://api.mongle.art/swagger-ui.html — 아래 과거 운영 확인 기록 참고 |
+| 운영 OpenAPI JSON | https://api.mongle.art/v3/api-docs — 실제 배포 커밋의 명세 확인 |
 | 로컬 Swagger | http://localhost:8080/swagger-ui.html |
 | 로컬 OpenAPI JSON | http://localhost:8080/v3/api-docs |
 
-2026-10-29 운영 확인은 #90 merge commit `3dceeee7333d1a8bf89631d0961c4c972cfd64df` 기준이다. CI40826537314/CD40826960919 성공과 외부 health·OpenAPI200(49경로·61개 API)을 확인했다. #93 가입 지급의 실제 운영 적용은 해당 코드 머지·배포와 크레딧 활성화 후 확인한다. 실제 카카오·업무 기능의 브라우저 검증은 별도다.
+기존 2026-10-29 운영 확인 기록은 #90 merge commit `3dceeee7333d1a8bf89631d0961c4c972cfd64df` 기준이다. 당시 CI40826537314/CD40826960919 성공과 외부 health·OpenAPI200(49경로·61개 API)을 확인했다. 이후 #93 가입 지급·#98 검색 등의 실제 운영 적용은 배포 커밋과 플래그를 별도로 확인한다. 실제 카카오·업무 기능의 브라우저 검증은 별도다.
 
-공통 설정에서는 문서가 기본 비활성이지만 현재 운영은 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 공개했다. 문서 열람과 실제 기능 활성화·로그인 성공은 구분한다.
+공통 설정에서는 문서가 기본 비활성이며 위 과거 운영 확인 시에는 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 공개했다. 문서 열람과 실제 기능 활성화·로그인 성공은 구분한다.
 
 우선 별도 첨부하는 **프론트 공유용 OpenAPI JSON**을 Postman 등의 Import 기능으로 사용한다. JSON의 운영 주소는 호출 대상 설정이며, 모든 기능이 운영에서 활성화됐다는 의미가 아니다. 원본 추출 JSON의 `127.0.0.1:18179`은 임시 추출 서버이며 공유 서버가 아니다.
 
@@ -93,23 +93,43 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 
 - 날짜는 `YYYY-MM-DD`, 한국 날짜 기준 미래 불가·날짜당 꿈1개. 원문 최대500자.
 - 초안 자동저장 → 원문 작성 완료 → 감정 선택으로 기록 완성. 감정은 HAPPY/CALM/EXCITED/SAD/ANXIOUS/ANGRY/CONFUSED 중 중복 없이1~3개이며 대표 감정/순위는 없다.
-- 빈 제목은 빈 상태로 유지한다. 제목 최대20자이며 AI가 자동으로 제목을 채우는 계약이 아니다.
+- 제목은 최대20 코드포인트다. 분석 성공 시 같은 sourceRevision·title=null·edited=false인 꿈에만 AI 생성 제목을 저장한다. 사용자가 정한 제목이나 실제로 비운 제목은 덮어쓰지 않는다. 화면은 `DreamResponse.title` 또는 Archive 카드의 `title`을 사용하고, 분석의 `generatedTitle`을 대체 제목으로 쓰지 않는다. 자동 제목 반영으로 revision이 바뀔 수 있어 생성 후 최신 revision을 다시 조회한다.
 - 감정 선택 완료 후 자동 분석→서사 작업을 예약한다. 기록 저장 성공과 AI 작업 완료를 구분하고 `/generation`을 조회한다.
 - 생성 상태와 실패 사유를 표시하고 성공한 분석/서사는 전용 GET으로 읽는다. 수정 후 이전 결과가 남을 수 있으므로 변경 안내를 함께 표시한다.
+- 완료 기록도 제목·원문·감정을 PATCH로 수정할 수 있다. 미전달 필드는 유지하고 원문·감정 변경은 AI를 자동 호출하지 않는다. 최신 입력으로 분석·서사를 다시 만들려면 `POST /dreams/{dreamId}/generation/regenerate`에 최신 `revision`, `generationVersion`을 전달한다. 실패·진행 중에는 이전 성공을 보존한다. 성공해도 세계관은 자동 변경하지 않는다.
 - 수정 전 `/mutation-status`, 영구 삭제 전 `/world-impacts`를 조회할 수 있다. 조회는 잠금이 아니므로 실제 변경 시409가 올 수 있다.
 - 삭제는 영구 삭제다. 관련 개별 분석/서사/이미지와 세계관 영향이 있으며 복구 API는 없다. 이미지 파일의 물리 삭제는 정리 워커와 별도다.
 
+## 보관함 검색
+
+기존 목록 API의 선택적 `query`를 사용한다. 응답 DTO와 페이지 크기 기본20·최대50은 유지한다.
+
+| 탭 | 요청 예시 | 검색 대상 | 다음 페이지 |
+|---|---|---|---|
+| 기록한 꿈 | `GET /api/v1/archives?query=바다&sort=LATEST&size=20` | 현재 제목 또는 원문 또는 마지막 저장된 표시 키워드 | 같은 query·month/date·sort와 nextCursor |
+| 연결된 꿈 | `GET /api/v1/worlds?query=바다&size=20` | 폴더 이름만 | 같은 query와 nextBeforeId를 beforeId에 전달 |
+
+- 검색어 앞뒤 Unicode 공백을 제거하며 최대50 코드포인트다. 생략·빈 문자열·공백만이면 전체 목록이다. 영문 대소문자를 구분하지 않고 부분 일치하며 `%`, `_`, `!`도 문자 그대로 검색한다. URL 쿼리는 URLSearchParams 등으로 인코딩한다.
+- 본인 데이터만 조회한다. 기록한 꿈은 기존처럼 COMPLETED만 포함하며, 연결된 꿈은 선택 수0~1개인 폴더도 포함한다. 폴더 안의 꿈 원문·공통 키워드·반복 감정은 검색하지 않는다.
+- 검색어 변경 시 기존 목록과 cursor/beforeId를 초기화한다. 기록한 꿈의 다른 검색어·날짜·정렬 커서는 `400 ARCHIVE_400_2`다. 폴더 beforeId는 검색어를 담지 않는 숫자이므로 프론트가 초기화한다. 늦게 도착한 이전 검색 응답이 현재 검색 목록을 덮어쓰지 않도록 요청을 구분한다.
+- 결과 없음은200, `items=[]`, `hasNext=false`, 다음 경계는null이다. 화면에서 '기록 없음'과 '검색 결과 없음'을 구분한다.
+- 50자 초과는 기록한 꿈 `ARCHIVE_400_5`, 폴더 `WORLD_400_4`다. 검색은 AI·이미지 저장소·크레딧을 호출하지 않는다.
+- 수정한 제목·원문은 즉시 검색된다. 원문 수정 후 키워드는 재생성 전까지 이전 값을 유지하므로 `analysis.sourceChanged` 안내를 함께 표시한다.
+
 ## 개별 이미지와 생성 상태
 
-- `GET /api/v1/image-options`의 실제 옵션 키를 사용한다. 화면 문구를 임의 style 문자열로 보내지 않는다.
-- `POST /api/v1/dreams/{dreamId}/image`에 최신 `revision`, `style`, 선택 `mood`, `regenerate`를 보낸다. 명시적 재생성이면 최신 `imageVersion`도 필요하다.
+- `GET /api/v1/image-options`의 실제 옵션 키를 사용한다. 기본 화풍은 없으므로 사용자가 선택해야 한다. 현재 기본 코드는 `surrealism`, `geometric-cubism`, `expressive-brushwork`, `modern-pop-art`이며 한글 이름·설명·썸네일은 이 응답에 없다. 표시 정보와 기법 매핑은 [화풍 정책](image-generation-policy.md)을 따른다. 옵션 목록이 있다고 실제 생성 가능함을 보장하지는 않는다.
+- `POST /api/v1/dreams/{dreamId}/image`에 최신 `revision`, 선택한 `style`, `regenerate`를 보낸다. 명시적 재생성이면 최신 `imageVersion`도 필요하다. 현재 기본 `moods=[]`이므로 `mood`는 생략하거나 null로 보내며 빈 문자열은 보내지 않는다. 기록한 꿈의 선택 감정과 이미지 mood는 별개다.
 - Swagger의 `regenerationVersionProvided`는 서버 검증용 파생 속성이므로 입력으로 보내지 않는다.
 - 현재 생성 API는 비동기 내부 처리를 사용하지만 요청이 실제 생성 완료까지 기다릴 수도 있다. 모든 생성 요청이 즉시202를 반환한다고 가정하지 않는다. 202/PROCESSING이면 상태를 조회한다.
 - 브라우저 타임아웃/취소는 서버 생성 취소나 환급 확정을 의미하지 않는다. 다시 상태를 확인한다. 공통15초 timeout을 그대로 쓰면 이미지/외부 요청이 먼저 끊길 수 있으므로 기능별 대기·폴링을 조율한다.
 - `FAILED`라도 `hasPreviousResult=true`이면 이전 성공 이미지를 유지한다. `sourceChanged`, `storyChanged`와 결과 revision을 안내한다.
 - 실제 이미지 URL은 `/images/{imageId}/download-url`에서 발급받는다. 만료되는 서명 URL이며 저장소 영구 URL처럼 취급하지 않는다. `sourceDeleted` 등 접근 상태도 확인한다.
+- 새 파일로 교체되면 이전 파일은 같은 트랜잭션에서 정리 요청을 등록하고 워커가 삭제한다. 실패·만료에는 기존 성공 파일을 보존하며 파일 이력 목록 API는 제공하지 않는다.
 
-스타일4개는 확정됐고 코드 반영이 남아 있다. **판매·이용 권한 정책은 페이앱 문의 답변 후 확정한다.** 기존3→무료→1토큰안은 보류이며 크레딧·건별 결제·기간 패스 중 하나를 현재 확정 방식으로 표시하지 않는다. 현재 API에 무료 잔여 횟수/다음 차감량 필드는 없다. 결제/이용권 UI와 생성 허용 정책은 후속 계약에 맞춰 연결한다.
+꿈·세계관 각각 기본 최초 생성3크레딧, 첫 재생성 성공1회 무료, 이후 재생성1크레딧이다. 유료 비용은 서버 설정으로 변경할 수 있다. 무료 이력은 꿈별·세계관별이며 화풍·원문·감정·구성 변경으로 초기화되지 않는다. 무료도 결과 저장 성공 시에만 소진하고 실패·만료·롤백에는 유지한다. [가격·배포 계약](image-generation-policy.md)을 따른다.
+
+이미지 응답의 `freeRegenerationAvailable`은 무료 이력 안내, `nextRegenerationCost`는 현재 이력·가격 설정에 따른 다음 재생성 비용이다. 0일 때만 무료로 표시한다. null은 성공 결과가 없거나 재생성 가격이 미설정이라는 뜻이다. 기존 성공이 있어도 가격 미설정이면 무료·유료 신규 재생성을 `CREDIT_503_1`로 거절한다. 무료 이력이 있어도 생성 입력·진행 작업·기능 활성화·결제 보류 등 실행 조건은 별도로 검사한다. 최초 생성 비용·설정상 사용 가능 여부는 image-options에 포함되어 있지 않다.
 
 ## 세계관 AI 제목·공통 키워드·반복 감정 (#95)
 
@@ -128,6 +148,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 - 완성본 생성은 꿈2개 이상에서 요청한다. 최초 `compositionRevision=0`; 최신 `folderRevision`과 함께 보낸다. 202 후 `/composition` 상태를 조회한다.
 - `hasResult=true`면 생성 중/실패에도 이전 완성본을 유지한다. 항목은 `/composition/entries`로 페이지 조회한다.
 - 원문/새 서사는 자동 반영되지 않는다. `selectionChanged/sourceChanged/newStoryAvailable/hasConnectionGaps`로 변경 안내하고 필요한 생성/부분 반영을 요청한다.
+- 새 서사를 반영할 세계관마다 `POST /worlds/{worldId}/composition/dreams/{dreamId}/apply`에 `folderRevision`, `compositionRevision`, `storyVersionId`를 보낸다. 대상 꿈과 앞뒤 연결만 갱신하며 다른 꿈·다른 세계관의 완성본은 유지한다. 같은 고정 버전은 변경 없이 재사용한다. [상세 계약](world-composition.md)을 따른다.
 - 꿈 삭제로 남은 꿈이0~1개여도 폴더와 기존 유효 결과는 보존한다. 새로운 전체 구성은2개 조건을 따른다. 삭제 후 새 연결을 자동으로 생성하지 않는다.
 - 폴더/꿈 연결/이야기 구성은 무료다. 세계관 전체 이미지는 #77의 생성·재생성/상태/다운로드3개 API를 통합했다. 이미지 사용권 정책과 운영 활성화는 별도다. #89부터 새 이미지 생성·재생성에는 완성본 출처의 서로 다른 꿈이 2개 이상 필요하며, 0~1개일 때는 WORLD_IMAGE_409_1로 거절한다. 기존 이미지 조회·다운로드는 유지한다. freeRegenerationAvailable은 무료 이력 안내이며 출처 개수에 따른 실행 허가를 뜻하지 않는다.
 
@@ -144,7 +165,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 ```
 
 - 금액·지급량은 서버 상품을 따른다. 프론트에서 가격/크레딧/회원 ID를 주문에 보내지 않는다.
-- 아래 결제 API는 현재 구현된 크레딧 주문 계약이다. 판매 정책 재검토 중이며 현재 코드의 운영 기본 상품은 빈 목록이다. 최종 상품/이용권 계약과 운영 활성화는 후속 반영한다.
+- 아래 결제 API는 구현된 크레딧 주문 계약이다. 이미지 과금은 위3/무료/1 정책을 따르며, 판매 상품 가격·지급량·환불 등 판매 조건과 실제 결제 활성화는 별도로 정한다. 현재 기본 상품은 빈 목록이다. 상품 목록 노출만으로 실결제 가능함을 보장하지 않는다.
 - `requestId`는 결제 버튼 한 번의 UUID이며 같은 구매 요청 재전송 시 유지한다.
 - READY의 paymentUrl은 결제창 주소이며 결제/지급 완료가 아니다. 프론트 복귀·성공 이벤트로 잔액을 임의 증가시키지 않는다.
 - REQUESTING/UNKNOWN은 결과 불명확 상태다. 새 UUID로 자동 구매를 다시 만들지 않는다.
@@ -158,7 +179,8 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 
 | 항목 | 현재 상태 |
 |---|---|
-| 판매·이용권·이미지 과금 정책 | 페이앱 답변 후 확정·연결. 기존 크레딧 추가 정책 구현 보류 |
+| 이미지 크레딧 과금 | 최초3·첫 재생성 성공 무료·이후1 구현. 가격 미설정 시 무료 요청도 거절하며 실제 운영 활성화는 별도 |
+| 판매 상품·기간 이용권·환불 | 판매 조건·상품 설정 확정과 실결제 검증 별도. 기간 이용권·환불 신청 API 없음 |
 | 스타일4개 고정 카탈로그·프롬프트 | #86 구현·머지. 키·표시 이름은 docs/image-generation-policy.md 참고, 실제 생성 품질 검증 별도 |
 | 세계관 전체 이미지 | #77 구현·통합. 정확한 SQL 적용과 운영 활성화·실검증은 별도 |
 | 무료 종합 해석 생성/저장/갱신 | #84 구현. 기본 비활성, LINER 실검증 및 프론트 연동 필요 |
@@ -168,7 +190,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 
 종합 해석은 첫 진입 POST → 상태 GET → 변경 안내 후 명시적 refresh POST를 사용한다. 동일 대상 재사용·무료이며 recent-context 자체는 생성 API가 아니다. [상세 계약](recent-interpretation.md)을 따른다. 실물 상품·광고 보상은 이번 MVP 대상이 아니다.
 
-운영의 AI/이미지/S3/크레딧/결제/워커는 마지막 인계에서 비활성이다. 이미지용 S3도 별도 구축·객체 테스트 완료 인계를 받았다. 버킷 생성과 애플리케이션의 실제 저장 성공은 별도로 확인한다. 플래그와 실계정 검증 결과를 기능별로 별도 공유한다.
+2026-10-29 운영 담당자 공유 기준으로 페이앱 관련 기능을 제외한 AI·이미지·S3·크레딧·워커의 기존 활성화 설정은 켜둔 상태다. 비공개 환경 파일을 이번 코드 작업에서 직접 조회한 것은 아니며 실제 계정의 기능 검증은 별도로 확인한다. #95의 신규 세계관 결과 설정 두 개는 기존 플래그와 별개이므로 추가 여부를 확인한다. 버킷 생성·기능 활성화와 애플리케이션의 실제 저장·생성 성공은 구분한다.
 
 ## 프론트에서 함께 확정할 정보
 
@@ -177,7 +199,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 3. 완료 화면의 CSRF→Refresh·온보딩·401 갱신 공통 처리 및 긴 생성 요청의 상태 복구.
 4. 남은 기능 API가 추가될 때 이 명세를 갱신하는 시점. 현재 JSON은 먼저 구현된 기능 연동용이며 최종 MVP 전체 명세가 아니다.
 
-## 현재 61개 API 목록
+## 현재 API 목록
 
 요청 본문·필수값·쿼리·응답 스키마는 함께 전달한 JSON을 기준으로 한다. OAuth 시작/콜백과 health/Swagger는 이 업무 API 집계에 포함하지 않는다.
 
@@ -189,7 +211,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | GET | `/api/v1/analysis-records/interpretation` | 종합 해석·갱신 필요 여부 조회 |
 | POST | `/api/v1/analysis-records/interpretation` | 첫 진입 종합 해석 생성 |
 | POST | `/api/v1/analysis-records/interpretation/refresh` | 종합 해석 명시적 갱신 |
-| GET | `/api/v1/archives` | Archive 목록 조회 |
+| GET | `/api/v1/archives` | Archive 목록·제목/원문/키워드 검색 |
 | GET | `/api/v1/archives/calendar` | 꿈 캘린더 월별 조회 |
 | GET | `/api/v1/archives/{dreamId}` | Archive 상세 조회 |
 | GET | `/api/v1/auth/csrf` | CSRF 토큰 조회 |
@@ -228,7 +250,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | GET | `/api/v1/stories/{storyId}/versions/{versionId}` | 내 이야기의 특정 성공 버전 조회 |
 | GET | `/api/v1/users/me` | 내 정보 조회 |
 | POST | `/api/v1/users/me/onboarding` | 닉네임 온보딩 완료 |
-| GET | `/api/v1/worlds` | 내 세계관 폴더 목록 |
+| GET | `/api/v1/worlds` | 내 세계관 폴더 목록·이름 검색 |
 | POST | `/api/v1/worlds` | 세계관 폴더 생성 |
 | DELETE | `/api/v1/worlds/{worldId}` | 세계관 폴더 삭제 |
 | GET | `/api/v1/worlds/{worldId}` | 세계관 폴더 상세 |

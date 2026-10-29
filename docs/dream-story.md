@@ -56,8 +56,8 @@ SCENE 역시 AI가 다듬은 문장이므로 원문 인용 또는 서버가 사�
 
 `DreamStory` / `dream_stories`는 완료 분석에 연결한다. `analysis_id` UNIQUE로 분석당 이야기 한 개를 보장한다.
 소유자, 현재 시도의 AI 입력 sourceRevision·프롬프트 버전·상태·시도 ID·유효시간, 성공 결과 JSON·결과 revision·프롬프트 버전,
-자체 `version`을 저장한다. 사용자 원문의 별도 스냅샷은 저장하지 않는다.
-현재 결과 하나만 유지하며 전체 재생성 이력은 이번 범위에 포함하지 않는다.
+자체 `version`을 저장한다. 현재 표시 결과는 한 개이며 성공 결과는 별도 `dream_story_versions`에 보존한다.
+성공 버전은 생성 당시 원문·감정·분석·서사·프롬프트·설정의 고정 스냅샷을 갖는다. [버전 계약](dream-story-versions.md)을 따른다.
 
 `PROCESSING → COMPLETED / FAILED` 흐름을 사용한다. 재생성 시작은 이전 성공 결과를 지우지 않는다.
 `hasPreviousResult=true`이면 sections는 현재 시도 대신 이전 성공 결과이다.
@@ -86,12 +86,14 @@ SCENE 역시 AI가 다듬은 문장이므로 원문 인용 또는 서버가 사�
 삭제 후 stories/{storyId}와 성공 버전 조회 및 늦은 완료/실패 콜백은 404다. [영구 삭제 계약](dream-deletion.md)을 따른다.
 같은 날짜의 새 꿈은 새 분석·새 이야기로 생성되어 예전 결과와 섞이지 않는다.
 
-현재 #13은 완료 분석을 다시 생성하지 않는 정책이다. 원문 변경 후에는 분석이 오래된 상태이며
-서사화 시작/재생성은 `STORY_409_2`로 차단된다. 이미 저장한 이야기는 sourceChanged 표시로 조회할 수 있다.
+원문·감정 변경은 AI를 자동 호출하지 않고 기존 이야기를 sourceChanged 표시로 보존한다.
+오래된 분석으로 개별 서사화 API를 요청하면 `STORY_409_2`이며, 최신 입력의 분석·서사 재생성은
+`POST /api/v1/dreams/{dreamId}/generation/regenerate`에 최신 revision·generationVersion을 전달한다.
+통합 재생성은 분석과 서사가 모두 성공해야 결과·키워드를 함께 교체하고 실패하면 이전 성공을 유지한다.
 제목 변경·비우기는 AI 입력을 바꾸지 않으므로 기존 분석·이야기를 유지한다.
-완료 감정은 수정할 수 없다. 요청 충돌 검사는 계속 Dream.revision을 사용한다.
-수정 원문 기반 재분석과 후속 이야기 갱신은 확정한 명시적 재생성 정책에 따라 별도 구현한다.
-세부 정책과 #17 DB 변경은 `dream-edit-policy.md`를 참고한다.
+완료 감정도 기존 7종 중 중복 없이 1~3개로 수정할 수 있다. 요청 충돌 검사는 Dream.revision을 사용한다.
+활성 재생성·이미지·브리지·세계관 구성 작업의 수정/삭제 보호는 [생성 보호 계약](dream-generation-guards.md),
+재생성은 [통합 생성 계약](dream-generation-versioning.md), 수정은 [편집 계약](dream-edit-policy.md)을 따른다.
 
 ## Gateway 연결
 
@@ -130,4 +132,5 @@ DDL은 자동 커밋되므로 앱과 AI 호출을 중지한 유지보수 창에�
 
 이야기 성공 결과는 별도 고정 버전으로 보존한다. 생성 응답의 resultVersionId, 버전 조회 API,
 기존 DB 마이그레이션 및 세계관 참조 방식은 [이야기 성공 버전 계약](dream-story-versions.md)을 참고한다.
-원문 수정 후 재분석과 세계관 반영 버튼은 후속 구현 범위다.
+원문 수정 후 명시적 재생성과 세계관 부분 반영 API는 구현되어 있다. 새 성공 서사도 기존 세계관에 자동 반영하지 않으며,
+사용자가 선택한 세계관의 apply API로 대상 서사와 앞뒤 연결만 갱신한다. [세계관 구성 계약](world-composition.md)을 따른다.
