@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 public final class StructurePrompt {
-    public static final String VERSION = "scene-v2-display";
+    public static final String VERSION = "scene-v2-display-limits";
 
     private StructurePrompt() {}
 

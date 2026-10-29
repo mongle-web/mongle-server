@@ -55,10 +55,24 @@ class AiGatewayStructureGeneratorTest {
         var request = sent.get();
         assertThat(request.userId()).isEqualTo(17);
         assertThat(request.taskType()).isEqualTo(AiTaskType.DREAM_STRUCTURE);
-        assertThat(request.promptVersion()).isEqualTo("scene-v2-display");
+        assertThat(request.promptVersion()).isEqualTo("scene-v2-display-limits");
         assertThat(request.messages()).hasSize(2);
         assertThat(request.messages().get(0).role()).isEqualTo(AiMessage.Role.SYSTEM);
         assertThat(request.messages().get(0).content()).isEqualTo(StructurePrompt.system());
+        // 서버가 거절하는 길이·개수·식별자 규칙을 실제 SYSTEM 메시지에도 전달해야 한다.
+        assertThat(request.messages().get(0).content())
+                .contains(
+                        "전체 장면은 1~10개",
+                        "각 장면 content는 1~1000 Unicode 코드포인트",
+                        "장면 sequence는 1~10 범위에서 1부터 시작하는 연속 정수",
+                        "요소 elements는 0~30개",
+                        "요소 key는 1~40자의 고유한 값이며 영문자로 시작",
+                        "^[a-zA-Z][a-zA-Z0-9_-]{0,39}$",
+                        "요소 name은 1~100 Unicode 코드포인트",
+                        "description은 1~500 Unicode 코드포인트",
+                        "key·name·description·content는 앞뒤 공백 없이 작성",
+                        "elementKeys는 0~30개",
+                        "존재하는 요소 key만 중복 없이 그대로 참조");
         assertThat(request.messages().get(1).role()).isEqualTo(AiMessage.Role.USER);
         var json = JsonMapper.builder().build();
         var data = json.readTree(request.messages().get(1).content());
