@@ -30,6 +30,16 @@ public class UserService {
     }
 
     @Transactional
+    public UserResponse updateNickname(Long authenticatedUserId, String nickname) {
+        User user = userRepository.findByIdForUpdate(authenticatedUserId)
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
+        if (user.changeNickname(nickname)) {
+            CommittedLog.afterCommit(() -> log.info("사용자 닉네임 변경 완료: userId={}", authenticatedUserId));
+        }
+        return UserResponse.from(user);
+    }
+
+    @Transactional
     public UserResponse completeOnboarding(Long authenticatedUserId, String nickname) {
         // 온보딩 요청이 동시에 들어와도 이미 저장된 닉네임이
         // 다른 요청의 닉네임으로 덮어써지지 않도록 잠금을 건다.

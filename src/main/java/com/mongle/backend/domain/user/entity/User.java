@@ -69,4 +69,14 @@ public class User extends BaseEntity {
         }
         this.nickname = validated;
     }
+
+    public boolean changeNickname(String nickname) {
+        if (!isOnboardingCompleted()) {
+            throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+        }
+        String validated = NicknamePolicy.validate(nickname);
+        if (this.nickname.equals(validated)) return false;
+        this.nickname = validated;
+        return true;
+    }
 }

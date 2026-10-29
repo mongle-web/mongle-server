@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.user.controller;
 
 import com.mongle.backend.domain.user.controller.api.UserApi;
+import com.mongle.backend.domain.user.dto.NicknameUpdateRequest;
 import com.mongle.backend.domain.user.dto.OnboardingRequest;
 import com.mongle.backend.domain.user.dto.UserResponse;
 import com.mongle.backend.domain.user.service.UserService;
@@ -33,5 +34,13 @@ public class UserController implements UserApi {
                                                                @Valid @RequestBody OnboardingRequest request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(
                 users.completeOnboarding(Long.valueOf(jwt.getSubject()), request.nickname())));
+    }
+
+    @Override
+    @PatchMapping(value = "/nickname", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ApiResponse<UserResponse>> updateNickname(@AuthenticationPrincipal Jwt jwt,
+                                                                  @Valid @RequestBody NicknameUpdateRequest request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(
+                users.updateNickname(Long.valueOf(jwt.getSubject()), request.nickname())));
     }
 }

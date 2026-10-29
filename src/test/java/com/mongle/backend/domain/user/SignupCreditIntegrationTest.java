@@ -106,6 +106,22 @@ class SignupCreditIntegrationTest {
     }
 
     @Test
+    void nicknameChangesAndOnboardingRetriesPreserveOriginalSignupGrantAndLedger() {
+        onboarding.completeOnboarding(user, "몽글93");
+        var beforeGrant = jdbc.queryForList("select * from credit_grants where user_id=?", user);
+        var beforeLedger = jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user);
+        doThrow(new BusinessException(CreditErrorCode.UNAVAILABLE)).when(properties).requireEnabled();
+        doThrow(new BusinessException(CreditErrorCode.UNAVAILABLE)).when(properties).signupGrantAmount();
+        assertThat(onboarding.updateNickname(user, "새닉네임").nickname()).isEqualTo("새닉네임");
+        assertThat(onboarding.updateNickname(user, "새닉네임").onboardingCompleted()).isTrue();
+        assertThat(onboarding.completeOnboarding(user, "새닉네임").onboardingCompleted()).isTrue();
+        error(() -> onboarding.completeOnboarding(user, "몽글93"), UserErrorCode.ONBOARDING_ALREADY_COMPLETED);
+        assertThat(credits.balance(user).available()).isEqualTo(3);
+        assertThat(jdbc.queryForList("select * from credit_grants where user_id=?", user)).isEqualTo(beforeGrant);
+        assertThat(jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user)).isEqualTo(beforeLedger);
+    }
+
+    @Test
     void concurrentSameNicknameRequestsCommitExactlyOneBenefit() throws Exception {
         var ready = new CountDownLatch(4);
         var go = new CountDownLatch(1);
