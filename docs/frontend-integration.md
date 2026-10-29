@@ -141,6 +141,25 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 - 무료이며 크레딧/이미지 생성 요청과 독립적이다. V5 마이그레이션·코드 배포 후 `MONGLE_WORLD_SUMMARY_ENABLED=true`, `MONGLE_WORLD_SUMMARY_WORKER_ENABLED=true`와 기존 LINER 설정이 필요하다. 이번 코드 작업에서 운영 활성화는 수행하지 않았다.
 - 전체 상태·필드·실패 처리·활성화 순서는 [세계관 결과 상세](world-summary.md)를 참고한다. 운영 Swagger는 실제 배포된 버전으로 확인한다.
 
+## 연결된 꿈 목록 카드 (#103)
+
+`GET /api/v1/worlds`의 items에 기존 폴더 필드와 함께 다음 값을 제공한다. 응답 봉투·검색·페이지 경계는 유지한다.
+
+| 화면 정보 | 필드 |
+|---|---|
+| 카드 제목 | summary.generatedTitle, 없으면 name |
+| 대표 꿈·날짜 | representativeDream.dreamId / title / dreamedAt. 공개 완성본의 가장 오래된 꿈이며 없으면null |
+| 현재 연결 개수 | composedDreamCount. 생성 중 후보·체크한 꿈 수와 구분 |
+| 키워드 태그 | summary.commonKeywords[].keyword |
+| 반복 감정·상태·변경 안내 | 기존 WorldSummaryResponse와 같은 summary 필드 |
+
+연결 설명은 대표 꿈 제목과 composedDreamCount를 사용한다. 총5개면 '대표 꿈 제목 외 4개의 꿈을 연결했어요'다.
+1개·0개·제목 없음은 별도 문구를 정한다. summary.sourceCount는 요약이 만들어질 당시의 출처 수이므로
+현재 연결 개수로 사용하지 않는다. 이전 요약을 표시하면 refreshNeeded/sourceChanged/hasPreviousResult도 함께 안내한다.
+미생성·생성 중·실패에는 유효한 기존 결과 또는 폴더 이름을 표시하고 공통 키워드가 없으면 태그를 보충하지 않는다.
+목록 조회는 AI 호출·생성 접수·크레딧 차감·상태 저장이 없으며 삭제된 출처의 결과를 숨긴다. 단건 폴더·쓰기 응답은 기존 형식이다.
+기존 query는 폴더 이름만 검색한다. [응답 예시·삭제/만료 규칙](world-list-cards.md)을 따른다.
+
 ## 세계관 폴더와 완성 이야기
 
 - 폴더 CRUD·꿈 선택/제외·페이지 조회는 구현돼 있다. 폴더 이름은 현재 최대100 Unicode 코드포인트이고 꿈 선택 수의 별도 상한은 기본 설정하지 않는다.

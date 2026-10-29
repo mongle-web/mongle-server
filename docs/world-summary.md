@@ -44,6 +44,10 @@
 
 `generatedTitle`은 없으면 null이며 두 목록은 빈 배열이다. `sourceCount`는 현재 폴더 선택 수가 아니라 **표시 중인 성공 결과의 출처 수**다. 성공 전에는 0이다. `compositionRevision`은 현재 완성본, `resultCompositionRevision`은 표시 중인 결과의 버전이다. `generationVersion`은 상태 저장 버전이며 POST에 보낼 필요가 없다.
 
+#103의 `GET /api/v1/worlds`는 각 카드의 summary에 같은 결과·상태 규칙을 적용한다.
+목록은 생성·상태 저장 없이 일괄 조회하며, 현재 연결 개수는 별도의 composedDreamCount를 제공한다.
+요약 갱신 전에는 summary.sourceCount와 다를 수 있다. [목록 카드 계약](world-list-cards.md)을 참고한다.
+
 | status | 화면 처리 |
 |---|---|
 | NOT_GENERATED | 폴더만 만들었거나 생성 요청 전. 완성본이 있으면 POST 가능 |

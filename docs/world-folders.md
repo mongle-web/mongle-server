@@ -38,6 +38,12 @@
 `WorldFolderResponse`는 `worldId`, `name`, `selectedDreamCount`, `revision`, `createdAt`, `updatedAt`을 반환한다.
 새 폴더는 `selectedDreamCount=0`, `revision=0`이다. 선택 수는 완성 세계관에 반영된 꿈의 수가 아니다.
 
+#103부터 목록 items는 기존 필드를 유지한 `WorldFolderCardResponse`다. composedDreamCount와
+representativeDream(dreamId·현재 title·dreamedAt), 기존 생성 결과/상태인 summary를 함께 반환한다.
+연결 설명은 현재 공개 완성본의 composedDreamCount, 키워드 태그는 summary.commonKeywords를 사용한다.
+summary.sourceCount는 이전 요약의 출처 수일 수 있다. [카드 표시 계약](world-list-cards.md)을 따른다.
+단건 폴더 조회와 쓰기 응답은 기존 WorldFolderResponse를 유지한다.
+
 ## revision과 재시도
 
 폴더마다 이름과 선택 목록의 revision을 함께 관리한다. 변경 요청에는 마지막 응답의 revision을 전달한다.
@@ -72,8 +78,9 @@ DB의 `UNIQUE(world_id,dream_id)`와 폴더 `@Version`도 유지한다.
   409이면 기존 페이지를 비우고 cursor 없이 처음부터 조회한다. 원본 제목·원문 수정은 폴더 revision을 바꾸지 않으므로
   이미 표시한 텍스트는 필요할 때 새로고침한다.
 
-선택 목록의 한 요청은 REPEATABLE_READ 트랜잭션으로 폴더 메타데이터와 페이지의 일관성을 유지한다.
-폴더 목록은 1개 조회, 선택 목록은 메타데이터+페이지 2개 조회를 사용한다. 감정 컬렉션·AI 결과를 행별로 조회하지 않는다.
+폴더 목록과 선택 목록의 한 요청은 REPEATABLE_READ 트랜잭션으로 메타데이터와 페이지의 일관성을 유지한다.
+폴더 목록은 페이지 크기와 무관하게 JPA3회·JDBC4회로 카드 데이터를 일괄 조회하며, 빈 페이지는 폴더 조회만 한다.
+선택 목록은 메타데이터+페이지2회 조회다. 감정 컬렉션·AI 결과를 행별로 조회하지 않는다.
 `world_selections(world_id,dreamed_at,dream_id)` 인덱스로 날짜 경계를 조회한다.
 
 ## 제외·영구 삭제
