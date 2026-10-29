@@ -1,6 +1,6 @@
 # 운영자용 테스트 크레딧 지급 (#91)
 
-페이앱 실결제 없이 지정한 팀 테스트 계정에 무상 크레딧을 지급한다. 운영 권한이 있는 담당자가 EC2/SSM에서 실행하는 단발 JAR 명령이며 공개 HTTP API는 없다. 기본 비활성이다. 가입 시 3크레딧 자동 지급은 별도 작업이고, 이 명령은 가입 정책·결제 심사·판매 상품을 변경하지 않는다.
+페이앱 실결제 없이 지정한 팀 테스트 계정에 무상 크레딧을 지급한다. 운영 권한이 있는 담당자가 EC2/SSM에서 실행하는 단발 JAR 명령이며 공개 HTTP API는 없다. 기본 비활성이다. 가입 시 3크레딧 자동 지급은 #93의 온보딩 로직이며, 이 명령은 가입 정책·결제 심사·판매 상품을 변경하지 않는다.
 
 ## 실행 계약
 
@@ -23,7 +23,7 @@ java -jar <동일한 릴리스 JAR> --test-credit=grant --user-id=123 --amount=1
 | `GRANTED` | 지급 트랜잭션 커밋 완료 |
 | `ALREADY_GRANTED` | 같은 지급이 이미 존재함. 추가 지급 없음 |
 
-성공 출력 예시:
+지급량은 추가할 수량이다. 가입 혜택3을 이미 받은 계정에100을 지급하면 잔액은103이다. 아래 성공 출력은 기존 잔액0인 계정의 예시다:
 
 ```json
 {"event":"test-credit-completed","operation":"grant","status":"GRANTED","userId":123,"amount":100,"source":"PROMOTION","grantId":42,"balance":{"available":100,"reserved":0,"total":100,"spendingBlocked":false}}
