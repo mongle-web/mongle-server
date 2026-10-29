@@ -35,6 +35,9 @@ public class WorldSummaryValidator {
                             .anyMatch(
                                     c ->
                                             Character.isISOControl(c)
+                                                    || c == 0x2028
+                                                    || c == 0x2029
+                                                    || Character.getType(c) == Character.SURROGATE
                                                     || Character.getType(c) == Character.FORMAT
                                                     || c == '<'
                                                     || c == '>'))

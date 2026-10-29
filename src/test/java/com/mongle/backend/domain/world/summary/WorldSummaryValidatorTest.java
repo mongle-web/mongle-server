@@ -31,7 +31,8 @@ class WorldSummaryValidatorTest {
                 "{\"generatedTitle\":\"a\",\"commonKeywords\":[\"invented\"]}",
                 "{\"generatedTitle\":\"a\\nb\"}",
                 "{\"generatedTitle\":\"<script>\"}",
-                "{\"generatedTitle\":\"a\\u200bb\"}"
+                "{\"generatedTitle\":\"a\\u200bb\"}",
+                "{\"generatedTitle\":\"a\\u2028b\"}"
             })
     void rejectsInvalidAndUntrustedOutputWithoutLeakingIt(String raw) {
         assertThatThrownBy(() -> validator.title(raw))
