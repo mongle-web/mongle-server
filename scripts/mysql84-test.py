@@ -94,7 +94,7 @@ def main():
                 migration_password = secrets.token_hex(24)
                 sql(f"CREATE USER 'mongle_migrator'@'127.0.0.1' IDENTIFIED BY '{migration_password}' REQUIRE SSL;")
                 migration_databases = ("flyway_fresh", "flyway_existing", "flyway_drift", "flyway_failed",
-                                       "flyway_checksum", "flyway_privilege", "flyway_jpa", "flyway_v1", "flyway_cli", "flyway_check")
+                                       "flyway_checksum", "flyway_privilege", "flyway_jpa", "flyway_v1", "flyway_cli", "flyway_check", "flyway_summary")
                 schema = (repo / "src/main/resources/db/schema-initial.sql").read_text()
                 for database in migration_databases:
                     sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")

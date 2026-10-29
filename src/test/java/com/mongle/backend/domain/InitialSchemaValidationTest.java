@@ -59,6 +59,8 @@ class InitialSchemaValidationTest {
 
     @Test
     void createsWorldFolderTablesFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_summary_sources");
+        jdbcTemplate.execute("drop table world_summaries");
         jdbcTemplate.execute("drop table world_image_sources");
         jdbcTemplate.execute("drop table world_images");
         jdbcTemplate.execute("drop table world_composition_entries");
@@ -75,6 +77,7 @@ class InitialSchemaValidationTest {
             var script=new org.springframework.core.io.ClassPathResource("db/migrations/20261026-world-composition.sql");
             org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,script);
             org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, new org.springframework.core.io.ClassPathResource("db/migrations/20261026-world-images.sql"));
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, new org.springframework.core.io.ClassPathResource("db/migration/V5__world_summaries.sql"));
             return null;
         });
         assertThat(jdbcTemplate.queryForList("""
