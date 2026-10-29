@@ -54,8 +54,9 @@ public class ArchiveService {
             @Nullable String date,
             @Nullable String sort,
             @Nullable String cursor,
-            int size) {
-        var search = ArchiveSearch.parse(month, date, sort, cursor, size);
+            int size,
+            @Nullable String query) {
+        var search = ArchiveSearch.parse(month, date, sort, cursor, size, query);
         var rows = queries.findDreams(userId, search);
         boolean hasNext = rows.size() > size;
         var selected = hasNext ? rows.subList(0, size) : rows;

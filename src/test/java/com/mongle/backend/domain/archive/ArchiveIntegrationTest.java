@@ -15,6 +15,8 @@ import com.mongle.backend.domain.user.repository.UserRepository;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,6 +30,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -91,9 +94,124 @@ class ArchiveIntegrationTest {
     @AfterEach void closeClient() { client.close(); }
 
     private DreamResponse completed(LocalDate date) {
-        var dream = dreams.create(userId, new DreamCreateRequest(date, "회의에 늦는 꿈 원문"));
+        return completed(date, "회의에 늦는 꿈 원문");
+    }
+
+    private DreamResponse completed(LocalDate date, String text) {
+        var dream = dreams.create(userId, new DreamCreateRequest(date, text));
         return dreams.complete(userId, dream.dreamId(), new DreamEmotionsRequest(dream.revision(), List.of(DreamEmotion.ANXIOUS)));
     }
+
+    @Test
+    void searchMatchesTitleTextOrStoredKeywordsOnceAndExcludesForeignIncompleteAndDeletedDreams() throws Exception {
+        var titled = completed(date, "기차를 탔다");
+        var update = new DreamUpdateRequest();
+        update.setRevision(titled.revision()); update.setTitle("푸른 Ocean");
+        dreams.update(userId, titled.dreamId(), update);
+        var original = completed(date.minusDays(1), "oCeAn 위를 걸었다");
+        var keywords = completed(date.minusDays(2), "별빛이 보였다");
+        generations(keywords, List.of("OCEAN", "ocean waves"));
+        completed(date.minusDays(3), "다른 꿈");
+        dreams.saveDraft(userId, date.plusDays(1), new DreamDraftRequest("ocean", null, null));
+        dreams.create(userId, new DreamCreateRequest(date.plusDays(2), "ocean"));
+        var removed = completed(date.plusDays(3), "ocean");
+        dreams.delete(userId, removed.dreamId(), removed.revision());
+        var other = users.saveAndFlush(User.create(UUID.randomUUID()+"@archive.test", "타인"));
+        var foreign = dreams.create(other.getId(), new DreamCreateRequest(date, "ocean"));
+        dreams.complete(other.getId(), foreign.dreamId(), new DreamEmotionsRequest(foreign.revision(), List.of(DreamEmotion.HAPPY)));
+
+        var response = get("/api/v1/archives?query=" + encoded("  OcEaN  "));
+        var result = data(response, 200);
+        assertThat(result.get("items").size()).isEqualTo(3);
+        assertThat(result.at("/items/0/dreamId").asLong()).isEqualTo(titled.dreamId());
+        assertThat(result.at("/items/1/dreamId").asLong()).isEqualTo(original.dreamId());
+        assertThat(result.at("/items/2/dreamId").asLong()).isEqualTo(keywords.dreamId());
+        assertThat(result.get("hasNext").asBoolean()).isFalse();
+        assertThat(response.headers().firstValue("Cache-Control")).hasValue("no-store");
+        assertThat(store.calls).hasValue(0);
+        var empty = data(get("/api/v1/archives?query=missing"), 200);
+        assertThat(empty.get("items").isEmpty()).isTrue();
+        assertThat(empty.get("hasNext").asBoolean()).isFalse();
+        assertThat(empty.get("nextCursor").isNull()).isTrue();
+    }
+
+    @Test
+    void searchKeepsDateSortAndCursorBoundariesIncludingDeletedAnchorsAndNormalizedQuery() throws Exception {
+        var oldest = completed(date.minusDays(3), "ocean");
+        completed(date.minusDays(2), "산");
+        var middle = completed(date.minusDays(1), "ocean");
+        var newest = completed(date, "ocean");
+        completed(LocalDate.of(2026, 8, 31), "ocean");
+        String base = "/api/v1/archives?month=2026-09&sort=OLDEST&size=1";
+        var first = data(get(base + "&query=OCEAN"), 200);
+        assertThat(first.at("/items/0/dreamId").asLong()).isEqualTo(oldest.dreamId());
+        String cursor = first.get("nextCursor").asString();
+        dreams.delete(userId, oldest.dreamId(), oldest.revision());
+        var next = data(get(base + "&query=" + encoded(" ocean ") + "&cursor=" + cursor), 200);
+        assertThat(next.at("/items/0/dreamId").asLong()).isEqualTo(middle.dreamId());
+        var last = data(get(base + "&query=ocean&cursor=" + next.get("nextCursor").asString()), 200);
+        assertThat(last.at("/items/0/dreamId").asLong()).isEqualTo(newest.dreamId());
+        assertThat(last.get("hasNext").asBoolean()).isFalse();
+        assertThat(data(get("/api/v1/archives?date=2026-09-16&query=ocean"), 200).get("items").size()).isEqualTo(1);
+        assertThat(data(get("/api/v1/archives?date=2026-09-14&query=ocean"), 200).get("items").isEmpty()).isTrue();
+        String unsearched = data(get(base), 200).get("nextCursor").asString();
+        String legacy = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                ("v1|month:2026-09|2026-09-16|" + newest.dreamId()).getBytes(StandardCharsets.UTF_8));
+        for (String path : List.of(base + "&query=mountain&cursor=" + cursor,
+                base + "&cursor=" + cursor,
+                "/api/v1/archives?month=2026-09&sort=LATEST&query=ocean&cursor=" + cursor,
+                "/api/v1/archives?month=2026-08&sort=OLDEST&query=ocean&cursor=" + cursor,
+                base + "&query=ocean&cursor=" + unsearched,
+                "/api/v1/archives?month=2026-09&query=ocean&cursor=" + legacy)) {
+            var invalid = get(path);
+            assertThat(invalid.statusCode()).as(path).isEqualTo(400);
+            assertThat(invalid.body()).contains("ARCHIVE_400_2");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"%", "_", "!", "'", "🌙", "바다", "' OR 1=1 --"})
+    void searchesLiteralCharactersWithoutWildcardsOrQueryInjection(String term) throws Exception {
+        var match = completed(date, "앞" + term + "뒤");
+        completed(date.minusDays(1), "일치하지 않는 꿈");
+        var page = data(get("/api/v1/archives?query=" + encoded(term)), 200);
+        assertThat(page.get("items").size()).isEqualTo(1);
+        assertThat(page.at("/items/0/dreamId").asLong()).isEqualTo(match.dreamId());
+    }
+
+    @Test
+    void queryLengthCountsCodePointsAfterUnicodeTrimAndBlankKeepsExistingListing() throws Exception {
+        completed(date, "🌙".repeat(50));
+        assertThat(data(get("/api/v1/archives?query=" + encoded("  " + "🌙".repeat(50) + "\u00a0\u3000")), 200)
+                .get("items").size()).isEqualTo(1);
+        var tooLong = get("/api/v1/archives?query=" + encoded("🌙".repeat(51)));
+        assertThat(tooLong.statusCode()).isEqualTo(400);
+        assertThat(tooLong.body()).contains("ARCHIVE_400_5");
+        for (String term : List.of("", " \t\n\u00a0\u3000"))
+            assertThat(data(get("/api/v1/archives?query=" + encoded(term)), 200).get("items").size()).isEqualTo(1);
+        var anonymous = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port
+                + "/api/v1/archives?query=ocean")).GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(anonymous.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void sourceEditsImmediatelyChangeSearchWhilePreservingPreviousKeywords() throws Exception {
+        var dream = completed(date, "하늘을 보았다");
+        generations(dream, List.of("구름"));
+        var current = dreams.get(userId, dream.dreamId());
+        var update = new DreamUpdateRequest();
+        update.setRevision(current.revision()); update.setOriginalText("새로운 바다를 보았다");
+        dreams.update(userId, dream.dreamId(), update);
+        assertThat(data(get("/api/v1/archives?query=" + encoded("하늘")), 200).get("items").isEmpty()).isTrue();
+        for (String term : List.of("바다", "구름")) {
+            var page = data(get("/api/v1/archives?query=" + encoded(term)), 200);
+            assertThat(page.get("items").size()).isEqualTo(1);
+            assertThat(page.at("/items/0/analysis/sourceChanged").asBoolean()).isTrue();
+        }
+        assertThat(store.calls).hasValue(0);
+    }
+
+    private String encoded(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
 
     @Test
     void filtersCompletedOwnedRecordsAndPagesAfterDeletedAnchor() throws Exception {
@@ -383,13 +501,19 @@ class ArchiveIntegrationTest {
         for (int i = 0; i < 3; i++) generations(completed(date.minusDays(i)));
         var stats = emf.unwrap(SessionFactory.class).getStatistics();
         stats.clear();
-        archives.list(userId, "2026-09", null, null, null, 1);
+        archives.list(userId, "2026-09", null, null, null, 1, null);
         long single = stats.getPrepareStatementCount();
         stats.clear();
-        var page = archives.list(userId, "2026-09", null, null, null, 20);
+        var page = archives.list(userId, "2026-09", null, null, null, 20, null);
         assertThat(page.items()).hasSize(3);
         // 영속 생성 상태 조회 한 번이 추가되지만 페이지 크기와 관계없이 고정된 5회다.
         assertThat(stats.getPrepareStatementCount()).isEqualTo(single).isLessThanOrEqualTo(5);
+        stats.clear();
+        archives.list(userId, "2026-09", null, null, null, 1, "회의");
+        long searchedSingle = stats.getPrepareStatementCount();
+        stats.clear();
+        assertThat(archives.list(userId, "2026-09", null, null, null, 20, "회의").items()).hasSize(3);
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(searchedSingle).isLessThanOrEqualTo(5);
     }
 
     @Test
@@ -403,8 +527,14 @@ class ArchiveIntegrationTest {
         assertThat(monthParameter.get("required").asBoolean()).isTrue();
         var parameters = document.at("/paths/~1api~1v1~1archives/get/parameters");
         boolean found = false;
+        boolean queryFound = false;
         for (int i = 0; i < parameters.size(); i++) {
             var parameter = parameters.get(i);
+            if (parameter.get("name").asString().equals("query")) {
+                queryFound = true;
+                assertThat(parameter.get("required").asBoolean()).isFalse();
+                assertThat(parameter.get("description").asString()).contains("50");
+            }
             if (!parameter.get("name").asString().equals("sort")) continue;
             found = true;
             assertThat(parameter.at("/schema/default").asString()).isEqualTo("LATEST");
@@ -412,12 +542,17 @@ class ArchiveIntegrationTest {
             assertThat(parameter.at("/schema/enum/1").asString()).isEqualTo("OLDEST");
         }
         assertThat(found).isTrue();
+        assertThat(queryFound).isTrue();
     }
 
     /** 생성기를 호출하지 않고 이미 생성·저장된 결과를 준비한다. 실제 LINER·이미지 Provider는 사용하지 않는다. */
     private Long[] generations(DreamResponse dream) throws Exception {
+        return generations(dream, List.of("계단", "회의"));
+    }
+
+    private Long[] generations(DreamResponse dream, List<String> keywords) throws Exception {
         var reservation = analyses.begin(userId, dream.dreamId(), dream.revision(), true);
-        var result = new StructureResult("분석 제목", List.of("계단", "회의"),
+        var result = new StructureResult("분석 제목", keywords,
                 List.of(new StructureResult.Element("e1", DreamEntityType.PLACE, "회사", "장소")),
                 List.of(new StructureResult.Scene(1, "회의 장면", false, List.of("e1"))));
         analyses.finish(reservation.input(), result);
