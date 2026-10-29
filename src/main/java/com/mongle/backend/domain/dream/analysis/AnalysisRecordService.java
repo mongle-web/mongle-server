@@ -2,6 +2,7 @@ package com.mongle.backend.domain.dream.analysis;
 
 import com.mongle.backend.domain.dream.entity.*;
 import com.mongle.backend.global.common.GenerationStatus;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.persistence.EntityManager;
 
@@ -42,8 +43,10 @@ public class AnalysisRecordService {
         this.limit = limit;
     }
 
+    @Schema(name = "MonthlyAnalysisKeyword")
     public record Keyword(String name, long dreamCount) {}
 
+    @Schema(name = "MonthlyAnalysisEmotion")
     public record Emotion(DreamEmotion emotion, long dreamCount) {}
 
     public record Monthly(

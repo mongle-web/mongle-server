@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.world.summary;
 
 import com.mongle.backend.domain.dream.entity.DreamEmotion;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.*;
 
@@ -15,7 +16,9 @@ public record WorldSummaryContent(
         recurringEmotions = List.copyOf(recurringEmotions);
     }
 
+    @Schema(name = "WorldSummaryKeyword")
     public record Keyword(String keyword, long dreamCount) {}
 
+    @Schema(name = "WorldSummaryEmotion")
     public record Emotion(DreamEmotion code, String label, long dreamCount) {}
 }
