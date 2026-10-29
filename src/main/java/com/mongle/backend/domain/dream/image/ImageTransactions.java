@@ -160,8 +160,13 @@ public class ImageTransactions {
             credits.release(image);
             image.fail(failure);
         } else {
+            String previousKey = image.getStorageKey();
             credits.settle(image, key);
             image.finish(key, payload);
+            if (previousKey != null && !previousKey.equals(key)) {
+                cleanupRegistration.register(input.userId(), image.getAnalysis().getSourceDreamId(),
+                        image.getId(), previousKey, ImageCleanupRequest.Reason.REPLACED_RESULT);
+            }
         }
         images.flush();
         return new Completion(response(image), image.getStatus() == GenerationStatus.COMPLETED);
