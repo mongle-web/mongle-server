@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.*;
 @Service
 @RequiredArgsConstructor
 public class WorldCompositionDeletion {
+    private final com.mongle.backend.domain.world.summary.WorldSummaryLifecycle summaries;
     private final WorldCompositionRepository worlds;
     private final WorldCompositionEntryRepository entries;
     private final com.mongle.backend.domain.world.image.WorldImageDeletion images;
@@ -16,6 +17,7 @@ public class WorldCompositionDeletion {
     @Transactional(propagation = Propagation.MANDATORY)
     public void dreamDeleted(Long user, Long dream) {
         images.dreamDeleted(user, dream);
+        summaries.dreamDeleted(user, dream);
         for (var world : worlds.usingDream(user, dream)) {
             boolean removed = false, previousRemoved = false;
             var published =
@@ -40,6 +42,7 @@ public class WorldCompositionDeletion {
     @Transactional(propagation = Propagation.MANDATORY)
     public void folderDeleted(Long user, Long world) {
         images.folderDeleted(user, world);
+        summaries.folderDeleted(user, world);
         var found = worlds.findByWorldIdAndUserId(world, user);
         if (found.isEmpty()) return;
         entries.deleteWorld(world);

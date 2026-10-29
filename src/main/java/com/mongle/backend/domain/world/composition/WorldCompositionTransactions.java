@@ -31,6 +31,7 @@ public class WorldCompositionTransactions {
     private final DreamGenerationSettings settings;
     private final WorldCompositionProperties properties;
     private final Clock authClock;
+    private final com.mongle.backend.domain.world.summary.WorldSummaryLifecycle summaries;
 
     public record Step(
             Long userId,
@@ -230,6 +231,7 @@ public class WorldCompositionTransactions {
             entries.publish(world);
             w.complete();
             worlds.flush();
+            summaries.published(user, world, w.getCompositionRevision());
             return null;
         }
         var after = pending.getFirst();

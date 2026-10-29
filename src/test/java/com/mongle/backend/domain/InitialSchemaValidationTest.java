@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:mongle-schema;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "spring.sql.init.mode=always",
-        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql,classpath:db/migration/V4__recent_interpretations.sql",
+        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql,classpath:db/migration/V4__recent_interpretations.sql,classpath:db/migration/V5__world_summaries.sql",
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @ActiveProfiles("test")
@@ -59,6 +59,8 @@ class InitialSchemaValidationTest {
 
     @Test
     void createsWorldFolderTablesFromMigrationAndAllowsRerun() {
+        jdbcTemplate.execute("drop table world_summary_sources");
+        jdbcTemplate.execute("drop table world_summaries");
         jdbcTemplate.execute("drop table world_image_sources");
         jdbcTemplate.execute("drop table world_images");
         jdbcTemplate.execute("drop table world_composition_entries");
@@ -75,6 +77,7 @@ class InitialSchemaValidationTest {
             var script=new org.springframework.core.io.ClassPathResource("db/migrations/20261026-world-composition.sql");
             org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,script);
             org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, new org.springframework.core.io.ClassPathResource("db/migrations/20261026-world-images.sql"));
+            org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, new org.springframework.core.io.ClassPathResource("db/migration/V5__world_summaries.sql"));
             return null;
         });
         assertThat(jdbcTemplate.queryForList("""
