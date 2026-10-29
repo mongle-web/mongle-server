@@ -27,8 +27,9 @@ public class WorldFolderController implements WorldFolderApi {
 
     @Override @GetMapping
     public ResponseEntity<ApiResponse<WorldFolderPage>> list(@AuthenticationPrincipal Jwt jwt,
-            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "20") int size) {
-        return ok(folders.list(userId(jwt), beforeId, size));
+            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String query) {
+        return ok(folders.list(userId(jwt), beforeId, size, query));
     }
 
     @Override @GetMapping("/{worldId}")

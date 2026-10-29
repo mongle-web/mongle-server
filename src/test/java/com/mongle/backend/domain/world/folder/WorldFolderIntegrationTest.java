@@ -28,7 +28,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.*;
+import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -52,6 +54,70 @@ class WorldFolderIntegrationTest {
 
     @BeforeEach
     void setup() { user = newUser(); }
+
+    @Test
+    void searchesOnlyOwnedFolderNamesAndKeepsIdPagingAfterAnchorDeletion() throws Exception {
+        var token = tokens.login(user).response();
+        var older = folders.create(user, "Ocean 옛 꿈");
+        var unrelated = folders.create(user, "산 이야기");
+        folders.select(user, unrelated.worldId(), completed(user, 0), unrelated.revision());
+        var newer = folders.create(user, "푸른 OCEAN");
+        folders.create(newUser(), "Ocean 타인의 폴더");
+        var removed = folders.create(user, "Ocean 삭제");
+        folders.delete(user, removed.worldId(), removed.revision());
+        var response = send(token, "GET", "/api/v1/worlds?size=1&query=" + encoded("  oCeAn  "), null);
+        var first = data(response, 200);
+        assertThat(first.at("/items/0/worldId").asLong()).isEqualTo(newer.worldId());
+        assertThat(first.at("/items/0/selectedDreamCount").asLong()).isZero();
+        assertThat(first.get("hasNext").asBoolean()).isTrue();
+        assertThat(response.headers().firstValue("Cache-Control")).hasValue("no-store");
+        folders.delete(user, newer.worldId(), newer.revision());
+        var second = data(send(token, "GET", "/api/v1/worlds?size=1&query=ocean&beforeId="
+                + first.get("nextBeforeId").asLong(), null), 200);
+        assertThat(second.at("/items/0/worldId").asLong()).isEqualTo(older.worldId());
+        assertThat(second.get("hasNext").asBoolean()).isFalse();
+        assertThat(second.get("nextBeforeId").isNull()).isTrue();
+        // 선택한 꿈의 원문은 '바다의 꿈'이지만 검색 대상은 폴더 이름뿐이다.
+        assertThat(data(send(token, "GET", "/api/v1/worlds?query=" + encoded("바다"), null), 200)
+                .get("items").isEmpty()).isTrue();
+        folders.rename(user, older.worldId(), new WorldFolderUpdateRequest("달 이야기", older.revision()));
+        var empty = data(send(token, "GET", "/api/v1/worlds?query=ocean", null), 200);
+        assertThat(empty.get("items").isEmpty()).isTrue();
+        assertThat(empty.get("hasNext").asBoolean()).isFalse();
+        assertThat(empty.get("nextBeforeId").isNull()).isTrue();
+        assertThat(data(send(token, "GET", "/api/v1/worlds?query=" + encoded("달"), null), 200)
+                .at("/items/0/worldId").asLong()).isEqualTo(older.worldId());
+        for (String table : List.of("ai_generation_logs", "dream_generation_jobs", "dream_analyses", "world_bridge_results", "credit_ledger"))
+            assertThat(jdbc.queryForObject("select count(*) from " + table + " where user_id=?", Long.class, user)).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"%", "_", "!", "'", "🌙", "바다", "' OR 1=1 --"})
+    void folderSearchTreatsInputAsLiteralText(String term) throws Exception {
+        var token = tokens.login(user).response();
+        var match = folders.create(user, "앞" + term + "뒤");
+        folders.create(user, "일치하지 않는 폴더");
+        var page = data(send(token, "GET", "/api/v1/worlds?query=" + encoded(term), null), 200);
+        assertThat(page.get("items").size()).isEqualTo(1);
+        assertThat(page.at("/items/0/worldId").asLong()).isEqualTo(match.worldId());
+    }
+
+    @Test
+    void folderQueryAcceptsUnicodeBoundaryAndBlankAndRejectsLongOrAnonymousQueries() throws Exception {
+        var token = tokens.login(user).response();
+        folders.create(user, "🌙".repeat(50));
+        assertThat(data(send(token, "GET", "/api/v1/worlds?query="
+                + encoded("\u00a0 " + "🌙".repeat(50) + "\u3000"), null), 200).get("items").size()).isEqualTo(1);
+        var tooLong = send(token, "GET", "/api/v1/worlds?query=" + encoded("🌙".repeat(51)), null);
+        assertThat(tooLong.statusCode()).isEqualTo(400);
+        assertThat(tooLong.body()).contains("WORLD_400_4");
+        for (String term : List.of("", " \t\n\u00a0\u3000"))
+            assertThat(data(send(token, "GET", "/api/v1/worlds?query=" + encoded(term), null), 200)
+                    .get("items").size()).isEqualTo(1);
+        assertThat(send(null, "GET", "/api/v1/worlds?query=ocean", null).statusCode()).isEqualTo(401);
+    }
+
+    private String encoded(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
 
     @Test
     void httpLifecycleAndPagingPreserveEmptyFolderAndSourceRecords() throws Exception {
@@ -139,7 +205,7 @@ class WorldFolderIntegrationTest {
             error(() -> folders.select(user, folder.worldId(), incomplete, 0L), WorldFolderErrorCode.DREAM_NOT_COMPLETED);
         }
         assertThat(folders.get(user, folder.worldId()).selectedDreamCount()).isZero();
-        assertThat(folders.list(other, null, 20).items()).isEmpty();
+        assertThat(folders.list(other, null, 20, null).items()).isEmpty();
     }
 
     @Test
@@ -185,7 +251,10 @@ class WorldFolderIntegrationTest {
         assertThat(rest.nextCursor()).isNull();
         assertThat(page.items()).hasSize(1);
         stats.clear();
-        folders.list(user, null, 50);
+        folders.list(user, null, 50, null);
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+        stats.clear();
+        assertThat(folders.list(user, null, 50, "많은").items()).hasSize(1);
         assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
     }
 

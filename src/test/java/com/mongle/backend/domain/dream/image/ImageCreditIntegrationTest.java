@@ -133,6 +133,7 @@ class ImageCreditIntegrationTest {
 
     @Test void freeAllowanceRollsBackWhenSuccessfulImageCannotBePersisted() {
         fund(2);var dream=ready();var first=await(images.generate(user,dream.dreamId(),request(dream)));
+        String previousKey=transactions.assetKey(user,first.imageId());
         generator.pending=new CompletableFuture<>();var call=images.generate(user,dream.dreamId(),regenerate(dream,first));
         jdbc.execute("alter table dream_images add constraint free_image_publish_failure check(id<>"+first.imageId()+" or status<>'COMPLETED')");
         try {
@@ -140,6 +141,8 @@ class ImageCreditIntegrationTest {
             var failed=transactions.latest(user,dream.dreamId());
             assertThat(failed.freeRegenerationAvailable()).isTrue();assertThat(failed.hasPreviousResult()).isTrue();
             assertThat(count("SETTLE")).isEqualTo(1);assertThat(storage.stored).hasSize(1);
+            assertThat(transactions.assetKey(user,first.imageId())).isEqualTo(previousKey);
+            assertThat(jdbc.queryForObject("select count(*) from image_cleanup_requests where storage_key=?",Long.class,previousKey)).isZero();
         } finally {jdbc.execute("alter table dream_images drop constraint free_image_publish_failure");}
         generator.pending=null;
         assertThat(await(images.generate(user,dream.dreamId(),request(dream))).freeRegenerationAvailable()).isFalse();

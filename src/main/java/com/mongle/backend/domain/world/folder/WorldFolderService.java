@@ -8,6 +8,7 @@ import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.error.BusinessException;
+import com.mongle.backend.global.common.SearchQuery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -34,9 +35,10 @@ public class WorldFolderService {
         return WorldFolderResponse.from(owned(userId, worldId));
     }
 
-    public WorldFolderPage list(Long userId, Long beforeId, int size) {
+    public WorldFolderPage list(Long userId, Long beforeId, int size, String query) {
         validatePage(beforeId, size);
-        var rows = folders.page(userId, beforeId, PageRequest.of(0, size + 1));
+        String term = SearchQuery.normalize(query, WorldFolderErrorCode.INVALID_QUERY);
+        var rows = folders.page(userId, beforeId, SearchQuery.containsPattern(term), PageRequest.of(0, size + 1));
         boolean hasNext = rows.size() > size;
         var items = rows.stream().limit(size).map(WorldFolderResponse::from).toList();
         return new WorldFolderPage(items, hasNext, hasNext ? items.getLast().worldId() : null);
