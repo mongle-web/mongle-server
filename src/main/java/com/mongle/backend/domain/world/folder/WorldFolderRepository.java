@@ -11,6 +11,8 @@ import java.util.Optional;
 public interface WorldFolderRepository extends JpaRepository<WorldFolder, Long> {
     Optional<WorldFolder> findByIdAndUserId(Long id, Long userId);
 
-    @Query("select f from WorldFolder f where f.user.id=:user and (:before is null or f.id<:before) order by f.id desc")
-    List<WorldFolder> page(@Param("user") Long user, @Param("before") Long before, Pageable pageable);
+    @Query("select f from WorldFolder f where f.user.id=:user and (:before is null or f.id<:before)"
+            + " and (:pattern is null or lower(f.name) like :pattern escape '!') order by f.id desc")
+    List<WorldFolder> page(@Param("user") Long user, @Param("before") Long before,
+            @Param("pattern") String pattern, Pageable pageable);
 }
