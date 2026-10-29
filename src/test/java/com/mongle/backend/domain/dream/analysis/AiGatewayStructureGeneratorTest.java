@@ -71,6 +71,20 @@ class AiGatewayStructureGeneratorTest {
         assertThat(request.outputSchema().name()).isEqualTo("dream_structure");
         assertThat(request.outputSchema().schema())
                 .isEqualTo(json.readTree(StructurePrompt.schema()));
+        // 운영 LINER 비교 호출에서 제약을 제거한 요청만 200/stop으로 완료됐다.
+        // 길이·범위·중복 규칙은 StructureValidator가 검증하고, 전송 스키마는 구조만 제한한다.
+        assertThat(request.outputSchema().schema().toString())
+                .doesNotContain(
+                        "\"uniqueItems\"",
+                        "\"pattern\"",
+                        "\"minLength\"",
+                        "\"maxLength\"",
+                        "\"minItems\"",
+                        "\"maxItems\"",
+                        "\"minimum\"",
+                        "\"maximum\"");
+        assertThat(request.outputSchema().schema().at("/properties/elements/items/properties/type/enum"))
+                .isEqualTo(json.readTree("[\"CHARACTER\",\"PLACE\",\"SYMBOL\",\"EMOTION\"]"));
         assertThat(new StructureValidator().parse(await(generator.generate(input))).scenes())
                 .isNotEmpty();
     }

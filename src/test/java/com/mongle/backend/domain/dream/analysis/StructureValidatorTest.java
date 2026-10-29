@@ -32,6 +32,15 @@ class StructureValidatorTest {
     }
 
     @Test
+    void rejectsInvalidKeysAndOversizedTextWithoutProviderSchemaConstraints() {
+        // 전송 스키마의 pattern·maxLength가 없어도 서버가 동일한 경계를 지킨다.
+        reject(VALID.replace("sea", "1sea"));
+        reject(VALID.replace("\"name\":\"바다\"", "\"name\":\"" + "바".repeat(101) + "\""));
+        reject(VALID.replace("파란 바다", "바".repeat(501)));
+        reject(VALID.replace("바다 위를 날았다", "바".repeat(1001)));
+    }
+
+    @Test
     void rejectsInventedDatabaseIdentifiers() {
         reject(VALID.replace("\"sequence\":1", "\"userId\":123,\"sequence\":1"));
     }

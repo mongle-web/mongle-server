@@ -9,26 +9,16 @@
   ],
   "properties": {
     "generatedTitle": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 20,
-      "pattern": "^[^\\r\\n\\t]+$"
+      "type": "string"
     },
     "displayKeywords": {
       "type": "array",
-      "minItems": 1,
-      "maxItems": 5,
-      "uniqueItems": true,
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 20,
-        "pattern": "^[^\\r\\n\\t]+$"
+        "type": "string"
       }
     },
     "elements": {
       "type": "array",
-      "maxItems": 30,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -40,10 +30,7 @@
         ],
         "properties": {
           "key": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,39}$"
+            "type": "string"
           },
           "type": {
             "type": "string",
@@ -55,22 +42,16 @@
             ]
           },
           "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
+            "type": "string"
           },
           "description": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500
+            "type": "string"
           }
         }
       }
     },
     "scenes": {
       "type": "array",
-      "minItems": 1,
-      "maxItems": 10,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -82,26 +63,18 @@
         ],
         "properties": {
           "sequence": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 10
+            "type": "integer"
           },
           "content": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1000
+            "type": "string"
           },
           "disconnectedFromPrevious": {
             "type": "boolean"
           },
           "elementKeys": {
             "type": "array",
-            "uniqueItems": true,
-            "maxItems": 30,
             "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 40
+              "type": "string"
             }
           }
         }
