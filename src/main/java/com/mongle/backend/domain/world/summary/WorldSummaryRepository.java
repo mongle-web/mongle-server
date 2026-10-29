@@ -11,6 +11,8 @@ import java.util.*;
 public interface WorldSummaryRepository extends JpaRepository<WorldSummary, Long> {
     Optional<WorldSummary> findByWorldIdAndUserId(Long world, Long user);
 
+    List<WorldSummary> findByUserIdAndWorldIdIn(Long user, Collection<Long> worlds);
+
     @Query(
             "select s from WorldSummary s where s.status=:pending or (s.status=:processing and"
                 + " s.leaseUntil<=:now) order by s.worldId")

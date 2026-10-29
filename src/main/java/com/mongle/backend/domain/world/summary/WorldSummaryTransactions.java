@@ -32,6 +32,7 @@ public class WorldSummaryTransactions {
     private final WorldSummaryProperties properties;
     private final WorldSummaryGenerator generator;
     private final WorldSummaryValidator validator;
+    private final WorldSummaryResponses responses;
     private final DreamGenerationSettings settings;
     private final Clock authClock;
     private final JsonMapper json = JsonMapper.builder().build();
@@ -209,44 +210,7 @@ public class WorldSummaryTransactions {
 
     private WorldSummaryResponse response(
             Long user, Long world, WorldComposition w, WorldSummary s) {
-        long revision = w == null ? 0 : w.getCompositionRevision();
-        var stats = queries.stats(user, world);
-        var result =
-                s == null || s.getResultJson() == null
-                        ? null
-                        : json.readValue(s.getResultJson(), WorldSummaryContent.class);
-        boolean empty = w != null && w.isHasResult() && stats.count() == 0;
-        var status =
-                empty
-                        ? WorldSummaryResponse.Status.EMPTY
-                        : s == null
-                                ? WorldSummaryResponse.Status.NOT_GENERATED
-                                : WorldSummaryResponse.Status.valueOf(s.getStatus().name());
-        boolean refresh =
-                !empty
-                        && w != null
-                        && w.isHasResult()
-                        && (result == null
-                                || !s.matches(revision, settings.capture())
-                                || stats.sourceChanged()
-                                || stats.count() != stats.validCount());
-        return new WorldSummaryResponse(
-                world,
-                revision,
-                s == null ? null : s.getResultRevision(),
-                s == null ? 0 : s.getVersion(),
-                status,
-                s == null ? null : s.getFailureCode(),
-                result == null ? null : result.generatedTitle(),
-                result == null ? List.of() : result.commonKeywords(),
-                result == null ? List.of() : result.recurringEmotions(),
-                result == null ? 0 : result.sourceCount(),
-                result == null || result.limitedEvidence(),
-                stats.sourceChanged(),
-                refresh,
-                result != null && (status != WorldSummaryResponse.Status.COMPLETED || refresh),
-                s == null ? null : s.getGeneratedAt(),
-                s == null ? null : s.getPromptVersion());
+        return responses.from(world, w, s, queries.stats(user, world), false);
     }
 
     private void folder(Long user, Long world) {

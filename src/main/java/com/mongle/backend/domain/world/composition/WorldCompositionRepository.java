@@ -11,6 +11,8 @@ import java.util.*;
 public interface WorldCompositionRepository extends JpaRepository<WorldComposition, Long> {
     Optional<WorldComposition> findByWorldIdAndUserId(Long worldId, Long userId);
 
+    List<WorldComposition> findByUserIdAndWorldIdIn(Long userId, Collection<Long> worldIds);
+
     interface Candidate {
         Long getWorldId();
 

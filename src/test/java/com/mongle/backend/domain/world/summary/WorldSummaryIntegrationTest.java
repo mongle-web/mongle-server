@@ -17,6 +17,8 @@ import com.mongle.backend.domain.world.composition.*;
 import com.mongle.backend.domain.world.folder.*;
 import com.mongle.backend.global.common.GenerationStatus;
 import com.mongle.backend.global.error.BusinessException;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
 
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.*;
@@ -132,7 +134,8 @@ public class WorldSummaryIntegrationTest {
     @Autowired StoryTransactions storyTransactions;
     @Autowired UserRepository users;
     @Autowired TokenService tokens;
-    @Autowired JdbcTemplate jdbc;
+    @MockitoSpyBean JdbcTemplate jdbc;
+    @Autowired EntityManagerFactory emf;
     @Autowired FakeGenerator generator;
     @Autowired MutableClock clock;
     @MockitoSpyBean WorldSummaryProperties properties;
@@ -239,6 +242,216 @@ public class WorldSummaryIntegrationTest {
                         + " a.source_dream_id=?",
                 Long.class,
                 dream);
+    }
+
+    WorldFolderCardResponse card(Long world) {
+        return folders.list(user, null, 50, null).items().stream()
+                .filter(item -> item.worldId().equals(world)).findFirst().orElseThrow();
+    }
+
+    @Test
+    void listCardIncludesSavedSummaryAndOldestPublishedDreamWithoutCallingAiOrWritingState() throws Exception {
+        var later = ready(2);
+        var oldest = ready(1);
+        var rename = new DreamUpdateRequest();
+        rename.setRevision(oldest.revision()); rename.setTitle("첫 번째 꿈");
+        dreams.update(user, oldest.dreamId(), rename);
+        var world = folder(later, oldest);
+        build(world);
+        var pending = card(world);
+        assertThat(pending.composedDreamCount()).isEqualTo(2);
+        assertThat(pending.summary().status()).isEqualTo(WorldSummaryResponse.Status.PENDING);
+        assertThat(pending.summary().generatedTitle()).isNull();
+        var result = pump(world);
+        var before = jdbc.queryForMap("select * from world_summaries where world_id=?", world);
+        var listed = card(world);
+        assertThat(listed.name()).isEqualTo("첫 꿈 제목 외 N개");
+        assertThat(listed.selectedDreamCount()).isEqualTo(2);
+        assertThat(listed.composedDreamCount()).isEqualTo(2);
+        assertThat(listed.representativeDream().dreamId()).isEqualTo(oldest.dreamId());
+        assertThat(listed.representativeDream().title()).isEqualTo("첫 번째 꿈");
+        assertThat(listed.representativeDream().dreamedAt()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(listed.summary()).isEqualTo(result);
+        assertThat(jdbc.queryForMap("select * from world_summaries where world_id=?", world)).isEqualTo(before);
+        assertThat(generator.calls).hasValue(1);
+        try (var client = HttpClient.newHttpClient()) {
+            var response = client.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/api/v1/worlds"))
+                    .header("Authorization", "Bearer "+tokens.login(user).response().accessToken()).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.headers().firstValue("cache-control")).hasValue("no-store");
+            var item = JsonMapper.builder().build().readTree(response.body()).at("/data/items/0");
+            assertThat(item.get("composedDreamCount").asLong()).isEqualTo(2);
+            assertThat(item.at("/summary/generatedTitle").asString()).isEqualTo(result.generatedTitle());
+            assertThat(item.at("/summary/commonKeywords/0/keyword").asString()).isEqualTo("바다");
+            assertThat(response.body()).doesNotContain("바다 위를 날아갔다", "attemptSettings", "resultJson");
+        }
+        rename.setRevision(dreams.get(user, oldest.dreamId()).revision()); rename.setTitle(null);
+        dreams.update(user, oldest.dreamId(), rename);
+        assertThat(card(world).representativeDream().title()).isNull();
+        assertThat(generator.calls).hasValue(1);
+    }
+
+    @Test
+    void listSeparatesSelectedPublishedAndPreviousSummaryCountsAcrossBuildAndFailure() throws Exception {
+        var a = ready(1); var b = ready(2); var c = ready(3);
+        var world = folder(a, b);
+        build(world); pump(world);
+        folders.select(user, world, c.dreamId(), folders.get(user, world).revision());
+        var selected = card(world);
+        assertThat(selected.selectedDreamCount()).isEqualTo(3);
+        assertThat(selected.composedDreamCount()).isEqualTo(2);
+        assertThat(selected.summary().sourceCount()).isEqualTo(2);
+        worlds.build(user, world, new WorldBuildRequest(folders.get(user, world).revision(),
+                worlds.get(user, world).compositionRevision()));
+        assertThat(card(world).composedDreamCount()).isEqualTo(2);
+        pumpWorld(world);
+        var pending = card(world);
+        assertThat(pending.composedDreamCount()).isEqualTo(3);
+        assertThat(pending.summary().sourceCount()).isEqualTo(2);
+        assertThat(pending.summary().status()).isEqualTo(WorldSummaryResponse.Status.PENDING);
+        assertThat(pending.summary().refreshNeeded()).isTrue();
+        assertThat(pending.summary().hasPreviousResult()).isTrue();
+        assertThat(pending.summary().resultCompositionRevision()).isLessThan(pending.summary().compositionRevision());
+        var step = summaries.claim(user, world);
+        assertThat(card(world).summary().status()).isEqualTo(WorldSummaryResponse.Status.PROCESSING);
+        summaries.complete(step, null, new IllegalStateException("provider failed"));
+        var failed = card(world);
+        assertThat(failed.composedDreamCount()).isEqualTo(3);
+        assertThat(failed.summary().sourceCount()).isEqualTo(2);
+        assertThat(failed.summary().status()).isEqualTo(WorldSummaryResponse.Status.FAILED);
+        assertThat(failed.summary().hasPreviousResult()).isTrue();
+        assertThat(generator.calls).hasValue(1);
+        summaries.request(user, world); pump(world);
+        var done = card(world);
+        assertThat(done.composedDreamCount()).isEqualTo(3);
+        assertThat(done.summary().sourceCount()).isEqualTo(3);
+        assertThat(done.summary().refreshNeeded()).isFalse();
+    }
+
+    @Test
+    void listKeepsZeroAndOneDreamFoldersAndDoesNotExposeDeletedSummaryKeywords() throws Exception {
+        var a = ready(1); var b = ready(2);
+        var world = folder(a, b);
+        build(world); pump(world);
+        dreams.delete(user, a.dreamId(), a.revision());
+        var one = card(world);
+        assertThat(one.composedDreamCount()).isEqualTo(1);
+        assertThat(one.representativeDream().dreamId()).isEqualTo(b.dreamId());
+        assertThat(one.summary().generatedTitle()).isNull();
+        assertThat(one.summary().commonKeywords()).isEmpty();
+        assertThat(one.summary().sourceCount()).isZero();
+        summaries.request(user, world); pump(world);
+        assertThat(card(world).summary().sourceCount()).isEqualTo(1);
+        dreams.delete(user, b.dreamId(), b.revision());
+        var empty = card(world);
+        assertThat(empty.composedDreamCount()).isZero();
+        assertThat(empty.representativeDream()).isNull();
+        assertThat(empty.summary().status()).isEqualTo(WorldSummaryResponse.Status.EMPTY);
+        assertThat(empty.summary().commonKeywords()).isEmpty();
+        assertThat(empty.summary().generatedTitle()).isNull();
+        assertThat(generator.calls).hasValue(2);
+    }
+
+    @Test
+    void listUsesFrozenKeywordsAndMarksSourceChangesWithoutRegeneration() throws Exception {
+        var a = ready(1);
+        var world = folder(a, ready(2));
+        build(world); var done = pump(world);
+        edit(a);
+        var listed = card(world).summary();
+        assertThat(listed.commonKeywords()).isEqualTo(done.commonKeywords());
+        assertThat(listed.recurringEmotions()).isEqualTo(done.recurringEmotions());
+        assertThat(listed.sourceChanged()).isTrue();
+        assertThat(listed.refreshNeeded()).isTrue();
+        assertThat(listed.hasPreviousResult()).isTrue();
+        assertThat(listed).isEqualTo(summaries.get(user, world));
+        assertThat(generator.calls).hasValue(1);
+    }
+
+    @Test
+    void listSuppressesMissingResultSourcesWithoutPersistingSanitization() throws Exception {
+        var world = folder(ready(1), ready(2));
+        build(world); pump(world);
+        jdbc.update("update world_summary_sources set story_version_id=? where world_id=? and candidate=false",
+                Long.MAX_VALUE, world);
+        var before = jdbc.queryForMap("select * from world_summaries where world_id=?", world);
+        var listed = card(world).summary();
+        assertThat(listed.generatedTitle()).isNull();
+        assertThat(listed.commonKeywords()).isEmpty();
+        assertThat(listed.recurringEmotions()).isEmpty();
+        assertThat(listed.sourceCount()).isZero();
+        assertThat(listed.resultCompositionRevision()).isNull();
+        assertThat(listed.generatedAt()).isNull();
+        assertThat(jdbc.queryForMap("select * from world_summaries where world_id=?", world)).isEqualTo(before);
+        assertThat(generator.calls).hasValue(1);
+        assertThat(summaries.get(user, world).generatedTitle()).isNull();
+    }
+
+    @Test
+    void listProjectsExpiredLeaseWithoutChangingStoredJobOrSendingAi() throws Exception {
+        var world = folder(ready(1), ready(2));
+        build(world); pump(world);
+        folders.select(user, world, ready(3).dreamId(), folders.get(user, world).revision());
+        build(world); summaries.claim(user, world);
+        clock.now = clock.now.plusSeconds(121);
+        var before = jdbc.queryForMap("select * from world_summaries where world_id=?", world);
+        var listed = card(world).summary();
+        assertThat(listed.status()).isEqualTo(WorldSummaryResponse.Status.FAILED);
+        assertThat(listed.failureCode()).isEqualTo("ATTEMPT_EXPIRED");
+        assertThat(listed.generatedTitle()).isEqualTo("하늘을 건넌 바다");
+        assertThat(listed.hasPreviousResult()).isTrue();
+        assertThat(jdbc.queryForMap("select * from world_summaries where world_id=?", world)).isEqualTo(before);
+        assertThat(generator.calls).hasValue(1);
+    }
+
+    @Test
+    void listIncludesUnbuiltAndNotGeneratedWorldsWithoutAutoQueueing() throws Exception {
+        var empty = folders.create(user, "빈 폴더").worldId();
+        var unbuilt = folder(ready(1));
+        var built = folder(ready(2), ready(3));
+        org.mockito.Mockito.doReturn(false).when(properties).enabled();
+        build(built);
+        for (Long world : List.of(empty, unbuilt, built)) {
+            var listed = card(world);
+            assertThat(listed.summary().status()).isEqualTo(WorldSummaryResponse.Status.NOT_GENERATED);
+            assertThat(listed.summary().generatedTitle()).isNull();
+            assertThat(listed.summary().commonKeywords()).isEmpty();
+        }
+        assertThat(card(empty).composedDreamCount()).isZero();
+        assertThat(card(unbuilt).selectedDreamCount()).isEqualTo(1);
+        assertThat(card(unbuilt).composedDreamCount()).isZero();
+        assertThat(card(unbuilt).representativeDream()).isNull();
+        assertThat(card(built).composedDreamCount()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from world_summaries where user_id=?", Long.class, user)).isZero();
+        assertThat(generator.calls).hasValue(0);
+    }
+
+    @Test
+    void listQueryCountStaysBoundedForMultipleWorldCardsIncludingJdbcReads() throws Exception {
+        var a = ready(1); var b = ready(2);
+        for (int i = 0; i < 6; i++) build(folder(a, b));
+        var stats = emf.unwrap(SessionFactory.class).getStatistics();
+        boolean wasEnabled = stats.isStatisticsEnabled();
+        stats.setStatisticsEnabled(true);
+        try {
+            stats.clear(); org.mockito.Mockito.clearInvocations(jdbc);
+            assertThat(folders.list(user, null, 1, null).items()).hasSize(1);
+            long singleJpa = stats.getPrepareStatementCount();
+            long singleJdbc = jdbcQueries();
+            stats.clear(); org.mockito.Mockito.clearInvocations(jdbc);
+            assertThat(folders.list(user, null, 50, null).items()).hasSize(6);
+            assertThat(stats.getPrepareStatementCount()).isEqualTo(singleJpa).isEqualTo(3);
+            assertThat(jdbcQueries()).isEqualTo(singleJdbc).isPositive();
+            assertThat(generator.calls).hasValue(0);
+        } finally {
+            stats.setStatisticsEnabled(wasEnabled);
+        }
+    }
+
+    private long jdbcQueries() {
+        return org.mockito.Mockito.mockingDetails(jdbc).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("query")).count();
     }
 
     @Test
