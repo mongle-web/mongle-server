@@ -310,6 +310,21 @@ public class WorldSummaryIntegrationTest {
     }
 
     @Test
+    void rebuildingIdenticalPublishedInputsReusesResultAcrossCompositionRevisions()
+            throws Exception {
+        var world = folder(ready(1), ready(2));
+        build(world);
+        var first = pump(world);
+        build(world);
+        var reused = pump(world);
+        assertThat(reused.status()).isEqualTo(WorldSummaryResponse.Status.COMPLETED);
+        assertThat(reused.resultCompositionRevision()).isEqualTo(2);
+        assertThat(reused.generatedAt()).isEqualTo(first.generatedAt());
+        assertThat(reused.refreshNeeded()).isFalse();
+        assertThat(generator.calls).hasValue(1);
+    }
+
+    @Test
     void selectionChangesAloneDoNotAlterPublishedSummary() throws Exception {
         var a = ready(1);
         var b = ready(2);
@@ -598,7 +613,7 @@ public class WorldSummaryIntegrationTest {
         var before =
                 jdbc.queryForList(
                         "select dream_id,story_version_id from world_summary_sources where"
-                            + " world_id=? and candidate=false order by dream_id",
+                                + " world_id=? and candidate=false order by dream_id",
                         world);
         folders.select(user, world, ready(3).dreamId(), folders.get(user, world).revision());
         build(world);
@@ -620,13 +635,13 @@ public class WorldSummaryIntegrationTest {
         assertThat(
                         jdbc.queryForList(
                                 "select dream_id,story_version_id from world_summary_sources where"
-                                    + " world_id=? and candidate=false order by dream_id",
+                                        + " world_id=? and candidate=false order by dream_id",
                                 world))
                 .isEqualTo(before);
         assertThat(
                         jdbc.queryForObject(
                                 "select count(*) from world_summary_sources where world_id=? and"
-                                    + " candidate=true",
+                                        + " candidate=true",
                                 Long.class,
                                 world))
                 .isEqualTo(3);
@@ -646,7 +661,7 @@ public class WorldSummaryIntegrationTest {
         user = owner;
         jdbc.update(
                 "update world_composition_entries set story_version_id=? where world_id=? and"
-                    + " dream_id=? and candidate=false",
+                        + " dream_id=? and candidate=false",
                 foreignVersion,
                 world,
                 a.dreamId());

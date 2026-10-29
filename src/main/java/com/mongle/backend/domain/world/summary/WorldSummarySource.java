@@ -50,7 +50,7 @@ public class WorldSummarySource {
     @Column(nullable = false)
     private boolean candidate;
 
-    static WorldSummarySource create(WorldSummary s, WorldSummaryEvidence.Source ref) {
+    public static WorldSummarySource create(WorldSummary s, WorldSummaryEvidence.Source ref) {
         var r = new WorldSummarySource();
         r.worldId = s.getWorldId();
         r.userId = s.getUserId();

@@ -72,7 +72,7 @@ public class WorldSummary extends BaseEntity {
 
     @Version private long version;
 
-    static WorldSummary create(Long user, Long world) {
+    public static WorldSummary create(Long user, Long world) {
         var s = new WorldSummary();
         s.userId = user;
         s.worldId = world;
@@ -111,6 +111,20 @@ public class WorldSummary extends BaseEntity {
                 && Objects.equals(resultRevision, revision)
                 && Objects.equals(resultSettings, settings)
                 && Objects.equals(promptVersion, WorldSummaryPrompt.VERSION);
+    }
+
+    boolean sameInput(String fingerprint, String settings) {
+        return resultJson != null
+                && Objects.equals(resultFingerprint, fingerprint)
+                && Objects.equals(resultSettings, settings)
+                && Objects.equals(promptVersion, WorldSummaryPrompt.VERSION);
+    }
+
+    void reuse() {
+        resultRevision = requestedRevision;
+        status = GenerationStatus.COMPLETED;
+        failureCode = null;
+        leaseUntil = null;
     }
 
     void complete(String json, Instant now) {

@@ -122,6 +122,11 @@ public class WorldSummaryTransactions {
                 s.fail("SOURCE_DELETED");
                 return null;
             }
+            if (s.sameInput(snapshot.fingerprint(), settings.capture())) {
+                sources.deleteLane(world, true);
+                s.reuse();
+                return null;
+            }
             sources.deleteLane(world, true);
             s.claim(snapshot.fingerprint(), settings.capture(), authClock.instant());
             for (var ref : snapshot.sources()) sources.save(WorldSummarySource.create(s, ref));
