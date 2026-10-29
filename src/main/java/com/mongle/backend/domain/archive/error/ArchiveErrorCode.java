@@ -13,6 +13,7 @@ public enum ArchiveErrorCode implements ErrorCode {
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "ARCHIVE_400_2", "조회 커서가 올바르지 않습니다. 같은 조회 조건으로 다시 요청해주세요."),
     INVALID_SIZE(HttpStatus.BAD_REQUEST, "ARCHIVE_400_3", "조회 개수는 1~50개로 지정해주세요."),
     INVALID_SORT(HttpStatus.BAD_REQUEST, "ARCHIVE_400_4", "정렬은 LATEST 또는 OLDEST로 지정해주세요."),
+    INVALID_QUERY(HttpStatus.BAD_REQUEST, "ARCHIVE_400_5", "검색어는 앞뒤 공백을 제외하고 최대 50자입니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "ARCHIVE_404_1", "꿈 기록을 찾을 수 없습니다.");
 
     private final HttpStatus httpStatus;

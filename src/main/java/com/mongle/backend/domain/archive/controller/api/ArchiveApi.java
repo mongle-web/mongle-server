@@ -29,12 +29,16 @@ public interface ArchiveApi {
     @Operation(summary = "Archive 목록 조회", description = "감정 선택을 완료한 내 꿈을 꿈 날짜·ID 순서로 조회합니다. "
             + "sort=LATEST(기본 최신순) 또는 OLDEST(오래된순)를 지정합니다. "
             + "month(YYYY-MM) 또는 date(YYYY-MM-DD) 중 하나를 사용하고 생략하면 전체를 조회합니다. "
-            + "기본 size=20, 최대 50입니다. hasNext이면 같은 필터·정렬과 nextCursor로 이어서 조회합니다. 정렬을 바꾸면 커서를 초기화합니다. "
+            + "query는 제목·원문·저장된 표시 키워드의 OR 부분 일치이며 영문 대소문자를 구분하지 않습니다. %, _, !도 문자 그대로 검색합니다. "
+            + "앞뒤 Unicode 공백을 제외한 최대 50 코드포인트이며 생략·공백만이면 전체 조회, 초과하면 ARCHIVE_400_5입니다. "
+            + "기본 size=20, 최대 50입니다. hasNext이면 같은 검색어·필터·정렬과 nextCursor로 이어서 조회합니다. 조건을 바꾸면 커서를 초기화합니다. "
+            + "검색은 AI 호출·과금 없이 현재 제목·원문과 마지막 저장된 키워드를 조회합니다. "
             + "초안·삭제한 기록은 제외하며 분석·이미지가 없는 기록도 포함합니다. 수정·삭제에는 각 카드의 revision을 사용합니다.")
     ResponseEntity<ApiResponse<ArchivePage>> list(@Parameter(hidden = true) Jwt jwt, String month, String date,
             @Parameter(description = "꿈 날짜 기준 정렬. 생략하면 LATEST",
                     schema = @Schema(allowableValues = {"LATEST", "OLDEST"}, defaultValue = "LATEST")) String sort,
-            String cursor, int size);
+            String cursor, int size,
+            @Parameter(description = "제목·원문·표시 키워드 검색어. 앞뒤 공백 제외 최대 50 코드포인트", example = "바다") String query);
 
     @Operation(summary = "Archive 상세 조회", description = "dream에 카드 정보·수정 표시·최신 revision·분석/서사/이미지 상태와 ID를, "
             + "originalText에 사용자의 원문을 반환합니다. 감정은 기존 7종이며 키워드는 AI 생성값입니다. "
