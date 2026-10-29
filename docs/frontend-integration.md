@@ -1,6 +1,6 @@
 # 몽글 프론트엔드 연동 전달본
 
-2026-10-29 #93 코드 기준. 기존 온보딩에 가입 크레딧 지급을 연결하며 통합 명세는49경로·61개 API다. #93의 가입 지급은 머지·배포 후 적용하며, 운영 명세는 실제 배포된 커밋 기준으로 확인한다. **현재 구현 계약과 운영 활성 상태를 구분한다.**
+2026-10-29 #95 코드 기준. 세계관 AI 제목·공통 키워드·반복 감정의 무료 생성·조회 API를 추가했으며 현재 코드의 로컬 명세는 50경로·63개 API다. #95는 머지·배포·운영 활성화 후 사용할 수 있으며, 운영 명세는 실제 배포된 커밋 기준으로 확인한다. **현재 구현 계약과 운영 활성 상태를 구분한다.**
 
 ## 주소와 명세 전달
 
@@ -110,6 +110,16 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 - 실제 이미지 URL은 `/images/{imageId}/download-url`에서 발급받는다. 만료되는 서명 URL이며 저장소 영구 URL처럼 취급하지 않는다. `sourceDeleted` 등 접근 상태도 확인한다.
 
 스타일4개는 확정됐고 코드 반영이 남아 있다. **판매·이용 권한 정책은 페이앱 문의 답변 후 확정한다.** 기존3→무료→1토큰안은 보류이며 크레딧·건별 결제·기간 패스 중 하나를 현재 확정 방식으로 표시하지 않는다. 현재 API에 무료 잔여 횟수/다음 차감량 필드는 없다. 결제/이용권 UI와 생성 허용 정책은 후속 계약에 맞춰 연결한다.
+
+## 세계관 AI 제목·공통 키워드·반복 감정 (#95)
+
+- `GET /api/v1/worlds/{worldId}/summary`: 상태와 `generatedTitle`, `commonKeywords[{keyword,dreamCount}]`, `recurringEmotions[{code,label,dreamCount}]` 조회.
+- `POST /api/v1/worlds/{worldId}/summary`: 본문 없이 최초 생성/실패 재시도. 202는 접수/진행, 200은 완료 재사용/출처 없음이다. `ApiResponse.data.status`를 확인한다.
+- 세계관 완성·부분 반영 성공 시 자동 접수한다. 기존 완성본이 `NOT_GENERATED`이면 POST로 생성한다. GET은 AI를 호출하지 않는다. 생성 중 상태는 GET으로 조회한다.
+- 폴더 `name`과 결과 `generatedTitle`은 별개다. 폴더 이름을 AI 제목으로 자동 덮어쓰지 않는다. 키워드/감정은 고정 서사 버전의 스냅샷에서 서로 다른 꿈 2개 이상에 실제 존재하는 항목만 반환하며 근거가 없으면 빈 배열이다.
+- `refreshNeeded`·`sourceChanged`로 변경 안내, `hasPreviousResult`로 생성 중/실패 시 이전 결과 표시 여부를 판단한다. 원문만 바뀌면 먼저 새 서사를 세계관에 반영한다. 같은 완성본 POST 반복은 결과를 재사용한다. 삭제된 꿈의 텍스트 결과는 제거한다.
+- 무료이며 크레딧/이미지 생성 요청과 독립적이다. V5 마이그레이션·코드 배포 후 `MONGLE_WORLD_SUMMARY_ENABLED=true`, `MONGLE_WORLD_SUMMARY_WORKER_ENABLED=true`와 기존 LINER 설정이 필요하다. 이번 코드 작업에서 운영 활성화는 수행하지 않았다.
+- 전체 상태·필드·실패 처리·활성화 순서는 [세계관 결과 상세](world-summary.md)를 참고한다. 운영 Swagger는 실제 배포된 버전으로 확인한다.
 
 ## 세계관 폴더와 완성 이야기
 
@@ -234,6 +244,8 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | GET | `/api/v1/worlds/{worldId}/image` | 세계관 이미지 상태 조회 |
 | POST | `/api/v1/worlds/{worldId}/image` | 세계관 이미지 생성·재생성 |
 | GET | `/api/v1/worlds/{worldId}/image/download-url` | 세계관 이미지 다운로드 URL |
+| GET | `/api/v1/worlds/{worldId}/summary` | 세계관 AI 제목·공통 키워드·반복 감정 및 상태 조회 |
+| POST | `/api/v1/worlds/{worldId}/summary` | 세계관 결과 최초 생성·실패 재시도 접수 |
 
 ## 로컬 실행
 
