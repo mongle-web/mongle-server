@@ -18,7 +18,7 @@ public class ImageCreditTransactions {
 
     public void reserve(DreamImage image) {
         if (image.isFreeRegenerationAttempt()) {
-            regenerationPolicy.requireFreeAttemptAllowed(image.getUser().getId());
+            regenerationPolicy.requireFreeAttemptAllowed(image.getUser().getId(), CreditUsage.DREAM_IMAGE_REGENERATION);
             return;
         }
         var receipt = reservations.reserve(image.getUser().getId(),

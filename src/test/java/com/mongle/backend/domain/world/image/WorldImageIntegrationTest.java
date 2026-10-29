@@ -89,6 +89,7 @@ class WorldImageIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired TokenService tokens;
     @MockitoSpyBean WorldImageProperties properties;
+    @MockitoSpyBean CreditProperties creditProperties;
     @Value("${local.server.port}") int port;
     Long user;
     @BeforeEach void setup() {
@@ -125,6 +126,30 @@ class WorldImageIntegrationTest {
     long ledger(String kind) { return jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind=?",Long.class,user,kind); }
     void error(org.assertj.core.api.ThrowableAssert.ThrowingCallable action,Object code) {
         assertThatThrownBy(action).isInstanceOf(BusinessException.class).extracting("errorCode").isEqualTo(code);
+    }
+
+    @Test void missingRegenerationPriceRejectsFreeAttemptWithoutChangingImageSourcesOrCredits() throws Exception {
+        credits.grant(user,CreditSource.PAYMENT,"world-price:"+user,2);
+        var f=world(ready(1),ready(2));var first=generate(f.worldId());
+        var persisted=jdbc.queryForMap("select * from world_images where id=?",first.imageId());
+        var sourceRows=jdbc.queryForList("select * from world_image_sources where image_id=? order by id",first.imageId());
+        var storedKeys=Set.copyOf(storage.stored.keySet());
+        org.mockito.Mockito.doReturn(null).when(creditProperties).configuredCost(CreditUsage.WORLD_IMAGE_REGENERATION);
+
+        error(()->images.generate(user,f.worldId(),regenerate(f.worldId())),CreditErrorCode.UNAVAILABLE);
+        var unchanged=transactions.latest(user,f.worldId());
+        assertThat(unchanged.freeRegenerationAvailable()).isTrue();assertThat(unchanged.nextRegenerationCost()).isNull();
+        assertThat(jdbc.queryForMap("select * from world_images where id=?",first.imageId())).isEqualTo(persisted);
+        assertThat(jdbc.queryForList("select * from world_image_sources where image_id=? order by id",first.imageId())).isEqualTo(sourceRows);
+        assertThat(credits.balance(user).available()).isZero();assertThat(credits.balance(user).reserved()).isZero();
+        assertThat(ledger("RESERVE")).isEqualTo(1);assertThat(ledger("SETTLE")).isEqualTo(1);assertThat(ledger("RELEASE")).isZero();
+        assertThat(generator.calls).hasValue(1);assertThat(storage.stored.keySet()).isEqualTo(storedKeys);
+        assertThat(generate(f.worldId())).isEqualTo(unchanged);
+
+        org.mockito.Mockito.doCallRealMethod().when(creditProperties).configuredCost(CreditUsage.WORLD_IMAGE_REGENERATION);
+        var free=await(images.generate(user,f.worldId(),regenerate(f.worldId())));
+        assertThat(free.freeRegenerationAvailable()).isFalse();assertThat(credits.balance(user).available()).isZero();
+        assertThat(generator.calls).hasValue(2);assertThat(ledger("RESERVE")).isEqualTo(1);
     }
 
     @Test void freeRegenerationAtZeroBalanceIsSerializedAcrossConcurrentRequests() throws Exception {

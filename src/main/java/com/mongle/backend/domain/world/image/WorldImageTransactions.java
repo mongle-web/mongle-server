@@ -65,7 +65,7 @@ public class WorldImageTransactions {
         release(image); registerAttempt(image);
         image.start(composition.getCompositionRevision(),request.style(),request.mood(),authClock.instant());
         if (image.isFreeRegenerationAttempt()) {
-            regenerationPolicy.requireFreeAttemptAllowed(user);
+            regenerationPolicy.requireFreeAttemptAllowed(user, CreditUsage.WORLD_IMAGE_REGENERATION);
         } else {
             var receipt = reservations.reserve(user,"world-image:"+image.getAttemptId(),
                     image.getStorageKey()!=null?CreditUsage.WORLD_IMAGE_REGENERATION:CreditUsage.WORLD_IMAGE_GENERATION,
