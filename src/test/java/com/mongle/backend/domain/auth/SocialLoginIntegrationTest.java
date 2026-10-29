@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:oauth-contract;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")
+@SpringBootTest(properties = {"spring.datasource.url=jdbc:h2:mem:oauth-contract;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE", "mongle.credit.enabled=true"})
 @ActiveProfiles("test")
 class SocialLoginIntegrationTest {
     @Autowired private SocialLoginService login;

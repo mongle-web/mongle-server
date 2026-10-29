@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 
 @ConfigurationProperties("mongle.credit")
 public record CreditProperties(@DefaultValue("false") boolean enabled,
-        @DefaultValue("NO_EXPIRY") ExpiryPolicy expiryPolicy, Long signupAmount,
+        @DefaultValue("NO_EXPIRY") ExpiryPolicy expiryPolicy, @DefaultValue("3") Long signupAmount,
         Long dreamImageGeneration, Long dreamImageRegeneration,
         Long worldImageGeneration, Long worldImageRegeneration) {
     public enum ExpiryPolicy { UNDECIDED, NO_EXPIRY }
@@ -23,6 +23,13 @@ public record CreditProperties(@DefaultValue("false") boolean enabled,
     }
     public void requireEnabled() {
         if (!enabled) throw new BusinessException(CreditErrorCode.UNAVAILABLE);
+    }
+    /** 가입 혜택을 보장할 수 없으면 온보딩도 함께 롤백한다. 0/null은 미준비다. */
+    public long signupGrantAmount() {
+        requireEnabled();
+        if (signupAmount == null || signupAmount < 1)
+            throw new BusinessException(CreditErrorCode.UNAVAILABLE);
+        return signupAmount;
     }
     public long cost(CreditUsage usage) {
         requireEnabled();

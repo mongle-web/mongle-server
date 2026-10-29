@@ -29,8 +29,7 @@ import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.*;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties =
-        "spring.datasource.url=jdbc:h2:mem:mongle-token-http;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"spring.datasource.url=jdbc:h2:mem:mongle-token-http;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE", "mongle.credit.enabled=true"})
 @ActiveProfiles("test")
 @Import(TokenApiIntegrationTest.BusinessController.class)
 class TokenApiIntegrationTest {
@@ -63,6 +62,14 @@ class TokenApiIntegrationTest {
                     "{\"nickname\":\"몽글12\"}").statusCode()).isEqualTo(200);
             assertThat(send(client, "POST", "/api/v1/users/me/onboarding", issued.response(),
                     "{\"nickname\":\"다른닉네임\"}").statusCode()).isEqualTo(409);
+            var balance = send(client, "GET", "/api/v1/credits/balance", issued.response(), null);
+            assertThat(balance.statusCode()).isEqualTo(200);
+            assertThat(json.readTree(balance.body()).at("/data/available").asLong()).isEqualTo(3);
+            var history = send(client, "GET", "/api/v1/credits/transactions", issued.response(), null);
+            var entries = json.readTree(history.body()).at("/data/items");
+            assertThat(entries.size()).isEqualTo(1);
+            assertThat(entries.get(0).get("source").asString()).isEqualTo("SIGNUP");
+            assertThat(history.body()).doesNotContain("signup:", "sourceKey");
         }
         assertThat(users.findById(user.getId()).orElseThrow().getNickname()).isEqualTo("몽글12");
     }
