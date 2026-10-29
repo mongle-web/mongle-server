@@ -19,10 +19,11 @@ public interface UserApi {
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "미인증 또는 유효하지 않은 토큰")
     ResponseEntity<ApiResponse<UserResponse>> me(@Parameter(hidden = true) Jwt jwt);
 
-    @Operation(summary = "닉네임 온보딩 완료", description = "한글·영문·숫자 2~10자입니다. 같은 닉네임의 재요청은 성공하며, 완료 후 다른 닉네임으로 덮어쓸 수 없습니다.")
+    @Operation(summary = "닉네임 온보딩 완료", description = "한글·영문·숫자 2~10자입니다. 최초 완료 시 가입 혜택 기본 3크레딧을 같은 트랜잭션으로 지급합니다. 같은 닉네임의 재요청은 추가 지급 없이 성공하며, 기존 완료 계정에 소급 지급하거나 다른 닉네임으로 덮어쓰지 않습니다. 크레딧 기능 미준비·지급 실패 시 가입 완료도 롤백합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "온보딩 완료")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "닉네임 검증 실패")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "미인증 또는 유효하지 않은 토큰")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "다른 닉네임으로 이미 완료됨")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "CREDIT_503_1 크레딧 기능 비활성 또는 가입 지급량 미준비. 온보딩 변경 없음")
     ResponseEntity<ApiResponse<UserResponse>> onboarding(@Parameter(hidden = true) Jwt jwt, OnboardingRequest request);
 }

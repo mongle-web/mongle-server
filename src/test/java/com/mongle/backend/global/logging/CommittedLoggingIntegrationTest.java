@@ -17,7 +17,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** 서비스 반환과 실제 커밋을 구분해 잘못된 성공 로그와 멱등 재요청의 중복 기록을 방지한다. */
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:mongle-committed-logging;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")
+@SpringBootTest(properties = {"spring.datasource.url=jdbc:h2:mem:mongle-committed-logging;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE", "mongle.credit.enabled=true"})
 @ActiveProfiles("test")
 class CommittedLoggingIntegrationTest {
     @Autowired private UserRepository users;

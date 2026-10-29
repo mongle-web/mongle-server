@@ -1,6 +1,6 @@
 # 몽글 프론트엔드 연동 전달본
 
-2026-10-28 #84 코드 기준. 종합 해석 조회·최초 생성·명시적 갱신을 추가해 통합 명세는49경로·61개 API다. #84는 머지·배포 전이며, 운영 명세는 실제 배포된 커밋 기준으로 확인한다. **현재 구현 계약과 운영 활성 상태를 구분한다.**
+2026-10-29 #93 코드 기준. 기존 온보딩에 가입 크레딧 지급을 연결하며 통합 명세는49경로·61개 API다. #93의 가입 지급은 머지·배포 후 적용하며, 운영 명세는 실제 배포된 커밋 기준으로 확인한다. **현재 구현 계약과 운영 활성 상태를 구분한다.**
 
 ## 주소와 명세 전달
 
@@ -11,11 +11,11 @@
 | 공통 API 접두사 | /api/v1 |
 | 운영 health | https://api.mongle.art/actuator/health — 이번 확인 HTTP200/UP |
 | 운영 Swagger | https://api.mongle.art/swagger-ui.html — UI200 확인 |
-| 운영 OpenAPI JSON | https://api.mongle.art/v3/api-docs — HTTP200, 47경로·58개 API 확인 |
+| 운영 OpenAPI JSON | https://api.mongle.art/v3/api-docs — HTTP200, 49경로·61개 API 확인 |
 | 로컬 Swagger | http://localhost:8080/swagger-ui.html |
 | 로컬 OpenAPI JSON | http://localhost:8080/v3/api-docs |
 
-최근 운영 인계에서는 #82 merge commit `18cd8f7e66bdb015b4fc9fd63df4df686fd9fdfb`의 CI40562597777/CD40563276306 성공과 외부 health·Swagger200을 확인했다. www의 Bearer GET preflight도 허용된 상태지만 실제 카카오 로그인과 업무 기능의 브라우저 연동 성공까지 뜻하지 않는다. 위 운영 API 개수는 #84 배포 전 확인값이며 #84의 신규3개 API는 머지·배포 후 확인한다.
+2026-10-29 운영 확인은 #90 merge commit `3dceeee7333d1a8bf89631d0961c4c972cfd64df` 기준이다. CI40826537314/CD40826960919 성공과 외부 health·OpenAPI200(49경로·61개 API)을 확인했다. #93 가입 지급의 실제 운영 적용은 해당 코드 머지·배포와 크레딧 활성화 후 확인한다. 실제 카카오·업무 기능의 브라우저 검증은 별도다.
 
 공통 설정에서는 문서가 기본 비활성이지만 현재 운영은 `SPRINGDOC_API_DOCS_ENABLED=true`, `SPRINGDOC_SWAGGER_UI_ENABLED=true`로 공개했다. 문서 열람과 실제 기능 활성화·로그인 성공은 구분한다.
 
@@ -48,7 +48,7 @@ API 클라이언트가 위 환경변수를 실제로 읽도록 연결한다. 경
 3. 최신 #70 코드는 로그인 성공 시 HttpOnly Refresh 쿠키를 설정하고 설정된 프론트 완료 URL로303 이동한다. URL에 Access Token을 실어 보내지 않는다.
 4. 완료 화면에서 `GET /api/v1/auth/csrf` → 응답 `data.headerName`, `data.token` 확보 → 그 헤더와 쿠키로 `POST /api/v1/auth/refresh`.
 5. Refresh 응답의 `data.accessToken`으로 업무 API를 호출한다. `data.user.onboardingCompleted=false`면 닉네임 입력 화면으로 이동한다.
-6. `POST /api/v1/users/me/onboarding`에 `{"nickname":"몽글러"}`를 Bearer 인증으로 보낸다. 닉네임은 한글·영문·숫자2~10자다. 성공 응답으로 프론트 회원 상태를 갱신한다. 서버가 현재 DB의 온보딩 상태를 확인하므로 완료 직후 별도의 Refresh는 필수가 아니다.
+6. `POST /api/v1/users/me/onboarding`에 `{"nickname":"몽글러"}`를 Bearer 인증으로 보낸다. 닉네임은 한글·영문·숫자2~10자다. 최초 성공 시 가입 혜택 기본 3크레딧도 함께 저장한다. 프론트 회원 상태를 갱신하고 잔액 API를 다시 조회한다. 로컬 잔액에 임의로3을 더하지 않는다. 같은 닉네임 재요청은 추가 지급하지 않으며 기존 완료 계정에는 소급하지 않는다. 크레딧 비활성/가입 지급량 미준비는503 CREDIT_503_1이고 온보딩도 롤백하므로 완료 화면으로 넘어가지 않는다. 서버가 현재 DB의 온보딩 상태를 확인하므로 완료 직후 별도의 Refresh는 필수가 아니다.
 7. `GET /api/v1/users/me`로 현재 회원 상태를 확인한다.
 
 백엔드 운영 복귀 주소는 성공 `https://www.mongle.art/auth/callback`, 실패 `https://www.mongle.art/login`으로 설정됐다는 인계를 받았다. 프론트의 실제 페이지 구현·배포와 계정 로그인 종단 검증은 별도로 확인한다. 카카오 콘솔 Redirect URI는 백엔드 Callback을 유지한다.
@@ -141,7 +141,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 - PAID와 `creditGranted`를 확인한다. 지급은 검증된 페이앱 서버 통보 후 확정된다.
 - PAYMENT_REVIEW 또는 잔액 `spendingBlocked=true`이면 구매/사용을 막고 확인 안내를 표시한다.
 - `POST /api/v1/payments/payapp/feedback`은 페이앱 서버 전용 FORM 통보이며 프론트에서 호출하지 않는다.
-- 잔액은 available/reserved/total 및 보류 여부를 구분한다. 신규 회원 기본0, 크레딧 무기한. 구매 취소와 생성 실패 예약 해제는 다른 처리다.
+- 잔액은 available/reserved/total 및 보류 여부를 구분한다. 최초 온보딩 완료 시 기본3크레딧, 크레딧 무기한. 지급 내역이 없는 기존 완료 계정은0이며 자동 소급하지 않는다. 구매 취소와 생성 실패 예약 해제는 다른 처리다.
 - 구매 환불 신청·자동 회수/보류 해제 API는 아직 없다. 법정 환불 접수·운영 취소 처리 경로는 별도 준비 중이며 일괄 환불 불가를 확정한 것은 아니다.
 
 ## 현재 없는 API와 운영 미검증 범위

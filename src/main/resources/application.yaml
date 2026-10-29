@@ -73,7 +73,7 @@ mongle:
   credit:
     enabled: ${MONGLE_CREDIT_ENABLED:false}
     expiry-policy: ${MONGLE_CREDIT_EXPIRY_POLICY:NO_EXPIRY}
-    signup-amount: ${MONGLE_CREDIT_SIGNUP_AMOUNT:}
+    signup-amount: ${MONGLE_CREDIT_SIGNUP_AMOUNT:3}
     dream-image-generation: ${MONGLE_CREDIT_DREAM_IMAGE_GENERATION:3}
     dream-image-regeneration: ${MONGLE_CREDIT_DREAM_IMAGE_REGENERATION:1}
     world-image-generation: ${MONGLE_CREDIT_WORLD_IMAGE_GENERATION:3}

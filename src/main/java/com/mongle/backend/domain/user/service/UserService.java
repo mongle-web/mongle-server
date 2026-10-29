@@ -1,5 +1,8 @@
 package com.mongle.backend.domain.user.service;
 
+import com.mongle.backend.domain.credit.CreditProperties;
+import com.mongle.backend.domain.credit.CreditService;
+import com.mongle.backend.domain.credit.CreditSource;
 import com.mongle.backend.domain.user.dto.UserResponse;
 import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.exception.UserErrorCode;
@@ -18,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final CreditService credits;
+    private final CreditProperties creditProperties;
 
     public UserResponse getMe(Long authenticatedUserId) {
         return UserResponse.from(userRepository.findById(authenticatedUserId)
@@ -34,6 +39,8 @@ public class UserService {
         user.completeOnboarding(nickname);
         // 같은 닉네임의 멱등 재요청은 새 상태 변경이 아니다. 최초 커밋에만 성공 로그를 남긴다.
         if (!alreadyCompleted) {
+            credits.grant(authenticatedUserId, CreditSource.SIGNUP, "signup:" + authenticatedUserId,
+                    creditProperties.signupGrantAmount());
             CommittedLog.afterCommit(() -> log.info("사용자 온보딩 완료: userId={}", authenticatedUserId));
         }
         return UserResponse.from(user);

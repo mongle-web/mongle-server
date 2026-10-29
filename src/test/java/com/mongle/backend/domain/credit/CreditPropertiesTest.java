@@ -22,4 +22,27 @@ class CreditPropertiesTest {
         assertThatThrownBy(()->new CreditProperties(false,CreditProperties.ExpiryPolicy.UNDECIDED,-1L,null,null,null,null)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(()->new CreditProperties(false,CreditProperties.ExpiryPolicy.UNDECIDED,null,0L,null,null,null)).isInstanceOf(IllegalArgumentException.class);
     }
+    @Test void signupAmountDefaultsToThreeWhenBoundAndHonorsExplicitConfiguration() {
+        new org.springframework.boot.test.context.runner.ApplicationContextRunner()
+                .withUserConfiguration(CreditConfiguration.class)
+                .run(context -> assertThat(context.getBean(CreditProperties.class).signupAmount()).isEqualTo(3));
+        new org.springframework.boot.test.context.runner.ApplicationContextRunner()
+                .withUserConfiguration(CreditConfiguration.class)
+                .withPropertyValues("mongle.credit.enabled=true", "mongle.credit.signup-amount=")
+                .run(context -> assertThat(context.getBean(CreditProperties.class).signupGrantAmount()).isEqualTo(3));
+        new org.springframework.boot.test.context.runner.ApplicationContextRunner()
+                .withUserConfiguration(CreditConfiguration.class)
+                .withPropertyValues("mongle.credit.enabled=true", "mongle.credit.signup-amount=5")
+                .run(context -> assertThat(context.getBean(CreditProperties.class).signupGrantAmount()).isEqualTo(5));
+    }
+    @Test void signupGrantRejectsDisabledNullAndZeroPolicyRatherThanCompletingWithoutBenefit() {
+        for (Long amount : new Long[]{null, 0L}) {
+            var p = new CreditProperties(true, CreditProperties.ExpiryPolicy.NO_EXPIRY, amount, null, null, null, null);
+            assertThatThrownBy(p::signupGrantAmount).isInstanceOfSatisfying(BusinessException.class,
+                    error -> assertThat(error.getErrorCode()).isEqualTo(CreditErrorCode.UNAVAILABLE));
+        }
+        var off = new CreditProperties(false, CreditProperties.ExpiryPolicy.NO_EXPIRY, 3L, null, null, null, null);
+        assertThatThrownBy(off::signupGrantAmount).isInstanceOf(BusinessException.class);
+    }
+
 }
