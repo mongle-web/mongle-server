@@ -67,6 +67,21 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | AUTH_401_6 | 동의 취소·state 오류 등 인증 실패 |
 | AUTH_503_1 | 서버 로그인 처리 장애 |
 
+## 마이페이지 닉네임 변경
+
+`PATCH /api/v1/users/me/nickname`에 Bearer 인증과 JSON `{"nickname":"새몽글"}`을 보낸다.
+온보딩을 마친 본인만 가능하며, 한글·영문·숫자2~10자와 중복 닉네임 허용 정책은 기존 온보딩과 같다.
+앞뒤 공백도 유효하지 않으며 사용자 ID·이메일 등 다른 필드를 보내지 않는다.
+
+성공200의 `data`는 `UserResponse`이며 변경된 nickname으로 프론트 회원 상태를 갱신한다.
+같은 닉네임 재요청도200이고 수정 시각을 바꾸지 않는다. 변경 전 Access Token도 계속 사용할 수 있으며
+별도 로그인·Refresh 없이 `GET /api/v1/users/me`에서 새 값을 조회한다.
+가입 크레딧·원장·온보딩 상태는 유지하고 재지급하지 않는다. 크레딧 기능이 비활성이어도 닉네임 변경은 가능하다.
+
+잘못된 nickname은400 `COMMON_400_2`, 다른 필드/잘못된 본문은400 `COMMON_400_1`,
+온보딩 전 변경은403 `USER_403_1`이다. 최초 가입은 기존 `/onboarding` API를 사용한다.
+별도 닉네임 중복 확인 API는 없다. [상세 계약](nickname-update.md)을 참고한다.
+
 ## 공통 응답·충돌·페이지
 
 ```json
@@ -249,6 +264,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | GET | `/api/v1/stories/{storyId}/versions` | 내 이야기의 성공 버전 목록 |
 | GET | `/api/v1/stories/{storyId}/versions/{versionId}` | 내 이야기의 특정 성공 버전 조회 |
 | GET | `/api/v1/users/me` | 내 정보 조회 |
+| PATCH | `/api/v1/users/me/nickname` | 마이페이지 닉네임 변경 |
 | POST | `/api/v1/users/me/onboarding` | 닉네임 온보딩 완료 |
 | GET | `/api/v1/worlds` | 내 세계관 폴더 목록·이름 검색 |
 | POST | `/api/v1/worlds` | 세계관 폴더 생성 |

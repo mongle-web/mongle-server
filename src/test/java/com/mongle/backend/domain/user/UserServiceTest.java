@@ -58,4 +58,16 @@ class UserServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, ex ->
                         assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.USER_NOT_FOUND));
     }
+
+    @Test
+    void nicknameChangeCannotCompleteOnboardingOrUpdateMissingAccount() {
+        User pending = userRepository.saveAndFlush(User.register("pending@example.com"));
+        assertThatThrownBy(() -> userService.updateNickname(pending.getId(), "새닉네임"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.ONBOARDING_REQUIRED));
+        assertThat(pending.isOnboardingCompleted()).isFalse();
+        assertThatThrownBy(() -> userService.updateNickname(Long.MAX_VALUE, "새닉네임"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(UserErrorCode.USER_NOT_FOUND));
+    }
 }
