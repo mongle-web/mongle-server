@@ -14,6 +14,7 @@ JWT의 subject에서 결정한다. 성공 응답은 기존 `ApiResponse`의 `dat
 | 화면/행동 | API | 사용 정보 |
 | --- | --- | --- |
 | 전체 Archive | `GET /api/v1/archives` | `data.items`의 카드 정보 |
+| 기록한 꿈 검색 | `GET /api/v1/archives?query=바다` | 제목·원문·저장된 표시 키워드 중 일치하는 카드 |
 | 꿈 연결 화면의 오래된순 목록 | `GET /api/v1/archives?sort=OLDEST` | 오래된 꿈부터 커서로 이어서 조회 |
 | 월별 캘린더 | `GET /api/v1/archives/calendar?month=2026-09` | 기록한 날짜 전체와 월별 기록 일수 |
 | 특정 월 목록 | `GET /api/v1/archives?month=2026-09` | 꿈을 꾼 날짜 기준으로 해당 월 조회 |
@@ -35,11 +36,18 @@ Archive 조회는 AI나 외부 이미지 저장소를 호출하지 않는다. �
   오래된순(`dreamedAt ASC, dreamId ASC`)이다. 생략하면 `LATEST`이며 그 외의 값은 400이다.
   날짜당 하나라는 기존 저장 정책을 유지한다.
 - `size` 기본값은 20, 허용 범위는 1~50이다.
-- 첫 요청에는 `cursor`를 생략한다. `hasNext=true`이면 받은 `nextCursor`와 **같은 월/날짜 필터·정렬**을
-  사용해 다음 페이지를 조회한다. 필터 또는 정렬을 바꾸면 커서를 버리고 첫 페이지부터 조회한다.
+- `query`는 제목·원문·기존 `displayKeywords` 중 하나에 포함된 문자열을 찾는다. 영문 대소문자를 구분하지 않으며,
+  앞뒤 Unicode 공백을 제거한 입력 기준 최대 50 코드포인트다. 생략·빈 문자열·공백만 입력하면 기존 전체 조회다.
+  `%`, `_`, `!`도 와일드카드가 아닌 실제 문자로 검색한다. 여러 필드·키워드에 일치해도 카드는 한 번 반환한다.
+- 현재 제목·원문 변경은 즉시 반영되며 키워드는 마지막 저장된 성공 분석을 사용한다. 원문 수정 후 이전 키워드도
+  재생성 전까지 검색될 수 있으므로 `analysis.sourceChanged` 안내를 유지한다. 검색으로 AI를 호출하거나 크레딧을 차감하지 않는다.
+- 첫 요청에는 `cursor`를 생략한다. `hasNext=true`이면 받은 `nextCursor`와 **같은 검색어·월/날짜 필터·정렬**을
+  사용해 다음 페이지를 조회한다. 조건을 바꾸면 커서를 버리고 첫 페이지부터 조회한다.
 - 커서는 클라이언트가 해석하거나 만들어낼 필요가 없는 위치 값이다. 권한 토큰은 아니며,
-  모든 조회에 인증된 소유자 조건을 적용한다. 다른 필터/정렬의 커서·잘못된 커서는 400이다.
-  기존 v1 최신순 커서는 `LATEST`에서 계속 사용할 수 있으며 새 커서는 정렬을 포함한 v2로 발급한다.
+  모든 조회에 인증된 소유자 조건을 적용한다. 다른 검색어/필터/정렬의 커서·잘못된 커서는 `ARCHIVE_400_2`다.
+  검색 없는 요청은 기존 v1(LATEST만)·v2 커서를 계속 지원한다. 검색 요청은 정규화한 검색어의 SHA-256을 포함한
+  v3 커서를 사용한다. 앞뒤 공백·영문 대소문자만 바꾼 같은 검색어는 이어서 조회할 수 있다.
+- 검색어 50 코드포인트 초과는 `400 ARCHIVE_400_5`다. 조회 조건·응답 형식은 다른 Archive API와 동일하다.
 - 마지막 페이지는 `hasNext=false`, `nextCursor=null`이다. 빈 결과도 200과 빈 `items`를 반환한다.
 - 앞쪽 기록이 추가되거나 이전 페이지의 마지막 기록이 삭제되어도 다음 페이지 경계가 밀리지 않는다.
   조회 도중 상태가 변경될 수 있으므로 여러 페이지가 하나의 고정된 스냅샷을 보장하지는 않는다.
@@ -49,12 +57,14 @@ Archive 조회는 AI나 외부 이미지 저장소를 호출하지 않는다. �
 ```http
 GET /api/v1/archives?sort=OLDEST&size=20
 GET /api/v1/archives?sort=OLDEST&size=20&cursor={nextCursor}
+GET /api/v1/archives?query=바다&month=2026-09&sort=OLDEST&size=20
+GET /api/v1/archives?query=바다&month=2026-09&sort=OLDEST&size=20&cursor={nextCursor}
 ```
 
 최신순으로 전환하면 `GET /api/v1/archives?sort=LATEST&size=20`으로 다시 시작한다.
 월 목록을 한 번에 읽으려면 날짜당 한 기록이라는 정책에 따라 `month=2026-09&size=31`을 사용할 수 있다.
-후속 꿈 연결 기능에서 체크 상태는 연결 상세의 선택 ID와 화면의 선택 집합으로 관리할 예정이며,
-이번 Archive 응답에는 추가하지 않는다.
+꿈 연결 화면의 체크 상태는 세계관 선택 목록 API의 ID와 화면의 선택 집합으로 관리한다.
+Archive 응답에는 선택 상태를 추가하지 않는다.
 
 아래는 **응답 형식을 설명하기 위한 예시**이며 실제 사용자 데이터가 아니다. 생성 결과가 없어도 카드가 존재한다.
 
@@ -154,17 +164,20 @@ GET /api/v1/archives?sort=OLDEST&size=20&cursor={nextCursor}
 ## 구현을 읽는 순서
 
 1. `domain/archive/controller/ArchiveController.java`: GET 경로, 인증 사용자, 공통 응답.
-2. `domain/archive/dto/request/ArchiveSearch.java`, `ArchiveSort.java`: 날짜·정렬·크기·커서 검증과 페이지 경계.
+2. `domain/archive/dto/request/ArchiveSearch.java`, `ArchiveSort.java`: 검색어·날짜·정렬·크기·커서 검증과 페이지 경계.
 3. `domain/archive/service/ArchiveService.java`: 읽기 트랜잭션, 배치 결과 조립, 수정·출처 표시.
 4. `domain/archive/repository/ArchiveQueryRepository.java`: 소유권과 완성 상태를 제한하는 실제 JPQL.
 5. `domain/archive/dto/response/`: 목록·상세·생성 상태의 응답 구조.
 6. 기존 `DreamService.update()` → `Dream.update()`: 감정 수정, 실제 변경 감지, 입력 버전 증가.
 
 목록은 먼저 `size+1`개의 꿈을 조회하고, 반환할 카드에 해당하는 분석·서사·이미지를 배치로 읽는다.
-관련 결과가 모두 있어도 조회 쿼리는 최대 4개다. 페이지 조회에 컬렉션 fetch join을 사용하지 않아
+생성 작업·관련 결과가 모두 있어도 조회 쿼리는 최대 5개다. 키워드 검색은 EXISTS로 판별하며 페이지 조회에 컬렉션 fetch join을 사용하지 않아
 전체 데이터를 메모리에서 페이지로 자르는 문제를 피한다. 상세는 단건 감정을 함께 로딩한다.
 
 ## DB 적용과 검증
+
+#98 검색은 기존 데이터와 인덱스를 사용하며 새 테이블·마이그레이션을 추가하지 않는다.
+아래는 기존 인덱스 도입 당시 안내이며 현재 DB 적용은 [Flyway 배포 계약](database-migrations.md)을 따른다.
 
 `dreams(user_id, record_status, dreamed_at, id)` 인덱스를 엔티티와 초기 스키마에 추가했다.
 새 DB는 `db/schema-initial.sql`에 포함되어 있다. 기존 MySQL DB는
@@ -174,5 +187,7 @@ GET /api/v1/archives?sort=OLDEST&size=20&cursor={nextCursor}
 `ArchiveIntegrationTest`는 실제 HTTP 인증과 H2/JPA를 사용해 완성 기록 필터, 월·날짜와 윤년,
 양방향 정렬과 커서 경계 기록 삭제, 필터/정렬이 다른 커서 거부, 기존 최신순 커서 호환,
 권한, 수정·삭제 연결, 보존 결과의 출처 표시, Swagger, 조회 쿼리 수를 확인한다.
+검색은 제목/원문/키워드 OR·중복 방지·부분 일치·영문 대소문자·Unicode 50/51자·특수문자 리터럴·
+검색 조건에 묶인 커서·기존 커서 호환·수정 전 키워드 보존을 검증한다.
 이미지 URL은 테스트용 저장소 구현으로 검증하며 실제 LINER·이미지 Provider·외부 저장소를 호출하지 않는다.
 H2에서 초기 스키마를 검증했으며 MySQL 마이그레이션을 실제 운영 DB에서 실행한 검증은 포함하지 않는다.

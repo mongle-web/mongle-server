@@ -58,6 +58,7 @@ HTTP 상태와 메시지, 예외 처리 흐름은 코드 형식 변경과 무관
 | Archive | INVALID_CURSOR | `ARCHIVE_400_2` | 400 |
 | Archive | INVALID_SIZE | `ARCHIVE_400_3` | 400 |
 | Archive | INVALID_SORT | `ARCHIVE_400_4` | 400 |
+| Archive | INVALID_QUERY | `ARCHIVE_400_5` | 400 |
 | Archive | NOT_FOUND | `ARCHIVE_404_1` | 404 |
 | 분석 | NOT_FOUND | `ANALYSIS_404_1` | 404 |
 | 분석 | INVALID_OUTPUT | `ANALYSIS_502_1` | 502 |
@@ -105,13 +106,16 @@ Gateway 코드는 이미 공개된 번호를 그대로 유지한다.
 이야기 성공 버전 조회: `STORY_400_1`(400)은 limit 1~50 또는 before 양수 조건 위반이다.
 타인의 이야기·없는 버전·다른 이야기의 버전은 기존 `STORY_404_1`로 처리한다.
 
+세계관 폴더 이름 검색에서 앞뒤 공백을 제외한 검색어가 50 코드포인트를 초과하면
+`400 WORLD_400_4`(INVALID_QUERY)를 반환한다. [폴더 계약](world-folders.md)을 참고한다.
+
 ## 세계관 이미지 (#71)
 
 | 코드 | HTTP | 의미 |
 | --- | --- | --- |
 | WORLD_IMAGE_400_1 | 400 | 세계관 이미지 입력 크기 초과 |
 | WORLD_IMAGE_404_1 | 404 | 이미지 없음/다른 소유자 |
-| WORLD_IMAGE_409_1 | 409 | 생성 가능한 세계관 완성본 없음 또는 꿈 0개 |
+| WORLD_IMAGE_409_1 | 409 | 생성 가능한 세계관 완성본 없음 또는 완성본 출처의 서로 다른 꿈 2개 미만 |
 | WORLD_IMAGE_409_2 | 409 | 세계관/이미지 버전 충돌 |
 | WORLD_IMAGE_409_3 | 409 | 변경된 구성/옵션은 명시적 재생성 필요 |
 | WORLD_IMAGE_409_4 | 409 | 세계관 생성·반영 진행 중 |
