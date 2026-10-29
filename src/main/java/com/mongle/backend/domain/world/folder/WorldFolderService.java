@@ -9,6 +9,7 @@ import com.mongle.backend.domain.user.exception.UserErrorCode;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.error.BusinessException;
 import com.mongle.backend.global.common.SearchQuery;
+import com.mongle.backend.domain.world.summary.WorldSummaryReader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,8 @@ public class WorldFolderService {
     private final WorldFolderRepository folders;
     private final WorldSelectionRepository selections;
     private final WorldSelectionQueryRepository queries;
+    private final WorldFolderCardQueries cards;
+    private final WorldSummaryReader summaryReader;
     private final UserRepository users;
     private final DreamRepository dreams;
     private final com.mongle.backend.domain.world.composition.WorldCompositionDeletion compositions;
@@ -35,12 +38,21 @@ public class WorldFolderService {
         return WorldFolderResponse.from(owned(userId, worldId));
     }
 
+    @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
     public WorldFolderPage list(Long userId, Long beforeId, int size, String query) {
         validatePage(beforeId, size);
         String term = SearchQuery.normalize(query, WorldFolderErrorCode.INVALID_QUERY);
         var rows = folders.page(userId, beforeId, SearchQuery.containsPattern(term), PageRequest.of(0, size + 1));
         boolean hasNext = rows.size() > size;
-        var items = rows.stream().limit(size).map(WorldFolderResponse::from).toList();
+        var selected = rows.stream().limit(size).toList();
+        var ids = selected.stream().map(WorldFolder::getId).toList();
+        var summaries = summaryReader.readAll(userId, ids);
+        var representatives = cards.representatives(userId, ids);
+        var items = selected.stream().map(folder -> {
+            var view = summaries.get(folder.getId());
+            return WorldFolderCardResponse.from(folder, view.composedDreamCount(),
+                    representatives.get(folder.getId()), view.summary());
+        }).toList();
         return new WorldFolderPage(items, hasNext, hasNext ? items.getLast().worldId() : null);
     }
 

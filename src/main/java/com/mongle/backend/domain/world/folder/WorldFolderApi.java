@@ -37,7 +37,9 @@ public interface WorldFolderApi {
     @Operation(summary = "내 세계관 폴더 목록", description = "폴더 ID 내림차순. 기본 size=20, 최대 50. query는 폴더 이름의 부분 일치이며 영문 대소문자를 구분하지 않습니다. "
             + "%, _, !도 문자 그대로 검색합니다. 앞뒤 Unicode 공백 제외 최대 50 코드포인트, 생략·공백만이면 전체 조회, 초과하면 WORLD_400_4입니다. "
             + "꿈 본문·공통 키워드는 검색하지 않습니다. hasNext이면 같은 query와 nextBeforeId를 beforeId에 전달합니다. 검색어를 바꾸면 beforeId를 제거합니다. "
-            + "빈 폴더도 포함하며 선택 수는 전체 선택 목록을 로딩하지 않고 반환합니다.")
+            + "기존 폴더 필드에 composedDreamCount(현재 공개 완성본의 꿈 수), representativeDream(가장 오래된 꿈의 현재 제목·날짜), summary를 더합니다. "
+            + "summary는 기존 생성 제목·공통 키워드·반복 감정 및 상태입니다. summary.sourceCount는 이전 요약의 출처 수일 수 있으므로 현재 연결 개수로 사용하지 않습니다. "
+            + "빈 폴더도 포함하며 조회는 AI 호출·생성 접수·크레딧 차감 없이 처리합니다. 결과가 없으면 name을 제목으로 표시할 수 있습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공", useReturnTypeSchema = true)
     ResponseEntity<ApiResponse<WorldFolderPage>> list(@Parameter(hidden = true) Jwt jwt, Long beforeId, int size,
             @Parameter(description = "폴더 이름 검색어. 앞뒤 공백 제외 최대 50 코드포인트", example = "바다") String query);

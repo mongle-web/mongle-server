@@ -252,10 +252,11 @@ class WorldFolderIntegrationTest {
         assertThat(page.items()).hasSize(1);
         stats.clear();
         folders.list(user, null, 50, null);
-        assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+        // 폴더·완성본·요약의 JPA 조회 3회이며 카드 데이터는 별도 JDBC 일괄 조회한다.
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(3);
         stats.clear();
         assertThat(folders.list(user, null, 50, "많은").items()).hasSize(1);
-        assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(3);
     }
 
     @Test
