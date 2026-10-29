@@ -192,6 +192,9 @@ class WorldImageIntegrationTest {
         var changed=transactions.latest(user,f.worldId());
         assertThat(changed.freeRegenerationAvailable()).isFalse();assertThat(changed.nextRegenerationCost()).isEqualTo(3);
         assertThat(generator.calls).hasValue(2);
+        error(()->images.generate(user,f.worldId(),regenerate(f.worldId())),WorldImageErrorCode.COMPOSITION_REQUIRED);
+        assertThat(credits.balance(user).available()).isEqualTo(98);assertThat(generator.calls).hasValue(2);
+        var c=ready(3);folders.select(user,f.worldId(),c.dreamId(),folders.get(user,f.worldId()).revision());build(f.worldId());
         var paid=await(images.generate(user,f.worldId(),regenerate(f.worldId())));
         assertThat(paid.status()).isEqualTo(GenerationStatus.COMPLETED);assertThat(credits.balance(user).available()).isEqualTo(95);
     }
@@ -247,13 +250,107 @@ class WorldImageIntegrationTest {
         dreams.delete(user,b.dreamId(),dreams.get(user,b.dreamId()).revision());
         var changed=transactions.latest(user,f.worldId());assertThat(changed.sourceDeleted()).isTrue();assertThat(changed.compositionChanged()).isTrue();
         assertThat(storage.stored).hasSize(1);assertThat(images.downloadUrl(user,f.worldId()).url()).startsWith("https://");
-        assertThat(await(images.generate(user,f.worldId(),regenerate(f.worldId()))).status()).isEqualTo(GenerationStatus.COMPLETED);
-        assertThat(generator.last.worldStories()).hasSize(1);assertThat(transactions.latest(user,f.worldId()).sourceDeleted()).isFalse();
+        var persisted=jdbc.queryForMap("select * from world_images where id=?",changed.imageId());
+        var sourceRows=jdbc.queryForList("select * from world_image_sources where image_id=? order by id",changed.imageId());
+        var balance=credits.balance(user);var ledgerCount=ledger("RESERVE")+ledger("SETTLE")+ledger("RELEASE");
+        error(()->images.generate(user,f.worldId(),regenerate(f.worldId())),WorldImageErrorCode.COMPOSITION_REQUIRED);
+        assertThat(jdbc.queryForMap("select * from world_images where id=?",changed.imageId())).isEqualTo(persisted);
+        assertThat(jdbc.queryForList("select * from world_image_sources where image_id=? order by id",changed.imageId())).isEqualTo(sourceRows);
+        assertThat(credits.balance(user)).isEqualTo(balance);assertThat(ledger("RESERVE")+ledger("SETTLE")+ledger("RELEASE")).isEqualTo(ledgerCount);
+        assertThat(transactions.latest(user,f.worldId()).freeRegenerationAvailable()).isTrue();
+        assertThat(transactions.latest(user,f.worldId()).sourceDeleted()).isTrue();assertThat(generator.calls).hasValue(1);
         dreams.delete(user,a.dreamId(),dreams.get(user,a.dreamId()).revision());
         assertThat(transactions.latest(user,f.worldId()).sourceDeleted()).isTrue();
         error(()->images.generate(user,f.worldId(),regenerate(f.worldId())),WorldImageErrorCode.COMPOSITION_REQUIRED);
-        assertThat(generator.calls).hasValue(2);assertThat(folders.get(user,f.worldId()).selectedDreamCount()).isZero();
+        assertThat(generator.calls).hasValue(1);assertThat(folders.get(user,f.worldId()).selectedDreamCount()).isZero();
+        assertThat(storage.stored).hasSize(1);assertThat(images.downloadUrl(user,f.worldId()).url()).startsWith("https://");
     }
+    @Test void firstImageWithOneOrZeroPublishedDreamsNeverCreatesAnAttemptOrReservesCredits() throws Exception {
+        fund();var a=ready(1);var b=ready(2);var f=world(a,b);
+        dreams.delete(user,b.dreamId(),b.revision());
+        error(()->images.generate(user,f.worldId(),request(f.worldId())),WorldImageErrorCode.COMPOSITION_REQUIRED);
+        assertThat(jdbc.queryForObject("select count(*) from world_images where world_id=?",Long.class,f.worldId())).isZero();
+        assertThat(generator.calls).hasValue(0);assertThat(storage.stored).isEmpty();assertThat(ledger("RESERVE")).isZero();
+        dreams.delete(user,a.dreamId(),a.revision());
+        error(()->images.generate(user,f.worldId(),request(f.worldId())),WorldImageErrorCode.COMPOSITION_REQUIRED);
+        assertThat(jdbc.queryForObject("select count(*) from world_images where world_id=?",Long.class,f.worldId())).isZero();
+        assertThat(credits.balance(user).available()).isEqualTo(100);assertThat(credits.balance(user).reserved()).isZero();
+        assertThat(generator.calls).hasValue(0);assertThat(ledger("RESERVE")).isZero();
+    }
+
+    @Test void oneSelectedDreamStillUsesTheUnchangedPublishedPair() throws Exception {
+        fund();var a=ready(1);var b=ready(2);var f=world(a,b);
+        folders.exclude(user,f.worldId(),b.dreamId(),folders.get(user,f.worldId()).revision());
+        assertThat(folders.get(user,f.worldId()).selectedDreamCount()).isOne();
+        assertThat(generate(f.worldId()).status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(generator.last.worldStories()).hasSize(2);assertThat(generator.calls).hasValue(1);
+    }
+
+    @Test void selectingAnotherDreamDoesNotEnableGenerationUntilPairIsPublished() throws Exception {
+        credits.grant(user,CreditSource.PAYMENT,"restore-free:"+user,2);
+        var a=ready(1);var b=ready(2);var c=ready(3);var f=world(a,b);var first=generate(f.worldId());
+        dreams.delete(user,b.dreamId(),b.revision());
+        folders.select(user,f.worldId(),c.dreamId(),folders.get(user,f.worldId()).revision());
+        assertThat(folders.get(user,f.worldId()).selectedDreamCount()).isEqualTo(2);
+        var persisted=jdbc.queryForMap("select * from world_images where id=?",first.imageId());
+        error(()->images.generate(user,f.worldId(),regenerate(f.worldId())),WorldImageErrorCode.COMPOSITION_REQUIRED);
+        assertThat(jdbc.queryForMap("select * from world_images where id=?",first.imageId())).isEqualTo(persisted);
+        assertThat(generator.calls).hasValue(1);assertThat(credits.balance(user).available()).isZero();
+        build(f.worldId());
+        var restored=await(images.generate(user,f.worldId(),regenerate(f.worldId())));
+        assertThat(restored.status()).isEqualTo(GenerationStatus.COMPLETED);assertThat(restored.freeRegenerationAvailable()).isFalse();
+        assertThat(generator.last.worldStories()).hasSize(2);assertThat(generator.calls).hasValue(2);
+        assertThat(credits.balance(user).available()).isZero();assertThat(ledger("RESERVE")).isEqualTo(1);assertThat(ledger("SETTLE")).isEqualTo(1);
+    }
+
+    @Test void deletingOneOfThreeDreamsAllowsFreeRegenerationWithRemainingPair() throws Exception {
+        fund();var a=ready(1);var b=ready(2);var c=ready(3);var f=world(a,b,c);generate(f.worldId());
+        dreams.delete(user,b.dreamId(),b.revision());
+        var next=await(images.generate(user,f.worldId(),regenerate(f.worldId())));
+        assertThat(next.status()).isEqualTo(GenerationStatus.COMPLETED);assertThat(next.freeRegenerationAvailable()).isFalse();
+        assertThat(generator.last.worldStories()).hasSize(2);assertThat(generator.calls).hasValue(2);
+        assertThat(credits.balance(user).available()).isEqualTo(98);assertThat(ledger("RESERVE")).isEqualTo(1);assertThat(ledger("SETTLE")).isEqualTo(1);
+    }
+
+    @Test void failedInitialAttemptCannotBeRetriedAfterSourceCountDropsToOne() throws Exception {
+        fund();var a=ready(1);var b=ready(2);var f=world(a,b);generator.output=new byte[]{1};
+        var failed=generate(f.worldId());assertThat(failed.status()).isEqualTo(GenerationStatus.FAILED);
+        dreams.delete(user,b.dreamId(),b.revision());
+        var persisted=jdbc.queryForMap("select * from world_images where id=?",failed.imageId());
+        error(()->images.generate(user,f.worldId(),request(f.worldId())),WorldImageErrorCode.COMPOSITION_REQUIRED);
+        assertThat(jdbc.queryForMap("select * from world_images where id=?",failed.imageId())).isEqualTo(persisted);
+        assertThat(credits.balance(user).available()).isEqualTo(100);assertThat(credits.balance(user).reserved()).isZero();
+        assertThat(ledger("RESERVE")).isEqualTo(1);assertThat(ledger("RELEASE")).isEqualTo(1);assertThat(generator.calls).hasValue(1);
+        assertThat(storage.stored).isEmpty();
+    }
+
+    @Test void repeatedEntriesOfTheSameDreamDoNotSatisfyTwoDreamMinimum() throws Exception {
+        fund();var a=ready(1);var b=ready(2);var f=world(a,b);
+        var version=jdbc.queryForObject("select story_version_id from world_composition_entries where world_id=? and dream_id=? and candidate=false",Long.class,f.worldId(),a.dreamId());
+        jdbc.update("update world_composition_entries set dream_id=?,story_version_id=?,bridge_id=null where world_id=? and dream_id=? and candidate=false",a.dreamId(),version,f.worldId(),b.dreamId());
+        assertThat(jdbc.queryForObject("select count(*) from world_composition_entries where world_id=? and candidate=false",Long.class,f.worldId())).isEqualTo(2);
+        error(()->images.generate(user,f.worldId(),request(f.worldId())),WorldImageErrorCode.COMPOSITION_REQUIRED);
+        assertThat(generator.calls).hasValue(0);assertThat(ledger("RESERVE")).isZero();assertThat(storage.stored).isEmpty();
+    }
+
+    @Test void httpRejectsOneDreamRegenerationButKeepsReadAndDownloadAvailable() throws Exception {
+        fund();var a=ready(1);var b=ready(2);var f=world(a,b);generate(f.worldId());
+        dreams.delete(user,b.dreamId(),b.revision());
+        String path="/api/v1/worlds/"+f.worldId()+"/image";
+        String body=JsonMapper.builder().build().writeValueAsString(regenerate(f.worldId()));
+        String token=tokens.login(user).response().accessToken();
+        try(var client=HttpClient.newHttpClient()) {
+            var response=send(client,token,"POST",path,body);
+            assertThat(response.statusCode()).isEqualTo(409);
+            assertThat(response.body()).contains("WORLD_IMAGE_409_1","2개 이상");
+            assertThat(send(client,token,"GET",path,null).statusCode()).isEqualTo(200);
+            assertThat(send(client,token,"GET",path+"/download-url",null).statusCode()).isEqualTo(200);
+            var other=users.saveAndFlush(User.create(UUID.randomUUID()+"@test.com","Other")).getId();
+            assertThat(send(client,tokens.login(other).response().accessToken(),"POST",path,body).statusCode()).isEqualTo(404);
+        }
+        assertThat(generator.calls).hasValue(1);assertThat(credits.balance(user).available()).isEqualTo(98);
+    }
+
     @Test void deletionMarksOldImageEvenAfterDreamIsRemovedFromCurrentComposition() throws Exception {
         fund();var a=ready(1);var b=ready(2);var c=ready(3);var f=world(a,b,c);generate(f.worldId());
         folders.exclude(user,f.worldId(),b.dreamId(),f.revision());build(f.worldId());

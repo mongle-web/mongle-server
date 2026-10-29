@@ -20,6 +20,14 @@ public class WorldImageSources {
 
     /** Caller holds the user lock. Reject large input before loading complete story JSON. */
     public Snapshot capture(Long user, Long world) {
+        // 선택 목록·후보가 아닌 공개 완성본의 서로 다른 꿈을 센다.
+        // 원문 로딩, 슬롯 확보, 시도 변경, 크레딧 예약보다 먼저 거절한다.
+        Long dreamCount = jdbc.queryForObject(
+                "select count(distinct dream_id) from world_composition_entries"
+                        + " where user_id=? and world_id=? and candidate=false",
+                Long.class, user, world);
+        if (dreamCount == null || dreamCount < 2)
+            throw new BusinessException(WorldImageErrorCode.COMPOSITION_REQUIRED);
         Long size = jdbc.queryForObject("select coalesce(sum(char_length(v.result_json)+coalesce(char_length(b.content),0)),0)"
                 + " from world_composition_entries e join dream_story_versions v on v.id=e.story_version_id join dream_stories s on s.id=v.story_id and s.user_id=e.user_id"
                 + " left join world_bridge_results b on b.id=e.bridge_id and b.user_id=e.user_id"
