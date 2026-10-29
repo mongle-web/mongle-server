@@ -90,6 +90,7 @@ def main():
                 with (base / "admin.cnf").open("a") as handle:
                     handle.write(f"password={admin_password}\n")
                 sql(f"CREATE USER 'mongle_test'@'127.0.0.1' IDENTIFIED BY '{password}' REQUIRE SSL;")
+                sql(f"CREATE USER 'mongle_app'@'127.0.0.1' IDENTIFIED BY '{password}' REQUIRE SSL;")
                 migration_password = secrets.token_hex(24)
                 sql(f"CREATE USER 'mongle_migrator'@'127.0.0.1' IDENTIFIED BY '{migration_password}' REQUIRE SSL;")
                 migration_databases = ("flyway_fresh", "flyway_existing", "flyway_drift", "flyway_failed",
@@ -108,6 +109,7 @@ def main():
                         sql(f"GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES ON {database}.* TO 'mongle_migrator'@'127.0.0.1';")
                     if database not in ("upgrade_test", "credit_migration_test"):
                         sql(schema, database)
+                sql("GRANT SELECT,INSERT,UPDATE,DELETE ON credit_test.* TO 'mongle_app'@'127.0.0.1';")
                 credit_prefix, credit_marker, _ = schema.partition("CREATE TABLE IF NOT EXISTS credit_accounts")
                 if not credit_marker:
                     raise RuntimeError("Credit schema boundary changed; review the fixture.")
@@ -166,6 +168,57 @@ def main():
                 if outcome.get("migrationsExecuted") != 0:
                     raise RuntimeError("Repeated packaged migration was not idempotent.")
                 print("Packaged JAR: info/migrate/repeat completed without application startup.", flush=True)
+
+                # Exercise the exact production entry point, not a test-only server or fake payment.
+                credit_env = {**env, "MONGLE_TEST_CREDIT_ENABLED": "true", "MONGLE_CREDIT_ENABLED": "true",
+                              "MONGLE_CREDIT_EXPIRY_POLICY": "NO_EXPIRY", "DB_USERNAME": "mongle_app",
+                              "MONGLE_TEST_CREDIT_EXPECTED_HOST": "127.0.0.1",
+                              "MONGLE_TEST_CREDIT_EXPECTED_DATABASE": "credit_test",
+                              # These must be irrelevant: the command may not start Boot or workers.
+                              "SPRING_PROFILES_ACTIVE": "mysql,oauth", "SERVER_PORT": "not-a-port",
+                              "MONGLE_IMAGE_OPENAI_ENABLED": "true", "MONGLE_WORLD_COMPOSITION_WORKER_ENABLED": "true"}
+                account = sql("INSERT INTO users(email,nickname,created_at,updated_at) VALUES('operator-cli@test.invalid','CLI',NOW(),NOW()); SELECT LAST_INSERT_ID();", "credit_test").strip()
+                def credit_command(operation, key="packaged-smoke", amount="100", target=account, expected_exit=0, overrides=None):
+                    result = subprocess.run(["java", "-Xmx256m", "-jar", str(jars[0]),
+                                             "--test-credit=" + operation, "--user-id=" + target,
+                                             "--amount=" + amount, "--request-key=" + key],
+                                            cwd=repo, env={**credit_env, **(overrides or {})},
+                                            capture_output=True, text=True, timeout=60)
+                    if result.returncode != expected_exit or result.stderr.strip():
+                        raise RuntimeError("Packaged test-credit process failed; raw output suppressed.")
+                    outcome = json.loads(result.stdout)
+                    if any(value in result.stdout for value in (password, migration_password, env["DB_TRUSTSTORE_PASSWORD"])):
+                        raise RuntimeError("Packaged test-credit output exposed fixture secrets.")
+                    return outcome
+
+                preview = credit_command("preview")
+                if preview.get("status") != "WOULD_GRANT" or preview["balance"]["total"] != 0:
+                    raise RuntimeError("Packaged credit preview result mismatch.")
+                if sql(f"SELECT COUNT(*) FROM credit_accounts WHERE user_id={account};", "credit_test").strip() != "0":
+                    raise RuntimeError("Credit preview changed the database.")
+                granted = credit_command("grant")
+                if granted.get("status") != "GRANTED" or granted["balance"]["available"] != 100:
+                    raise RuntimeError("Packaged credit grant result mismatch.")
+                if credit_command("grant").get("status") != "ALREADY_GRANTED":
+                    raise RuntimeError("Packaged credit grant was not idempotent.")
+                if credit_command("grant", amount="101", expected_exit=1).get("code") != "CREDIT_409_2":
+                    raise RuntimeError("Packaged credit conflict was not rejected.")
+                if credit_command("grant", overrides={"MONGLE_TEST_CREDIT_ENABLED": "false"}, expected_exit=1).get("code") != "OPERATOR_COMMAND_DISABLED":
+                    raise RuntimeError("Packaged credit command bypassed the operator flag.")
+                if credit_command("grant", overrides={"DB_PASSWORD": "wrong-private-password"}, expected_exit=1).get("code") != "TEST_CREDIT_FAILED":
+                    raise RuntimeError("Packaged credit command did not sanitize a JDBC failure.")
+                # Independent JVMs prove DB locking, rather than a process-local mutex, provides idempotency.
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    concurrent = list(pool.map(lambda _: credit_command("grant", key="parallel-smoke", amount="25"), range(2)))
+                if sorted(item["status"] for item in concurrent) != ["ALREADY_GRANTED", "GRANTED"]:
+                    raise RuntimeError("Concurrent packaged credit grants were not idempotent.")
+                if sql(f"SELECT available FROM credit_accounts WHERE user_id={account};", "credit_test").strip() != "125":
+                    raise RuntimeError("Concurrent credit grant balance mismatch.")
+                if sql(f"SELECT COUNT(*) FROM credit_ledger WHERE user_id={account} AND kind='GRANT' AND source_type='PROMOTION';", "credit_test").strip() != "2":
+                    raise RuntimeError("Packaged promotion ledger mismatch.")
+                print("Packaged JAR: credit preview/grant/replay/conflict/disabled/JDBC failure/concurrent JVMs passed without Boot or workers.", flush=True)
+
                 return 0
             except (Exception, KeyboardInterrupt):
                 # Raw SQL/client output may contain generated secrets; never dump fixture.log.

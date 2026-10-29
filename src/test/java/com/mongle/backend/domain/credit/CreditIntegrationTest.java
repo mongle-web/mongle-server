@@ -23,6 +23,7 @@ import java.util.*;
 @ActiveProfiles("test")
 class CreditIntegrationTest {
     @Autowired CreditService credits;
+    @Autowired org.springframework.context.ApplicationContext context;
     @Autowired CreditAccountRepository accounts;
     @Autowired CreditGrantRepository grants;
     @Autowired UserRepository users;
@@ -34,6 +35,10 @@ class CreditIntegrationTest {
     final JsonMapper json = JsonMapper.builder().build();
     @BeforeEach void setup() { user = newUser(); }
 
+    @Test void normalServerDoesNotRegisterOperatorCommandInfrastructure() {
+        assertThat(context.getBeansOfType(PromotionCreditOperations.class)).isEmpty();
+        assertThat(context.getBeansOfType(javax.sql.DataSource.class)).hasSize(1);
+    }
     @Test void balanceStartsAtZeroWithoutCreatingAnAccount() {
         assertThat(credits.balance(user)).isEqualTo(new CreditBalance(0,0,0));
         assertThat(accounts.existsById(user)).isFalse();
