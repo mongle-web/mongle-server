@@ -6,7 +6,8 @@
 ## 생성 계약
 
 기존 `StructureGenerator` 한 번의 호출에서 장면·요소와 제목·표시 키워드를 함께 받는다.
-프롬프트 버전은 `scene-v2-display`이다. 출력은 `generatedTitle`, `displayKeywords`,
+현재 프롬프트 버전은 `scene-v2-display-limits`이다. 기존 `scene-v2-display` 출력 계약을 유지하면서
+스키마에서 제외한 식별자·길이·개수 제약을 시스템 메시지에 명시한다. 출력은 `generatedTitle`, `displayKeywords`,
 `elements`, `scenes` 네 필드를 필수로 갖는 JSON 객체 한 개다.
 원문 지시문은 데이터로만 읽으며 JSON ID, 설명문·Markdown, 알 수 없는 필드·중복 키는 거절한다.
 

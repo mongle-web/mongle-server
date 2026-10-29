@@ -5,7 +5,8 @@
 #31은 기존 분석·서사화 API의 기본 생성기를 실제 `AiGateway`에 연결한다.
 LINER HTTP 구현은 #28, 비동기 Gateway·호출 로그는 병합된 #32, 에러 코드 형식은 #27/#30을 사용한다.
 DB 스키마, API URL·요청·응답 형식, 상태·중복 요청·수정/삭제 경합 정책은 유지한다.
-프롬프트와 JSON Schema는 기존 `scene-v2-display`, `story-v1` 계약을 그대로 사용한다.
+구조화 출력 필드는 기존 `scene-v2-display` 계약을 유지하며, 생성 제약을 보충한 프롬프트 버전은
+`scene-v2-display-limits`이다. 서사화는 아래 버전 이력을 따른다.
 
 저장 완료 후 자동 생성은 #35에서 [영속 예약과 비동기 단계 연결](dream-auto-generation.md)로 구현한다.
 원문 수정 후 명시적 재분석, 이미지 제공자·스토리지 연결,
@@ -24,7 +25,7 @@ DB 스키마, API URL·요청·응답 형식, 상태·중복 요청·수정/삭�
 
 | 생성기 | 작업 종류 | 시스템 메시지·스키마 | 사용자 데이터 |
 | --- | --- | --- | --- |
-| `AiGatewayStructureGenerator` | `DREAM_STRUCTURE` | `StructurePrompt`, `scene-v2-display` | originalText, emotions |
+| `AiGatewayStructureGenerator` | `DREAM_STRUCTURE` | `StructurePrompt`, `scene-v2-display-limits` | originalText, emotions |
 | `AiGatewayStoryGenerator` | `DREAM_NARRATIVE` | `StoryPrompt`, `story-v1` | originalText, emotions, scenes, elements |
 
 #43 이후 새 서사에는 `story-v2`를 사용한다. #44의 `AiGatewayBridgeGenerator`는 `WORLD_BRIDGE`,
@@ -42,6 +43,21 @@ LINER 본문에는 이 내부 맥락이나 분석/서사화 ID·시도 ID·revis
 JSON Schema의 `strict=true`는 서버 검증을 대신하지 않는다.
 표시 제목·키워드·요소 참조와 서사화 문단 순서·연결부·길이는 기존 Validator가 검증한다.
 원문 사실을 의미상 완벽하게 보존했는지는 실제 모델 출력에 대한 별도 평가가 필요하다.
+
+꿈 구조화의 `structure-schema.json`은 필수 필드·타입·객체/배열 구조·enum·추가 필드 금지만
+전송한다. 2026-10-29 운영 환경의 가상 입력 비교에서 `liner-mark-1.1`은 원본 및
+`uniqueItems`만 제거한 스키마에 HTTP 400 `invalid_request`를 반환했고,
+`uniqueItems`, `pattern`, `minLength`, `maxLength`, `minItems`, `maxItems`, `minimum`,
+`maximum`을 함께 제거하면 HTTP 200 / `finish_reason=stop`으로 완료됐다.
+개별 제약의 지원 여부는 이 결과만으로 확정하지 않는다.
+길이·범위·중복·식별자 형식 검증은 `StructureValidator`에 유지한다.
+생성 결과의 필드와 업무 규칙은 기존 `scene-v2-display` 계약을 유지한다.
+스키마에서 제외한 key의 영문 식별자 패턴·1~40자 제한, 요소 0~30개·이름 1~100자·설명
+1~500자, 장면 1~10개·본문 1~1000자·연속 순번, 장면별 요소 참조 0~30개와 중복 금지는
+시스템 프롬프트에 명시한다. 문자열 길이는 Unicode 코드포인트 기준이다.
+이 안내를 보충한 신규 호출과 분석 시도는 `scene-v2-display-limits`로 기록한다.
+프롬프트 안내가 모델의 준수를 보장하지는 않으며, 최종 수용 여부는 계속 서버 검증기가 결정한다.
+이 비교 결과를 아직 실호출로 확인하지 않은 다른 작업의 스키마에 자동 적용하지 않는다.
 
 ## 실행 방식과 동시 호출 제한
 
