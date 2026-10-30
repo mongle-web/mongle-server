@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 
-import java.net.URI;
 import java.time.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -107,18 +106,8 @@ public class DreamImageService {
         String key = transactions.assetKey(userId, imageId);
         if (!storage.available()) throw new BusinessException(ImageErrorCode.UNAVAILABLE);
         try {
-            var result = storage.temporaryUrl(key, Duration.ofMinutes(5));
-            var uri = URI.create(result.url());
-            if (!"https".equalsIgnoreCase(uri.getScheme())
-                    || uri.getHost() == null
-                    || uri.getUserInfo() != null
-                    || result.expiresAt() == null
-                    || !result.expiresAt().isAfter(authClock.instant())
-                    || result.expiresAt()
-                            .isAfter(authClock.instant().plus(Duration.ofMinutes(5)))) {
-                throw new IllegalArgumentException("유효한 5분 이내 HTTPS 다운로드 URL이 필요합니다.");
-            }
-            return result;
+            return ImageDownloadUrls.requireValid(
+                    storage.temporaryUrl(key, ImageDownloadUrls.LIFETIME), authClock.instant());
         } catch (RuntimeException ex) {
             throw new BusinessException(ImageErrorCode.CALL_FAILED, ex);
         }

@@ -73,3 +73,10 @@ Authorization: Bearer {accessToken}
 작성 완료·삭제 후 날짜와 집계 갱신, 31일 전체 조회, 날짜 오름차순, 윤년·연도 경계·빈 달,
 월 입력 오류·인증·Swagger를 검증한다. 31일 조회에 SQL 한 번만 실행되고 엔티티 로딩이 없는지도 확인한다.
 같은 테스트 클래스에서 기존 Archive 목록·상세·정렬·커서 동작도 함께 검증한다.
+
+## 이미지가 있는 날짜의 표시 (#113)
+
+캘린더는 날짜·기록 일수 계약을 유지한다. 월별 Archive 목록에서 `image.hasResult=true`의 ID를 모아
+`POST /api/v1/images/download-urls`로 요청당 최대 31개 원본 파일 URL을 한 번에 발급한다.
+[일괄 발급 계약](image-download-urls.md)의 중복 제거·항목별 실패·5분 만료·버전 갱신 흐름을 적용한다.
+이 API는 작은 썸네일 파일을 생성하지 않는다.
