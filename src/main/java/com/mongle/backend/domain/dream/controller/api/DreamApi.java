@@ -54,7 +54,7 @@ public interface DreamApi {
             summary = "감정 선택 및 기록 완성",
             description =
                     "HAPPY(행복), CALM(편안함), EXCITED(설렘), SAD(슬픔), ANXIOUS(불안), ANGRY(화남),"
-                        + " CONFUSED(당황) 중 중복 없이 1~3개를 선택합니다. 대표 감정과 순위는 없습니다. EMOTION_PENDING에서"
+                        + " CONFUSED(당황) 중 중복 없이 1~2개를 선택합니다. 대표 감정과 순위는 없습니다. EMOTION_PENDING에서"
                         + " COMPLETED로 저장하고 자동 분석·서사화 작업을 예약합니다. AI 완료를 기다리지 않고 응답하며,"
                         + " 생성 실패도 기록 완성을 되돌리지 않습니다.")
     ResponseEntity<ApiResponse<DreamResponse>> complete(
@@ -94,7 +94,7 @@ public interface DreamApi {
             summary = "완성한 꿈 수정",
             description =
                     "revision 필수. 미전달 항목은 유지합니다. originalText는 최대 500자이며 null·빈 내용은 불가합니다. 감정은 기존"
-                        + " 7종 중 중복 없이 1~3개로 수정할 수 있습니다. title:null 또는 빈 문자열·공백만 있는 값은 제목 제거입니다."
+                        + " 7종 중 중복 없이 1~2개로 수정할 수 있습니다. title:null 또는 빈 문자열·공백만 있는 값은 제목 제거입니다."
                         + " 제목은 최대 20자입니다. 날짜 및 사용자 ID는 변경할 수 없습니다. 제목 수정은 revision만 증가시키고 AI 입력 버전"
                         + " sourceRevision은 유지합니다. 원문·감정 변경은 두 버전을 증가시키며 이전 분석·이야기는 보존합니다. 실제 변경 시"
                         + " edited=true이며 같은 값 재전달은 수정 표시·버전을 바꾸지 않습니다. 이미지·브리지 생성 중에는 제목을 포함해 409로 차단합니다.")

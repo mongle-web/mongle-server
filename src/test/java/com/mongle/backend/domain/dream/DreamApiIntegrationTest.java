@@ -114,10 +114,10 @@ class DreamApiIntegrationTest {
                                             "revision",
                                             revision(pending),
                                             "emotions",
-                                            List.of("HAPPY", "CALM", "EXCITED"))),
+                                            List.of("HAPPY", "CALM"))),
                             200);
             assertThat(completed.get("recordStatus").asString()).isEqualTo("COMPLETED");
-            assertThat(completed.get("emotions").size()).isEqualTo(3);
+            assertThat(completed.get("emotions").size()).isEqualTo(2);
             assertThat(completed.get("title").isNull()).isTrue();
             assertThat(completed.get("edited").asBoolean()).isFalse();
             assertThat(
@@ -656,6 +656,22 @@ class DreamApiIntegrationTest {
             var result = send(client, null, "GET", "/v3/api-docs", null);
             assertThat(result.statusCode()).isEqualTo(200);
             var document = json.readTree(result.body());
+            for (String name : List.of("DreamEmotionsRequest", "DreamUpdateRequest")) {
+                var emotions = document.path("components").path("schemas").path(name)
+                        .path("properties").path("emotions");
+                assertThat(emotions.path("minItems").asInt()).isEqualTo(1);
+                assertThat(emotions.path("maxItems").asInt()).isEqualTo(2);
+                assertThat(emotions.path("uniqueItems").asBoolean()).isTrue();
+                assertThat(emotions.at("/items/enum").valueStream().map(JsonNode::asString).toList())
+                        .containsExactlyInAnyOrder("HAPPY", "CALM", "EXCITED", "SAD", "ANXIOUS", "ANGRY", "CONFUSED");
+            }
+            // 읽기 응답은 기존 3개 감정도 표현해야 하므로 요청 제한을 적용하지 않는다.
+            assertThat(document.at("/components/schemas/DreamResponse/properties/emotions/maxItems").isMissingNode())
+                    .isTrue();
+            assertThat(document.at("/paths/~1api~1v1~1dreams~1{dreamId}~1emotions/put/description").asString())
+                    .contains("1~2개").doesNotContain("1~3개");
+            assertThat(document.at("/paths/~1api~1v1~1dreams~1{dreamId}/patch/description").asString())
+                    .contains("1~2개").doesNotContain("1~3개");
             assertThat(document.at("/paths/~1api~1v1~1dreams~1incomplete/get/summary").asString())
                     .isEqualTo("미완성 꿈 복구 목록");
             assertThat(
@@ -723,6 +739,110 @@ class DreamApiIntegrationTest {
             // 오래된 수정 요청은 새 감정과 원문을 덮어쓰지 못한다.
             assertThat(send(client, token, "PATCH", path(after),
                     Map.of("revision", revision(current), "emotions", List.of("HAPPY"))).statusCode()).isEqualTo(409);
+        }
+    }
+
+    @Test
+    void invalidEmotionRequestsDoNotCompleteOrPartiallyUpdateTheRecord() throws Exception {
+        var token = login();
+        List<Object> invalid = Arrays.asList(
+                List.of(), List.of("HAPPY", "CALM", "EXCITED"),
+                List.of("HAPPY", "CALM", "EXCITED", "SAD"),
+                List.of("HAPPY", "HAPPY"), Arrays.asList("HAPPY", null),
+                List.of("UNKNOWN"), null);
+        try (var client = HttpClient.newHttpClient()) {
+            var pending = create(client, token);
+            long id = pending.get("dreamId").asLong();
+            for (Object emotions : invalid) {
+                var body = new HashMap<String, Object>();
+                body.put("revision", revision(pending));
+                body.put("emotions", emotions);
+                var response = send(client, token, "PUT", path(pending) + "/emotions", body);
+                assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+                if (emotions != null && !emotions.equals(List.of("UNKNOWN"))) {
+                    assertThat(json.readTree(response.body()).path("code").asString())
+                            .isEqualTo("DREAM_400_4");
+                    assertThat(json.readTree(response.body()).path("message").asString())
+                            .contains("1~2개");
+                }
+                assertThat(data(send(client, token, "GET", path(pending), null), 200))
+                        .isEqualTo(pending);
+                assertThat(jdbc.queryForObject(
+                        "select count(*) from dream_generation_jobs where dream_id=?", Long.class, id))
+                        .isZero();
+            }
+            var completed = data(send(client, token, "PUT", path(pending) + "/emotions",
+                    Map.of("revision", revision(pending), "emotions", List.of("HAPPY", "CALM"))), 200);
+            assertThat(completed.path("emotions").valueStream().map(JsonNode::asString).toList())
+                    .containsExactlyInAnyOrder("HAPPY", "CALM");
+            var jobBefore = jdbc.queryForMap("select * from dream_generation_jobs where dream_id=?", id);
+            for (Object emotions : invalid) {
+                var body = new HashMap<String, Object>();
+                body.put("revision", revision(completed));
+                body.put("originalText", "저장되면 안 되는 원문");
+                body.put("title", "저장되면 안 되는 제목");
+                body.put("emotions", emotions);
+                var response = send(client, token, "PATCH", path(completed), body);
+                assertThat(response.statusCode()).as(response.body()).isEqualTo(400);
+                if (!Objects.equals(emotions, List.of("UNKNOWN"))) {
+                    assertThat(json.readTree(response.body()).path("code").asString())
+                            .isEqualTo("DREAM_400_4");
+                }
+                assertThat(data(send(client, token, "GET", path(completed), null), 200))
+                        .isEqualTo(completed);
+                assertThat(jdbc.queryForMap("select * from dream_generation_jobs where dream_id=?", id))
+                        .isEqualTo(jobBefore);
+            }
+            var reversed = data(send(client, token, "PATCH", path(completed),
+                    Map.of("revision", revision(completed), "emotions", List.of("CALM", "HAPPY"))), 200);
+            assertThat(reversed).isEqualTo(completed);
+            var single = data(send(client, token, "PATCH", path(completed),
+                    Map.of("revision", revision(completed), "emotions", List.of("SAD"))), 200);
+            assertThat(single.path("emotions").valueStream().map(JsonNode::asString).toList())
+                    .containsExactly("SAD");
+            assertThat(single.path("sourceRevision").asLong())
+                    .isEqualTo(completed.path("sourceRevision").asLong() + 1);
+            var pair = data(send(client, token, "PATCH", path(single),
+                    Map.of("revision", revision(single), "emotions", List.of("SAD", "CALM"))), 200);
+            assertThat(pair.path("emotions").valueStream().map(JsonNode::asString).toList())
+                    .containsExactlyInAnyOrder("SAD", "CALM");
+        }
+    }
+
+    @Test
+    void preservesLegacyThreeEmotionRecordsUnlessExplicitlyReplacingEmotions() throws Exception {
+        var token = login();
+        try (var client = HttpClient.newHttpClient()) {
+            var completed = complete(client, token, create(client, token));
+            long id = completed.get("dreamId").asLong();
+            // 이전 정책으로 저장된 행을 재현한다. 운영 데이터 정리나 신규 검증 우회 경로가 아니다.
+            for (String emotion : List.of("CALM", "EXCITED")) {
+                jdbc.update("insert into dream_emotions(dream_id,emotion) values(?,?)", id, emotion);
+            }
+            var legacy = data(send(client, token, "GET", path(completed), null), 200);
+            assertThat(legacy.path("emotions").valueStream().map(JsonNode::asString).toList())
+                    .containsExactlyInAnyOrder("HAPPY", "CALM", "EXCITED");
+            var archive = data(send(client, token, "GET", "/api/v1/archives/" + id, null), 200);
+            assertThat(archive.path("emotions").valueStream().map(JsonNode::asString).toList())
+                    .containsExactlyInAnyOrder("HAPPY", "CALM", "EXCITED");
+            var titled = data(send(client, token, "PATCH", path(legacy),
+                    Map.of("revision", revision(legacy), "title", "직접 붙인 제목")), 200);
+            assertThat(titled.path("emotions")).isEqualTo(legacy.path("emotions"));
+            assertThat(titled.path("sourceRevision")).isEqualTo(legacy.path("sourceRevision"));
+            var edited = data(send(client, token, "PATCH", path(titled),
+                    Map.of("revision", revision(titled), "originalText", "수정한 원문")), 200);
+            assertThat(edited.path("emotions")).isEqualTo(legacy.path("emotions"));
+            var rejected = send(client, token, "PATCH", path(edited),
+                    Map.of("revision", revision(edited), "emotions", List.of("HAPPY", "CALM", "EXCITED")));
+            assertThat(rejected.statusCode()).isEqualTo(400);
+            assertThat(json.readTree(rejected.body()).path("code").asString()).isEqualTo("DREAM_400_4");
+            assertThat(data(send(client, token, "GET", path(edited), null), 200)).isEqualTo(edited);
+            var reduced = data(send(client, token, "PATCH", path(edited),
+                    Map.of("revision", revision(edited), "emotions", List.of("HAPPY", "CALM"))), 200);
+            assertThat(reduced.path("emotions").valueStream().map(JsonNode::asString).toList())
+                    .containsExactlyInAnyOrder("HAPPY", "CALM");
+            assertThat(reduced.path("sourceRevision").asLong())
+                    .isEqualTo(edited.path("sourceRevision").asLong() + 1);
         }
     }
 
