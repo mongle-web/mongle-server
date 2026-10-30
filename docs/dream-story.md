@@ -91,7 +91,7 @@ SCENE 역시 AI가 다듬은 문장이므로 원문 인용 또는 서버가 사�
 `POST /api/v1/dreams/{dreamId}/generation/regenerate`에 최신 revision·generationVersion을 전달한다.
 통합 재생성은 분석과 서사가 모두 성공해야 결과·키워드를 함께 교체하고 실패하면 이전 성공을 유지한다.
 제목 변경·비우기는 AI 입력을 바꾸지 않으므로 기존 분석·이야기를 유지한다.
-완료 감정도 기존 7종 중 중복 없이 1~3개로 수정할 수 있다. 요청 충돌 검사는 Dream.revision을 사용한다.
+완료 감정도 기존 7종 중 중복 없이 1~2개로 수정할 수 있다. 요청 충돌 검사는 Dream.revision을 사용한다.
 활성 재생성·이미지·브리지·세계관 구성 작업의 수정/삭제 보호는 [생성 보호 계약](dream-generation-guards.md),
 재생성은 [통합 생성 계약](dream-generation-versioning.md), 수정은 [편집 계약](dream-edit-policy.md)을 따른다.
 
