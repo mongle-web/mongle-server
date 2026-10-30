@@ -161,6 +161,16 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 
 예를 들어 월별 감정은 `{"emotion":"HAPPY","dreamCount":2}`, 세계관 반복 감정은 `{"code":"HAPPY","label":"행복","dreamCount":2}`다. 월별 통계에서 `code`·`label`을 읽거나 세계관 요약에서 `name`·`emotion`을 읽지 않는다. 이전에 충돌한 Swagger를 기준으로 생성한 타입이 있다면 실제 필드에 맞춰 다시 생성/정정한다. 이번 변경으로 업무 API 경로나 DB·환경변수 설정을 추가하지 않는다.
 
+## 월별 반복 장소·인물 (#111)
+
+- `GET /api/v1/analysis-records/recurring-elements?month=YYYY-MM`: 월 생략 시 한국 시간 현재 월.
+- `data.month`, `analyzedDreamCount`, `places[{name,dreamCount}]`, `characters[{name,dreamCount}]`를 반환한다.
+- 현재 존재하는 본인 완료 기록의 마지막 성공 분석에서 서로 다른 꿈2개 이상에 등장한 항목만 유형별 최대5개 제공한다. 같은 꿈의 여러 장면은1건이다.
+- 날짜는 꿈 날짜 기준이며 최근30일·최대10개 종합 해석 대상과 다르다. 장소/인물이 같은 이름이어도 분리하며 별칭·동일 인물을 추론하지 않는다.
+- 빈 달/반복 근거 없음은 빈 배열이다. 원문 수정·재생성 진행/실패에는 이전 성공 근거를 유지하고 새 분석·서사 성공 확정 또는 삭제 후 다시 조회한다.
+- 온보딩 완료 Bearer 인증, Cache-Control:no-store. AI 호출·과금·새 환경변수·DB 변경 없이 제공한다. 기존 monthly/세계관 summary 계약은 유지한다.
+- 전용 Swagger 타입은 `MonthlyRecurringElementsResponse`, `MonthlyRecurringElement`다. [범위·응답·변경 규칙](recurring-elements.md)을 따른다.
+
 ## 세계관 AI 제목·공통 키워드·반복 감정 (#95)
 
 - `GET /api/v1/worlds/{worldId}/summary`: 상태와 `generatedTitle`, `commonKeywords[{keyword,dreamCount}]`, `recurringEmotions[{code,label,dreamCount}]` 조회.
@@ -256,6 +266,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 |---|---|---|
 | GET | `/api/v1/analyses/{analysisId}` | 내 분석 조회 |
 | GET | `/api/v1/analysis-records/monthly` | 월별 꿈 요소 및 선택 감정 통계 |
+| GET | `/api/v1/analysis-records/recurring-elements` | 월별 반복 장소·인물 집계 |
 | GET | `/api/v1/analysis-records/recent-context` | 최근 꿈 해석 대상 조회 |
 | GET | `/api/v1/analysis-records/interpretation` | 종합 해석·갱신 필요 여부 조회 |
 | POST | `/api/v1/analysis-records/interpretation` | 첫 진입 종합 해석 생성 |
