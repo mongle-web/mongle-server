@@ -94,7 +94,7 @@ def main():
                 migration_password = secrets.token_hex(24)
                 sql(f"CREATE USER 'mongle_migrator'@'127.0.0.1' IDENTIFIED BY '{migration_password}' REQUIRE SSL;")
                 migration_databases = ("flyway_fresh", "flyway_existing", "flyway_drift", "flyway_failed",
-                                       "flyway_checksum", "flyway_privilege", "flyway_jpa", "flyway_v1", "flyway_cli", "flyway_check", "flyway_summary")
+                                       "flyway_checksum", "flyway_privilege", "flyway_jpa", "flyway_v1", "flyway_cli", "flyway_check", "flyway_summary", "flyway_reclamation")
                 schema = (repo / "src/main/resources/db/schema-initial.sql").read_text()
                 for database in migration_databases:
                     sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;")
@@ -137,6 +137,8 @@ def main():
                         raise RuntimeError(f"Fresh and upgraded schemas differ in {catalog}.")
                 if sql("SELECT nickname FROM users WHERE email='preserved@test.invalid';", "upgrade_test").strip() != "keep":
                     raise RuntimeError("Upgrade did not preserve the fixture row.")
+                for database in ("credit_test", "payment_test"):
+                    sql((repo / "src/main/resources/db/migration/V6__payment_credit_reclamations.sql").read_text(), database)
                 env.update(MONGLE_MYSQL_TEST_PORT=str(port), MONGLE_MYSQL_TEST_PASSWORD=password,
                            MONGLE_MYSQL_MIGRATOR_PASSWORD=migration_password,
                            DB_URL=f"jdbc:mysql://127.0.0.1:{port}/credit_test", DB_USERNAME="mongle_test", DB_PASSWORD=password,

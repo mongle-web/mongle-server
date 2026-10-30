@@ -83,7 +83,7 @@ class Mysql84MigrationTest {
         assertThat(new MigrationEngine(source, "flyway_existing", "filesystem:" + priorRelease).execute("migrate"))
                 .containsEntry("targetVersion", "3");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='recent_interpretations'", Integer.class)).isZero();
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 2).containsEntry("targetVersion", "5");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 3).containsEntry("targetVersion", "6");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 0);
         assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("HISTORY_ALREADY_EXISTS");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE email='preserved@test.invalid'", String.class)).isEqualTo("keep");
@@ -102,12 +102,34 @@ class Mysql84MigrationTest {
         jdbc.update("INSERT INTO users(email,nickname,created_at,updated_at) VALUES('summary-preserved@test.invalid','keep-summary',NOW(),NOW())");
         var history=jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
         var engine=new MigrationEngine(source,"flyway_summary");
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",1).containsEntry("targetVersion","5");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",2).containsEntry("targetVersion","6");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",0);
         assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version in ('1','3','4') order by installed_rank")).isEqualTo(history);
         assertThat(jdbc.queryForObject("select nickname from users where email='summary-preserved@test.invalid'",String.class)).isEqualTo("keep-summary");
         assertThat(jdbc.queryForObject("select count(*) from world_summaries",Long.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from world_summary_sources",Long.class)).isZero();
+    }
+
+    @Test void v6UpgradesV5OnceAndPreservesBusinessRowsAndAppliedHistory() throws Exception {
+        var prior=Files.createDirectory(directory.resolve("prior-reclamation-release"));
+        for(String name:java.util.List.of("V1__mongle_baseline.sql","V3__image_regeneration_policy.sql","V4__recent_interpretations.sql","V5__world_summaries.sql")) {
+            try(var sql=new ClassPathResource("db/migration/"+name).getInputStream()) { Files.copy(sql,prior.resolve(name)); }
+        }
+        var ds=source("flyway_reclamation");var jdbc=new JdbcTemplate(ds);
+        assertThat(new MigrationEngine(ds,"flyway_reclamation","filesystem:"+prior).execute("migrate")).containsEntry("targetVersion","5");
+        jdbc.update("INSERT INTO users(email,nickname,created_at,updated_at) VALUES('reclamation-preserved@test.invalid','keep',NOW(),NOW())");
+        Long user=jdbc.queryForObject("select id from users where email='reclamation-preserved@test.invalid'",Long.class);
+        jdbc.update("insert into credit_accounts(user_id,available,reserved,version,created_at,updated_at) values(?,10,0,0,NOW(),NOW())",user);
+        jdbc.update("insert into credit_grants(user_id,source_type,source_key,source_hash,amount,available,reserved,consumed,version,created_at) values(?,'PROMOTION','keep-source',REPEAT('a',64),10,10,0,0,0,NOW())",user);
+        var history=jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
+        var accounts=jdbc.queryForList("select * from credit_accounts");var grants=jdbc.queryForList("select * from credit_grants");
+        var engine=new MigrationEngine(ds,"flyway_reclamation");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",1).containsEntry("targetVersion","6");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",0);
+        assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version<>'6' order by installed_rank")).isEqualTo(history);
+        assertThat(jdbc.queryForList("select * from credit_accounts")).isEqualTo(accounts);
+        assertThat(jdbc.queryForList("select * from credit_grants")).isEqualTo(grants);
+        assertThat(jdbc.queryForObject("select count(*) from payment_credit_reclamations",Long.class)).isZero();
     }
 
     @Test void baselineRejectsColumnIndexAndForeignKeyDriftEvenWith33Tables() throws Exception {
