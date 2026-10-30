@@ -146,6 +146,21 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 
 이미지 응답의 `freeRegenerationAvailable`은 무료 이력 안내, `nextRegenerationCost`는 현재 이력·가격 설정에 따른 다음 재생성 비용이다. 0일 때만 무료로 표시한다. null은 성공 결과가 없거나 재생성 가격이 미설정이라는 뜻이다. 기존 성공이 있어도 가격 미설정이면 무료·유료 신규 재생성을 `CREDIT_503_1`로 거절한다. 무료 이력이 있어도 생성 입력·진행 작업·기능 활성화·결제 보류 등 실행 조건은 별도로 검사한다. 최초 생성 비용·설정상 사용 가능 여부는 image-options에 포함되어 있지 않다.
 
+## 월별 통계와 세계관 요약의 스키마 구분 (#107)
+
+실제 JSON 필드명·자료형·배열·공통 `ApiResponse`는 유지한다. Swagger에서 겹치던 `Keyword`·`Emotion` 컴포넌트 이름만 아래처럼 구분한다. #107 머지·배포 후 최신 `/v3/api-docs`로 생성 타입을 다시 갱신한다.
+
+| 응답 위치 | OpenAPI 컴포넌트 | 실제 항목 필드 |
+|---|---|---|
+| `GET /analysis-records/monthly` → `data.keywords[]` | `MonthlyAnalysisKeyword` | `name: string`, `dreamCount: integer(int64)` |
+| `GET /analysis-records/monthly` → `data.emotions[]` | `MonthlyAnalysisEmotion` | `emotion: DreamEmotion`, `dreamCount: integer(int64)` |
+| `GET /worlds/{worldId}/summary` → `data.commonKeywords[]` | `WorldSummaryKeyword` | `keyword: string`, `dreamCount: integer(int64)` |
+| `GET /worlds/{worldId}/summary` → `data.recurringEmotions[]` | `WorldSummaryEmotion` | `code: DreamEmotion`, `label: string`, `dreamCount: integer(int64)` |
+
+경로에는 공통 `/api/v1` 접두사를 붙인다. 세계관 목록 `GET /worlds`의 `data.items[].summary`도 동일한 `WorldSummaryResponse`와 두 세계관 전용 컴포넌트를 사용한다. `DreamEmotion`은 기존 `HAPPY`, `CALM`, `EXCITED`, `SAD`, `ANXIOUS`, `ANGRY`, `CONFUSED` 문자열을 유지한다.
+
+예를 들어 월별 감정은 `{"emotion":"HAPPY","dreamCount":2}`, 세계관 반복 감정은 `{"code":"HAPPY","label":"행복","dreamCount":2}`다. 월별 통계에서 `code`·`label`을 읽거나 세계관 요약에서 `name`·`emotion`을 읽지 않는다. 이전에 충돌한 Swagger를 기준으로 생성한 타입이 있다면 실제 필드에 맞춰 다시 생성/정정한다. 이번 변경으로 업무 API 경로나 DB·환경변수 설정을 추가하지 않는다.
+
 ## 세계관 AI 제목·공통 키워드·반복 감정 (#95)
 
 - `GET /api/v1/worlds/{worldId}/summary`: 상태와 `generatedTitle`, `commonKeywords[{keyword,dreamCount}]`, `recurringEmotions[{code,label,dreamCount}]` 조회.
