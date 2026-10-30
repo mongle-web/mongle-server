@@ -137,8 +137,6 @@ def main():
                         raise RuntimeError(f"Fresh and upgraded schemas differ in {catalog}.")
                 if sql("SELECT nickname FROM users WHERE email='preserved@test.invalid';", "upgrade_test").strip() != "keep":
                     raise RuntimeError("Upgrade did not preserve the fixture row.")
-                for database in ("credit_test", "payment_test"):
-                    sql((repo / "src/main/resources/db/migration/V6__payment_credit_reclamations.sql").read_text(), database)
                 env.update(MONGLE_MYSQL_TEST_PORT=str(port), MONGLE_MYSQL_TEST_PASSWORD=password,
                            MONGLE_MYSQL_MIGRATOR_PASSWORD=migration_password,
                            DB_URL=f"jdbc:mysql://127.0.0.1:{port}/credit_test", DB_USERNAME="mongle_test", DB_PASSWORD=password,
@@ -223,6 +221,8 @@ def main():
 
                 from payment_inspection_smoke import verify as verify_payment_inspection
                 verify_payment_inspection(repo, jars[0], credit_env, sql)
+                from payment_reclamation_smoke import verify as verify_payment_reclamation
+                verify_payment_reclamation(repo, jars[0], credit_env, sql)
 
                 return 0
             except (Exception, KeyboardInterrupt):
