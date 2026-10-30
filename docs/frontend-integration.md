@@ -341,3 +341,12 @@ Java21 환경의 서버 저장소에서 다음을 실행한다.
 http://localhost:8080/swagger-ui.html 을 연다. 문서 열람에 비밀 키가 필요하지 않는다. local은 H2 메모리 DB이며 종료 시 데이터가 사라진다. 실제 업무 호출에는 로그인 토큰이 필요하고 임시 토큰 발급 우회 API는 없다. 카카오 로컬 로그인은 별도의 local,oauth 설정과 localhost 콜백/프론트 경로가 필요하다.
 
 세부 구현: [카카오 로그인](https://github.com/mongle-web/mongle-server/blob/develop/docs/kakao-oauth-web.md), [개별 이미지](https://github.com/mongle-web/mongle-server/blob/develop/docs/dream-image.md), [세계관 구성](https://github.com/mongle-web/mongle-server/blob/develop/docs/world-composition.md), [페이앱](https://github.com/mongle-web/mongle-server/blob/develop/docs/payapp-payments.md). 문서의 과거 예시보다 이 전달본의 확정 www 주소와 최신 코드/정책 상태를 우선한다.
+
+## 캘린더·보관함 이미지 URL 일괄 발급 (#113)
+
+`POST /api/v1/images/download-urls` body `{"imageIds":[101,102]}`를 사용한다. Bearer 토큰과 JSON Content-Type이 필요하다.
+`data.items[]`는 `imageId`, `imageVersion`, `status`, `url`, `expiresAt`, `failureCode`를 반환한다.
+중복 제거 전 최대 31개, 최초 순서 유지, `SUCCESS`/`FAILED`를 각 항목에서 확인한다. 전체 HTTP 200만으로 성공을 판단하지 않는다.
+기존 월 목록의 `image.hasResult=true`인 ID를 모아 발급하고 만료·이미지 변경 시 필요한 ID만 다시 요청한다.
+기존 단건 API도 유지한다. [완전한 예시·실패 코드·갱신 흐름](image-download-urls.md)을 참고한다.
+운영 연결은 머지·CI/CD 성공 후 운영 Swagger에 새 경로가 표시된 것을 확인한 뒤 진행한다.
