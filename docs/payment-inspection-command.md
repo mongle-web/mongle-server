@@ -27,9 +27,10 @@ java -jar <검증한 릴리스 JAR> --payment-inspect=order --order-id=<주문 U
 | 필드 | 범위와 해석 |
 | --- | --- |
 | `scope` | 항상 `INTERNAL_DATABASE_ONLY` |
+| `reclamation` | 회수 이력이 있으면 id/amount, 없으면 null. 원결제 환불 증명이 아님 |
 | `observedAt` | 첫 주문 조회 직후 관찰 시각(UTC). 이후 대조 쿼리는 같은 DB 스냅샷 사용 |
 | `order` | 주문 UUID·회원 ID·상품 ID·주문 당시 금액/통화/지급량·저장/유효 상태·연결된 지급 ID |
-| `purchase` | 해당 회원과 `PAYMENT` 출처·주문 키/해시가 일치하는 지급. 없거나 중복이면 null. amount/available/reserved/consumed/paymentHold |
+| `purchase` | 해당 회원과 `PAYMENT` 출처·주문 키/해시가 일치하는 지급. 없거나 중복이면 null. amount/available/reserved/consumed/reclaimed/paymentHold |
 | `account` | 해당 회원 전체 잔액. present/available/reserved/holdCount/spendingBlocked, 전체 지급 합계 grantAvailable/grantReserved와 전체 원장 합계 ledgerAvailable/ledgerReserved |
 | `purchaseLedger` | 해당 지급의 GRANT 수·지급량과 PAYMENT_HOLD 수. 구매와 연결된 지급이 없으면 0 |
 | `purchaseAllocations` | 해당 지급에서만 배분된 reserved/consumed/released/expiredReserved 크레딧. 구매 지급이 없으면 0 |
@@ -57,7 +58,7 @@ java -jar <검증한 릴리스 JAR> --payment-inspect=order --order-id=<주문 U
 
 JDBC URL은 `jdbc:mysql://호스트[:포트]/DB`로 제한한다. URL 내 인증정보·쿼리·fragment를 거절한다. 로컬 PKCS12·`VERIFY_IDENTITY`·시스템 신뢰 저장소 fallback 비활성·UTC 연결을 사용한다. `readOnlyPropagatesToServer=true`와 읽기 전용 `REPEATABLE_READ` 트랜잭션을 설정하고, 하나의 연결에서 비잠금 SELECT만 실행한 뒤 rollback/close한다. 첫 SELECT의 스냅샷 이후 다른 트랜잭션이 결제를 완료해도 신구 상태를 섞지 않는다. 변경 후 상태는 **새 조회**로 확인한다.
 
-주문 1건·최대8개 prepared SELECT·쿼리당 결과32행 상한으로 집계만 반환한다. 전체 원장/통보 목록을 적재하지 않는다. 연결/소켓 제한 각각5초, 쿼리별 최대5초, 연결 획득 전부터 전체 조회 예산30초를 사용한다. 쿼리 사이에도 남은 시간을 확인한다. 데이터 규모·DB 장애·연결 종료 등의 영향이 있으므로 전체 프로세스의 엄격한30초 종료를 보장하지는 않는다. 아래 systemd 실행 제한60초를 함께 사용한다. 시간 초과 시 조회를 재시도할 수 있으며, 이 명령은 쓰기를 시도하지 않는다.
+주문 1건·최대10개 prepared SELECT·쿼리당 결과32행 상한으로 집계만 반환한다. 전체 원장/통보 목록을 적재하지 않는다. 연결/소켓 제한 각각5초, 쿼리별 최대5초, 연결 획득 전부터 전체 조회 예산30초를 사용한다. 쿼리 사이에도 남은 시간을 확인한다. 데이터 규모·DB 장애·연결 종료 등의 영향이 있으므로 전체 프로세스의 엄격한30초 종료를 보장하지는 않는다. 아래 systemd 실행 제한60초를 함께 사용한다. 시간 초과 시 조회를 재시도할 수 있으며, 이 명령은 쓰기를 시도하지 않는다.
 
 ## EC2/SSM 실행 순서
 
@@ -83,7 +84,7 @@ sudo /usr/bin/systemd-run --quiet --wait --pipe --collect \
 ```
 
 5. status와 findings/notices를 함께 확인한다. 페이앱 관리자 거래·취소 내역과 대조하고 대상·시각·판단 근거를 운영 기록에 남긴다. 개인 자료·결제 키·원문 오류는 채팅/GitHub에 붙이지 않는다.
-6. 이 명령은 후속 조치를 하지 않는다. 불일치가 있으면 별도 검토로 넘기며, 직접 SQL로 잔액·주문·보류를 고치지 않는다. 안전한 회수/보류 해제 명령은 별도 구현 범위다.
+6. 이 명령은 후속 조치를 하지 않는다. 불일치가 있으면 별도 검토로 넘기며, 직접 SQL로 잔액·주문·보류를 고치지 않는다. 전액 승인취소된 미사용 구매분은 [회수 명령](payment-reclamation-command.md)의 엄격한 조건과 운영 확인 절차로 처리한다. 부분 사용/부분취소·일반 보류 해제는 별도 범위다.
 
 ## 결과와 실패 코드
 
@@ -101,3 +102,7 @@ sudo /usr/bin/systemd-run --quiet --wait --pipe --collect \
 H2와 임시 MySQL 8.4에서 미결제·무상/다른 구매 혼합·구매별 예약/확정/해제·만료·취소/보류·연결/소유권/출처/잔액/원장 불일치를 검증한다. 실제 MySQL의 읽기 전용 트랜잭션에서 UPDATE가 거절되는지와, 다른 연결의 결제 커밋 중 같은 스냅샷을 유지하는지 확인한다. 모든 조회 전후 업무 테이블은 동일해야 한다.
 
 `python3 scripts/mysql84-test.py`는 폐기되는 로컬 TLS DB만 사용한다. 패키지 JAR를 별도 JVM으로 실행해 SELECT 전용 권한에서도 조회되고, 잘못된 인자/설정/인증·없는 주문이 정제된 오류가 되며, 잘못된 서버 포트·활성 AI 플래그에도 Boot/워커가 시작되지 않는지 검증한다. 테스트에 필요한 지급/주문 SQL과 권한 변경은 이 임시 DB의 픽스처에만 적용한다. 운영 RDS/페이앱 실결제/환불은 실행하지 않는다.
+
+## 미사용 구매 회수 이력 (#119)
+
+새 V6 적용 후 같은 릴리스의 명령을 사용한다. purchase.reclaimed와 reclamation.id/amount를 제공하고 원래 지급량=사용 가능+예약+사용 확정+회수량으로 검증한다. PAYMENT_HOLD 원장은 과거 이력으로 보존한다. 회수 완료 건은 현재 보류가 없어도 이력과 RECLAIM 원장이 일치해야 하며, RECLAMATION_STATE_MISMATCH/RECLAMATION_LEDGER_MISMATCH를 별도로 탐지한다. ACCOUNT_BALANCE_OUT_OF_RANGE는 계정 합계가 long 범위를 벗어났다는 의미다. 실제 PG 거래 상태는 별도로 확인한다.
