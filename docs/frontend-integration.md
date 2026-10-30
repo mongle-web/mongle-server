@@ -107,7 +107,7 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 ## 꿈 기록·분석·이야기
 
 - 날짜는 `YYYY-MM-DD`, 한국 날짜 기준 미래 불가·날짜당 꿈1개. 원문 최대500자.
-- 초안 자동저장 → 원문 작성 완료 → 감정 선택으로 기록 완성. 감정은 HAPPY/CALM/EXCITED/SAD/ANXIOUS/ANGRY/CONFUSED 중 중복 없이1~3개이며 대표 감정/순위는 없다.
+- 초안 자동저장 → 원문 작성 완료 → 감정 선택으로 기록 완성. 감정은 HAPPY/CALM/EXCITED/SAD/ANXIOUS/ANGRY/CONFUSED 중 중복 없이1~2개이며 대표 감정/순위는 없다. #109부터 최초 선택·감정 수정의 요청 배열 모두 최대 2개다. 기존 3개 저장 기록은 조회 시 유지하며, 수정하지 않은 감정은 PATCH에서 생략한다. 감정을 전달하면 1~2개를 검증하고 3개 이상은 DREAM_400_4로 거절한다. [기존 데이터·수정 계약](dream-edit-policy.md)을 따른다.
 - 제목은 최대20 코드포인트다. 분석 성공 시 같은 sourceRevision·title=null·edited=false인 꿈에만 AI 생성 제목을 저장한다. 사용자가 정한 제목이나 실제로 비운 제목은 덮어쓰지 않는다. 화면은 `DreamResponse.title` 또는 Archive 카드의 `title`을 사용하고, 분석의 `generatedTitle`을 대체 제목으로 쓰지 않는다. 자동 제목 반영으로 revision이 바뀔 수 있어 생성 후 최신 revision을 다시 조회한다.
 - 감정 선택 완료 후 자동 분석→서사 작업을 예약한다. 기록 저장 성공과 AI 작업 완료를 구분하고 `/generation`을 조회한다.
 - 생성 상태와 실패 사유를 표시하고 성공한 분석/서사는 전용 GET으로 읽는다. 수정 후 이전 결과가 남을 수 있으므로 변경 안내를 함께 표시한다.

@@ -26,7 +26,7 @@ public final class DreamPolicy {
     public static void emotions(Collection<DreamEmotion> values) {
         if (values == null
                 || values.isEmpty()
-                || values.size() > 3
+                || values.size() > 2
                 || values.stream().anyMatch(java.util.Objects::isNull)
                 || new HashSet<>(values).size() != values.size()) {
             throw new BusinessException(DreamErrorCode.INVALID_EMOTIONS);

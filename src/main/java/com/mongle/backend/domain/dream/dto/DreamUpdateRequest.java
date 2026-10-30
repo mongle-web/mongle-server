@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.mongle.backend.domain.dream.entity.DreamEmotion;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import jakarta.validation.constraints.NotNull;
@@ -23,7 +24,11 @@ public class DreamUpdateRequest {
     @Schema(description = "수정할 원문. 미전달 시 유지, null·공백만 있는 값은 불가, 최대 500자")
     private String originalText;
 
-    @Schema(description = "수정할 감정. 기존 7종 중 중복 없이 1~3개, 미전달 시 유지. 순서만 바꾸면 무변경")
+    @ArraySchema(
+            arraySchema = @Schema(description = "수정할 감정. 기존 7종 중 중복 없이 1~2개, 미전달 시 유지. 순서만 바꾸면 무변경"),
+            minItems = 1,
+            maxItems = 2,
+            uniqueItems = true)
     private List<DreamEmotion> emotions;
 
     @Schema(description = "최대 20자. 미전달 시 유지, null·빈 문자열·공백만 있는 값은 제목 제거")

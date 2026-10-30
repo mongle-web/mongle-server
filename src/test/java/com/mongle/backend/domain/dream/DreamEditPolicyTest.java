@@ -69,6 +69,31 @@ class DreamEditPolicyTest {
     }
 
     @Test
+    void rejectsThreeEmotionsBeforeCompletingOrChangingARecord() {
+        var three = List.of(DreamEmotion.HAPPY, DreamEmotion.CALM, DreamEmotion.EXCITED);
+        var pending = Dream.create(User.create("pending@test.com", "테스터"), "원문",
+                LocalDate.of(2026, 10, 6));
+        long pendingSource = pending.getSourceRevision();
+        assertThatThrownBy(() -> pending.complete(three))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(DreamErrorCode.INVALID_EMOTIONS));
+        assertThat(pending.getRecordStatus()).isEqualTo(DreamRecordStatus.EMOTION_PENDING);
+        assertThat(pending.getEmotions()).isEmpty();
+        assertThat(pending.getSourceRevision()).isEqualTo(pendingSource);
+
+        var dream = completed();
+        long source = dream.getSourceRevision();
+        assertThatThrownBy(() -> dream.update(true, "바뀐 원문", true, three, true, "바뀐 제목"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(DreamErrorCode.INVALID_EMOTIONS));
+        assertThat(dream.getOriginalText()).isEqualTo("원문");
+        assertThat(dream.getTitle()).isNull();
+        assertThat(dream.getEmotions()).containsExactlyInAnyOrder(DreamEmotion.HAPPY, DreamEmotion.CALM);
+        assertThat(dream.getSourceRevision()).isEqualTo(source);
+        assertThat(dream.isEdited()).isFalse();
+    }
+
+    @Test
     void failedTitleValidationDoesNotPartiallySaveText() {
         var dream = completed();
         long source = dream.getSourceRevision();
