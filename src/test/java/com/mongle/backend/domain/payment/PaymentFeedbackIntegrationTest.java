@@ -69,6 +69,23 @@ class PaymentFeedbackIntegrationTest {
                     .header("Content-Type","application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString(body,StandardCharsets.UTF_8)).build(),HttpResponse.BodyHandlers.ofString());
         }
     }
+    @Test void reclaimedOrderNeverGetsNewCreditOrHoldFromValidLateFeedback() {
+        accept(event(4));accept(event(9));
+        jdbc.update("update payment_orders set state='CREDIT_RECLAIMED' where id=?",order.getId());
+        jdbc.update("delete from credit_payment_holds where user_id=?",user);
+        long grants=jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind='GRANT'",Long.class,user);
+        long holds=jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind='PAYMENT_HOLD'",Long.class,user);
+        var late=event(4,Instant.now().plusSeconds(1));accept(late);accept(late);
+        accept(event(64,Instant.now().plusSeconds(2)));
+        var partial=event(70,Instant.now().plusSeconds(3));partial.put("orig_mul_no",order.getProviderTransaction());
+        partial.put("orig_price","1000");partial.put("price","500");partial.put("mul_no","93000001");accept(partial);
+        assertThat(current().getState()).isEqualTo(PaymentOrder.State.CREDIT_RECLAIMED);
+        assertThat(credits.balance(user).spendingBlocked()).isFalse();
+        assertThat(jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind='GRANT'",Long.class,user)).isEqualTo(grants);
+        assertThat(jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind='PAYMENT_HOLD'",Long.class,user)).isEqualTo(holds);
+        var response=PaymentOrderResponse.from(current(),Instant.now());
+        assertThat(response.state()).isEqualTo(PaymentOrder.State.CREDIT_RECLAIMED);
+    }
     @Test void verifiedCompletionGrantsOnceAndReturnsPlainSuccessWithoutJwt() throws Exception {
         var m=event(4); m.put("unknown_future_field","accepted");
         var response=post(PayAppForm.encode(m));
