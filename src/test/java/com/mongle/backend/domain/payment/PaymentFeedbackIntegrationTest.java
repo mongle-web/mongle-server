@@ -51,10 +51,11 @@ class PaymentFeedbackIntegrationTest {
         var response=payments.create(user,new PaymentOrderRequest(UUID.randomUUID(),"pack","01012345678")).get(5,TimeUnit.SECONDS);
         order=orders.findByPublicId(response.orderId()).orElseThrow();
     }
-    Map<String,String> event(int state) {
+    Map<String,String> event(int state) { return event(state,Instant.now()); }
+    Map<String,String> event(int state,Instant respondedAt) {
         var m=new LinkedHashMap<String,String>();
         m.put("userid","seller"); m.put("linkkey","test-link"); m.put("linkval","test-value");
-        m.put("responsedate",DateTimeFormatter.ofPattern("uuuuMMddHHmmss").withZone(ZoneId.of("Asia/Seoul")).format(Instant.now()));
+        m.put("responsedate",DateTimeFormatter.ofPattern("uuuuMMddHHmmss").withZone(ZoneId.of("Asia/Seoul")).format(respondedAt));
         m.put("hash",PaymentHashes.sha256("seller"+m.get("responsedate")+"test-secret"));
         m.put("var1",order.getPublicId()); m.put("var2",order.getNotificationToken());
         m.put("mul_no",order.getProviderTransaction()); m.put("price","1000"); m.put("pay_state",Integer.toString(state)); return m;
@@ -169,13 +170,27 @@ class PaymentFeedbackIntegrationTest {
         assertThat(current().getState()).isEqualTo(PaymentOrder.State.PAYMENT_REVIEW);
     }
     @Test void partialCancellationChecksOriginalAmountAndTracksSeparateTransaction() {
-        accept(event(4)); var m=event(70); m.put("orig_mul_no",order.getProviderTransaction()); m.put("orig_price","999"); m.put("price","500"); m.put("mul_no","9000002");
+        var paid=event(4); accept(paid); var m=event(70); m.put("orig_mul_no",order.getProviderTransaction()); m.put("orig_price","999"); m.put("price","500"); m.put("mul_no","9000002");
         assertThatThrownBy(() -> accept(m)).isInstanceOf(BusinessException.class);
         assertThat(credits.balance(user).spendingBlocked()).isFalse();
-        m.put("orig_price","1000"); accept(m); accept(m); accept(event(4));
+        m.put("orig_price","1000"); accept(m); accept(m); accept(paid);
         assertThat(current().getState()).isEqualTo(PaymentOrder.State.PAYMENT_REVIEW);
         assertThat(credits.balance(user)).isEqualTo(new CreditBalance(7,0,7,true));
         assertThat(events()).isEqualTo(2);
+    }
+    @Test void completionWithNewResponseTimeAfterPartialCancellationDoesNotGrantAgain() {
+        Instant respondedAt=Instant.now().minusSeconds(1);
+        var paid=event(4,respondedAt); accept(paid);
+        var cancel=event(70); cancel.put("orig_mul_no",order.getProviderTransaction());
+        cancel.put("orig_price","1000"); cancel.put("price","500"); cancel.put("mul_no","8"+order.getProviderTransaction());
+        accept(cancel);
+        var laterPaid=event(4,respondedAt.plusSeconds(1));
+        assertThat(verifier.verify(laterPaid).eventHash()).isNotEqualTo(verifier.verify(paid).eventHash());
+        accept(laterPaid); accept(laterPaid);
+        assertThat(current().getState()).isEqualTo(PaymentOrder.State.PAYMENT_REVIEW);
+        assertThat(credits.balance(user)).isEqualTo(new CreditBalance(7,0,7,true));
+        assertThat(events()).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind='GRANT'",Long.class,user)).isEqualTo(1);
     }
     @Test void paidAndCancelledRaceNeverLeavesSpendableCancelledCredits() throws Exception {
         var paid=event(4); var cancelled=event(9); var start=new CountDownLatch(1);
