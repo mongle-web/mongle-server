@@ -751,7 +751,9 @@ class DreamApiIntegrationTest {
                 List.of("HAPPY", "HAPPY"), Arrays.asList("HAPPY", null),
                 List.of("UNKNOWN"), null);
         try (var client = HttpClient.newHttpClient()) {
-            var pending = create(client, token);
+            var created = create(client, token);
+            // 저장 직후 응답은 DB DATETIME(6)보다 정밀할 수 있다. 저장된 상태끼리 비교한다.
+            var pending = data(send(client, token, "GET", path(created), null), 200);
             long id = pending.get("dreamId").asLong();
             for (Object emotions : invalid) {
                 var body = new HashMap<String, Object>();
@@ -775,6 +777,7 @@ class DreamApiIntegrationTest {
                     Map.of("revision", revision(pending), "emotions", List.of("HAPPY", "CALM"))), 200);
             assertThat(completed.path("emotions").valueStream().map(JsonNode::asString).toList())
                     .containsExactlyInAnyOrder("HAPPY", "CALM");
+            completed = data(send(client, token, "GET", path(completed), null), 200);
             var jobBefore = jdbc.queryForMap("select * from dream_generation_jobs where dream_id=?", id);
             for (Object emotions : invalid) {
                 var body = new HashMap<String, Object>();
@@ -832,6 +835,7 @@ class DreamApiIntegrationTest {
             var edited = data(send(client, token, "PATCH", path(titled),
                     Map.of("revision", revision(titled), "originalText", "수정한 원문")), 200);
             assertThat(edited.path("emotions")).isEqualTo(legacy.path("emotions"));
+            edited = data(send(client, token, "GET", path(edited), null), 200);
             var rejected = send(client, token, "PATCH", path(edited),
                     Map.of("revision", revision(edited), "emotions", List.of("HAPPY", "CALM", "EXCITED")));
             assertThat(rejected.statusCode()).isEqualTo(400);
