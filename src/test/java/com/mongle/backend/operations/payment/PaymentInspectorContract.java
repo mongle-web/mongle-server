@@ -486,6 +486,42 @@ abstract class PaymentInspectorContract {
     }
 
     @Test
+    void detectsUnlinkedForeignSourceAndPaidStateWithAnActiveHold() throws Exception {
+        String pending = order("READY");
+        grant(createUser(), "PAYMENT", "payapp:" + pending, 10);
+        var foreign = inspect(pending);
+        assertFinding(foreign, "GRANT_OWNER_MISMATCH");
+        assertThat(foreign.path("purchase").isNull()).isTrue();
+        String target = order("READY");
+        long g = paid(target);
+        hold(target, g);
+        jdbc.update("update payment_orders set state='PAID' where public_id=?", target);
+        var held = inspect(target);
+        assertFinding(held, "HOLD_WITHOUT_REVIEW_STATE");
+        assertThat(held.path("status").asString()).isEqualTo("REVIEW_REQUIRED");
+        assertThat(held.at("/account/spendingBlocked").asBoolean()).isTrue();
+    }
+
+    @Test
+    void detectsUnknownAndWrongAmountNotificationsWithoutInferringRefunds() throws Exception {
+        String target = order("READY");
+        paid(target);
+        notification(target, 4, 1000);
+        notification(target, 70, 1101);
+        notification(target, 777, 1100);
+        var report = inspect(target);
+        assertFinding(report, "NOTIFICATION_AMOUNT_MISMATCH");
+        assertFinding(report, "UNKNOWN_NOTIFICATION_STATE");
+        assertThat(
+                        report.path("notifications")
+                                .valueStream()
+                                .map(item -> item.path("stateCode").asInt())
+                                .toList())
+                .contains(-1);
+        assertThat(report.toString()).doesNotContain("refundAmount");
+    }
+
+    @Test
     void absentOrderReturnsSpecificFailureWithoutAnyDataCreation() {
         var before = snapshot();
         assertThatThrownBy(() -> inspector.inspect(UUID.randomUUID().toString()))

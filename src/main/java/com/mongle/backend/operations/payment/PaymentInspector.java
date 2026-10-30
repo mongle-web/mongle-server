@@ -109,6 +109,8 @@ final class PaymentInspector {
                                         number(r, "consumed")),
                         order.grantId,
                         hash);
+        if (candidates.stream().anyMatch(g -> g.sourceMatches && g.user != order.user))
+            findings.add("GRANT_OWNER_MISMATCH");
         var linked =
                 candidates.stream().filter(g -> Objects.equals(g.id, order.grantId)).findFirst();
         if (order.grantId != null && linked.isEmpty()) findings.add("LINKED_GRANT_MISSING");
@@ -219,6 +221,8 @@ final class PaymentInspector {
                         .getFirst();
         if (holds.get(2).signum() != 0 || !holds.get(1).equals(ledger.get(5)))
             findings.add("PAYMENT_HOLD_LEDGER_MISMATCH");
+        if (holds.get(1).signum() > 0 && !storedState.equals("PAYMENT_REVIEW"))
+            findings.add("HOLD_WITHOUT_REVIEW_STATE");
         if (holds.get(0).compareTo(holds.get(1)) > 0)
             notices.add("ACCOUNT_HAS_OTHER_PAYMENT_HOLDS");
 
