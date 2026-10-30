@@ -219,6 +219,9 @@ def main():
                     raise RuntimeError("Packaged promotion ledger mismatch.")
                 print("Packaged JAR: credit preview/grant/replay/conflict/disabled/JDBC failure/concurrent JVMs passed without Boot or workers.", flush=True)
 
+                from payment_inspection_smoke import verify as verify_payment_inspection
+                verify_payment_inspection(repo, jars[0], credit_env, sql)
+
                 return 0
             except (Exception, KeyboardInterrupt):
                 # Raw SQL/client output may contain generated secrets; never dump fixture.log.
