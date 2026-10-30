@@ -250,6 +250,45 @@ class DreamGenerationIntegrationTest {
     }
 
     @Test
+    void httpRetryOfInitialNarrativeRequestFailureReusesSuccessfulAnalysis() throws Exception {
+        storyGenerator.result = CompletableFuture.failedFuture(
+                new com.mongle.backend.domain.ai.error.AiGatewayException(
+                        com.mongle.backend.domain.ai.error.AiGatewayErrorCode.INVALID_REQUEST,
+                        null, false, null, null));
+        var dream = completed();
+        pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.FAILED);
+        assertThat(state(dream).stage()).isEqualTo(DreamGenerationJob.Stage.STORY);
+        assertThat(state(dream).failureCode()).isEqualTo("CALL_FAILED");
+        var failedStory = storyTransactions.latest(user, dream.dreamId());
+        var before = analysisTransactions.get(user, failedStory.analysisId());
+        assertThat(before.status()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(structureGenerator.calls).hasValue(1);
+        storyGenerator.result = CompletableFuture.completedFuture(STORY);
+        String token = tokens.login(user).response().accessToken();
+        try (var client = HttpClient.newHttpClient()) {
+            var accepted = send(client, dream.dreamId(), token,
+                    "{\"revision\":" + dreams.get(user, dream.dreamId()).revision() + "}");
+            assertStatus(accepted, 202);
+            assertThat(accepted.headers().firstValue("Cache-Control")).contains("no-store");
+            pumpUntil(() -> state(dream).status() == DreamGenerationJob.Status.COMPLETED);
+            assertThat(state(dream).stage()).isEqualTo(DreamGenerationJob.Stage.STORY);
+            assertStatus(send(client, dream.dreamId(), token, null), 200);
+            assertThat(structureGenerator.calls).hasValue(1);
+            assertThat(storyGenerator.calls).hasValue(2);
+            var after = analysisTransactions.get(user, failedStory.analysisId());
+            assertThat(after.analysisId()).isEqualTo(before.analysisId());
+            assertThat(after.scenes()).isEqualTo(before.scenes());
+            assertThat(after.elements()).isEqualTo(before.elements());
+            assertThat(after.displayKeywords()).isEqualTo(before.displayKeywords());
+            assertThat(after.resultRevision()).isEqualTo(before.resultRevision());
+            assertStatus(send(client, dream.dreamId(), token,
+                    "{\"revision\":" + dreams.get(user, dream.dreamId()).revision() + "}"), 202);
+            assertThat(structureGenerator.calls).hasValue(1);
+            assertThat(storyGenerator.calls).hasValue(2);
+        }
+    }
+
+    @Test
     void failedStoryPreservesPriorAnalysisAndRetryOnlyRepeatsStory() throws Exception {
         var dream = generated();
         var changed = editText(dream, "숲을 걸었다");

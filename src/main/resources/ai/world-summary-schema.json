@@ -1,1 +1,12 @@
-{"type":"object","additionalProperties":false,"properties":{"generatedTitle":{"type":"string","minLength":1,"maxLength":80}},"required":["generatedTitle"]}
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "generatedTitle": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "generatedTitle"
+  ]
+}

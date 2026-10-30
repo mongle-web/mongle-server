@@ -152,3 +152,8 @@ JSON Schema 전체 검증과 도메인의 필드·참조·순서 등 업무 검�
 - [LINER 오류와 재시도](https://liner.com/developers/docs/rate-limits)
 - [Java 21 HttpClient](https://docs.oracle.com/en/java/javase/21/docs/api/java.net.http/java/net/http/HttpClient.html)
 - [공통 Gateway 계약](ai-gateway-contract.md)
+
+## 서사·연결·요약 스키마 호환성 (#115)
+
+운영의 서사 400/단순화 200 비교를 바탕으로 전송 스키마 제약을 조정한다. 개별 키워드 미지원으로 단정하지 않으며
+기존 Java 업무 검증과 프롬프트·캐시 버전을 유지한다. [근거·기능별 검증·배포 후 재시도](liner-structured-output.md)를 따른다.
