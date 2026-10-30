@@ -215,6 +215,18 @@ public class ImageTransactions {
                         .orElseThrow(() -> new BusinessException(ImageErrorCode.NOT_FOUND)));
     }
 
+    public record Asset(Long imageId, long imageVersion, String storageKey) {
+        @Override public String toString() {
+            return "ImageDownloadAsset[imageId=" + imageId + ", imageVersion=" + imageVersion + "]";
+        }
+    }
+
+    public List<Asset> assets(Long userId, Collection<Long> imageIds) {
+        return images.findDownloadAssets(userId, imageIds).stream()
+                .map(asset -> new Asset(asset.getImageId(), asset.getImageVersion(), asset.getStorageKey()))
+                .toList();
+    }
+
     public String assetKey(Long userId, Long imageId) {
         String key = owned(userId, imageId).getStorageKey();
         if (key == null) throw new BusinessException(ImageErrorCode.NOT_FOUND);
