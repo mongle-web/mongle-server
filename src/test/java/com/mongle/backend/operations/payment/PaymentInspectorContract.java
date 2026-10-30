@@ -41,7 +41,7 @@ abstract class PaymentInspectorContract {
                         "jdbc:h2:mem:payment-inspect;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
                         "sa",
                         "");
-        new ResourceDatabasePopulator(new ClassPathResource("db/schema-initial.sql")).execute(ds);
+        new ResourceDatabasePopulator(new ClassPathResource("db/schema-initial.sql"),new ClassPathResource("db/migration/V6__payment_credit_reclamations.sql")).execute(ds);
         return ds;
     }
 
@@ -276,6 +276,7 @@ abstract class PaymentInspectorContract {
         var rows = new ArrayList<Object>();
         for (String table :
                 List.of(
+                        "payment_credit_reclamations",
                         "payment_orders",
                         "payment_notifications",
                         "payment_transaction_bindings",

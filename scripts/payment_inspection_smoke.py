@@ -18,7 +18,7 @@ def verify(repo, jar, credit_env, sql):
     sql(f"""INSERT INTO payment_orders(public_id,user_id,request_id,input_hash,notification_token,product_id,product_name,price,currency,credits,state,payment_url,request_deadline,version,created_at,updated_at)
         VALUES('{order}',{owner},'{uuid.uuid4()}','private-input-hash','private-notification-token','credit-pack','private-product-name',1100,'KRW',10,'READY','https://payapp.kr/?private=secret',UTC_TIMESTAMP()+INTERVAL 1 DAY,0,NOW(),NOW());""", "credit_test")
     tables = ("users", "payment_orders", "payment_transaction_bindings", "payment_notifications",
-              "credit_accounts", "credit_grants", "credit_reservations", "credit_allocations", "credit_ledger", "credit_payment_holds")
+              "payment_credit_reclamations", "credit_accounts", "credit_grants", "credit_reservations", "credit_allocations", "credit_ledger", "credit_payment_holds")
 
     def snapshot():
         # Exact table checksums are fixture-only assertions, never exposed by the command.
