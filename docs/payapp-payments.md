@@ -49,6 +49,7 @@ orderId는 UUID, createdAt은 기존 계약의 UTC LocalDateTime이다. 거래�
 | PAID | 검증된 결제 완료와 크레딧 지급 커밋 완료 |
 | CANCELLED | 지급 전 취소 확인. 추가 지급하지 않음 |
 | PAYMENT_REVIEW | 취소/순서 충돌 등의 결제 정합성 확인 필요. 자동 재지급하지 않음 |
+| CREDIT_RECLAIMED | 전액 승인취소된 미사용 구매분의 내부 회수 완료. 결제 성공이 아님. creditGranted는 과거 지급 연결 여부 |
 
 creditGranted는 과거 지급이 존재하는지 나타내므로 state와 함께 확인한다.
 결제 요청이 이미 끝났으면 POST는200이며 성공 구매를 뜻하지 않는다. 정상 요청도 통보가 먼저 도착하면 바로 PAID가 반환될 수 있다.
