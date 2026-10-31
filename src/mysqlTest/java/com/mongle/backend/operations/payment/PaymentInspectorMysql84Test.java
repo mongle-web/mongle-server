@@ -17,6 +17,7 @@ import javax.sql.DataSource;
 class PaymentInspectorMysql84Test extends PaymentInspectorContract {
     @Override
     DataSource dataSource() {
+        com.mongle.backend.support.NativeMysqlSupport.register((name, value) -> {}, "credit_test");
         int port = Integer.parseInt(System.getenv("MONGLE_MYSQL_TEST_PORT"));
         if (port < 1 || port > 65535)
             throw new IllegalStateException("Disposable fixture required");

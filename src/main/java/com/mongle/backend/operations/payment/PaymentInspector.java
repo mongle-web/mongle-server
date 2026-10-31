@@ -44,6 +44,11 @@ final class PaymentInspector {
         }
     }
 
+    Map<String, Object> inspect(Connection connection, String orderId, long deadline)
+            throws SQLException {
+        return snapshot(new Session(connection, deadline), orderId);
+    }
+
     private Map<String, Object> snapshot(Session db, String orderId) throws SQLException {
         var rows =
                 db.query(
@@ -127,13 +132,34 @@ final class PaymentInspector {
             findings.add("ORDER_GRANT_LINK_MISMATCH");
         if (storedState.equals("PAID") && grant == null)
             findings.add("PAID_WITHOUT_MATCHING_GRANT");
-        if (grant != null && !Set.of("PAID", "PAYMENT_REVIEW").contains(storedState))
+        if (grant != null
+                && !Set.of("PAID", "PAYMENT_REVIEW", "CREDIT_RECLAIMED").contains(storedState))
             findings.add("GRANT_WITHOUT_CONFIRMED_ORDER_STATE");
         long grantId = grant == null ? -1 : grant.id;
+        var reclaimedRows =
+                db.query(
+                        "select id,user_id,grant_id,amount from payment_credit_reclamations where"
+                                + " order_id=?",
+                        r -> values(r, "id", "user_id", "grant_id", "amount"),
+                        order.id);
+        var reclamation = reclaimedRows.isEmpty() ? null : reclaimedRows.getFirst();
+        BigInteger reclaimed = reclamation == null ? BigInteger.ZERO : reclamation.get(3);
+        if (reclamation != null
+                && (grant == null
+                        || !reclamation.get(1).equals(BigInteger.valueOf(order.user))
+                        || !reclamation.get(2).equals(BigInteger.valueOf(grantId))
+                        || !reclaimed.equals(order.credits)
+                        || !storedState.equals("CREDIT_RECLAIMED")))
+            findings.add("RECLAMATION_STATE_MISMATCH");
+        if (storedState.equals("CREDIT_RECLAIMED") && reclamation == null)
+            findings.add("RECLAMATION_STATE_MISMATCH");
         if (grant != null
                 && (!grant.amount.equals(order.credits)
                         || !grant.amount.equals(
-                                grant.available.add(grant.reserved).add(grant.consumed))))
+                                grant.available
+                                        .add(grant.reserved)
+                                        .add(grant.consumed)
+                                        .add(reclaimed))))
             findings.add("PURCHASE_CREDIT_TOTAL_MISMATCH");
 
         var accounts =
@@ -145,12 +171,16 @@ final class PaymentInspector {
                 accounts.isEmpty()
                         ? List.of(BigInteger.ZERO, BigInteger.ZERO)
                         : accounts.getFirst();
+        if (account.get(0).signum() < 0
+                || account.get(1).signum() < 0
+                || account.get(0).add(account.get(1)).compareTo(BigInteger.valueOf(Long.MAX_VALUE))
+                        > 0) findings.add("ACCOUNT_BALANCE_OUT_OF_RANGE");
         var totals =
                 db.query(
                                 """
-                                select count(*) as grants,coalesce(sum(available),0) as available,coalesce(sum(reserved),0) as reserved,
-                                coalesce(sum(case when amount<>available+reserved+consumed then 1 else 0 end),0) as invalid_grants
-                                from credit_grants where user_id=?
+                                select count(*) as grants,coalesce(sum(g.available),0) as available,coalesce(sum(g.reserved),0) as reserved,
+                                coalesce(sum(case when g.amount<>g.available+g.reserved+g.consumed+coalesce(c.amount,0) then 1 else 0 end),0) as invalid_grants
+                                from credit_grants g left join payment_credit_reclamations c on c.grant_id=g.id where g.user_id=?
                                 """,
                                 r -> values(r, "grants", "available", "reserved", "invalid_grants"),
                                 order.user)
@@ -219,12 +249,29 @@ final class PaymentInspector {
                                 order.user,
                                 grantId)
                         .getFirst();
-        if (holds.get(2).signum() != 0 || !holds.get(1).equals(ledger.get(5)))
-            findings.add("PAYMENT_HOLD_LEDGER_MISMATCH");
+        if (holds.get(2).signum() != 0
+                || !holds.get(1)
+                        .add(reclamation == null ? BigInteger.ZERO : BigInteger.ONE)
+                        .equals(ledger.get(5))) findings.add("PAYMENT_HOLD_LEDGER_MISMATCH");
         if (holds.get(1).signum() > 0 && !storedState.equals("PAYMENT_REVIEW"))
             findings.add("HOLD_WITHOUT_REVIEW_STATE");
         if (holds.get(0).compareTo(holds.get(1)) > 0)
             notices.add("ACCOUNT_HAS_OTHER_PAYMENT_HOLDS");
+
+        var reclaimLedger =
+                db.query(
+                                """
+                                select count(*) as entries,coalesce(sum(available_delta),0) as reclaimed,
+                                coalesce(sum(case when user_id<>? or source_type is null or source_type<>'PAYMENT' or reserved_delta<>0 then 1 else 0 end),0) as invalid
+                                from credit_ledger where grant_id=? and kind='RECLAIM'
+                                """,
+                                r -> values(r, "entries", "reclaimed", "invalid"),
+                                order.user,
+                                grantId)
+                        .getFirst();
+        if (!reclaimLedger.get(0).equals(reclamation == null ? BigInteger.ZERO : BigInteger.ONE)
+                || !reclaimLedger.get(1).equals(reclaimed.negate())
+                || reclaimLedger.get(2).signum() != 0) findings.add("RECLAMATION_LEDGER_MISMATCH");
 
         var allocations =
                 db.query(
@@ -283,8 +330,10 @@ final class PaymentInspector {
         }
         if (storedState.equals("PAID") && completions.signum() == 0)
             findings.add("COMPLETION_NOTIFICATION_MISSING");
-        if (grant != null && cancellations.signum() > 0 && holds.get(1).signum() == 0)
-            findings.add("CANCELLATION_HOLD_MISSING");
+        if (grant != null
+                && reclamation == null
+                && cancellations.signum() > 0
+                && holds.get(1).signum() == 0) findings.add("CANCELLATION_HOLD_MISSING");
         String status =
                 !findings.isEmpty()
                                 || Set.of("UNKNOWN", "PAYMENT_REVIEW", "INVALID")
@@ -296,6 +345,9 @@ final class PaymentInspector {
         var result = new LinkedHashMap<String, Object>();
         result.put("event", "payment-inspection-completed");
         result.put("scope", "INTERNAL_DATABASE_ONLY");
+        result.put(
+                "reclamation",
+                reclamation == null ? null : map("id", reclamation.get(0), "amount", reclaimed));
         result.put("status", status);
         result.put("observedAt", observed);
         result.put(
@@ -334,6 +386,8 @@ final class PaymentInspector {
                                 grant.reserved,
                                 "consumed",
                                 grant.consumed,
+                                "reclaimed",
+                                reclaimed,
                                 "paymentHold",
                                 holds.get(1).signum() > 0));
         result.put(
@@ -397,7 +451,7 @@ final class PaymentInspector {
         return result;
     }
 
-    private static String hash(String key) {
+    static String hash(String key) {
         try {
             return HexFormat.of()
                     .formatHex(
@@ -456,11 +510,11 @@ final class PaymentInspector {
             int stateCode, BigInteger count, BigInteger minimum, BigInteger maximum) {}
 
     @FunctionalInterface
-    private interface Row<T> {
+    interface Row<T> {
         T read(ResultSet row) throws SQLException;
     }
 
-    private record Session(Connection connection, long deadline) {
+    record Session(Connection connection, long deadline) {
         <T> List<T> query(String sql, Row<T> mapper, Object... values) throws SQLException {
             long left = deadline - System.nanoTime();
             if (left <= 0) throw new SQLTimeoutException();

@@ -13,7 +13,7 @@ import java.util.UUID;
     indexes=@Index(name="idx_payment_order_user",columnList="user_id,id"))
 @NoArgsConstructor(access=AccessLevel.PROTECTED)
 public class PaymentOrder extends BaseEntity {
-    public enum State { REQUESTING, READY, REQUEST_REJECTED, UNKNOWN, PENDING, PAID, CANCELLED, PAYMENT_REVIEW }
+    public enum State { REQUESTING, READY, REQUEST_REJECTED, UNKNOWN, PENDING, PAID, CANCELLED, PAYMENT_REVIEW, CREDIT_RECLAIMED }
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @Column(name="public_id",nullable=false,length=36) private String publicId;
     @Column(name="user_id",nullable=false) private Long userId;

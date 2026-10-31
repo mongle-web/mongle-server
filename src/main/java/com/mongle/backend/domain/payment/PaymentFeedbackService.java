@@ -34,6 +34,11 @@ public class PaymentFeedbackService {
         // 이미 저장한 정확히 같은 통보는 시각 창이 지나도 재지급 없이 ACK한다.
         if(notifications.existsById(event.eventHash())) return;
         verifier.requireFresh(event);
+        // 운영 회수 완료는 종결 상태다. 검증된 늦은 통보는 감사용으로 보존하되 재지급/재보류하지 않는다.
+        if(order.getState()==PaymentOrder.State.CREDIT_RECLAIMED) {
+            notifications.saveAndFlush(PaymentNotification.create(event,order.getId()));
+            return;
+        }
         switch(event.state()) {
             case 1,10 -> order.pending();
             case 4 -> {
