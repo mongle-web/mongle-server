@@ -67,6 +67,17 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 | AUTH_401_6 | 동의 취소·state 오류 등 인증 실패 |
 | AUTH_503_1 | 서버 로그인 처리 장애 |
 
+## 출석 보상
+
+온보딩 완료 후 `GET /api/v1/attendance`로 한국 기준 오늘 보상 상태를 조회하고,
+'보상 받기' 클릭 시 본문 없이 `POST /api/v1/attendance/claim`을 Bearer 인증으로 호출한다.
+기본 하루 1크레딧이며 가입 당일에도 수령할 수 있다. 다음 한국 시간 자정에 새 보상이 열린다.
+
+수령 성공·이미 수령한 재요청 모두200이다. 응답의 `alreadyClaimed`를 확인하고 잔액을 `balance`로
+교체한다. `amount`를 로컬 잔액에 더하지 않는다. 이용 내역의 새 출처 `ATTENDANCE`는 '출석 보상'으로 표시한다.
+`nextClaimAt`은 다음 날짜의 개방 시각이며 현재 미수령 보상을 받기 위해 기다려야 하는 시각이 아니다.
+503이면 성공으로 표시하지 않고 재조회/재시도한다. [요청·응답 및 오류 계약](attendance-rewards.md)을 참고한다.
+
 ## 마이페이지 닉네임 변경
 
 `PATCH /api/v1/users/me/nickname`에 Bearer 인증과 JSON `{"nickname":"새몽글"}`을 보낸다.

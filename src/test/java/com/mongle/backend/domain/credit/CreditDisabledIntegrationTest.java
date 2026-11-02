@@ -15,6 +15,8 @@ import java.util.UUID;
 @ActiveProfiles("test")
 class CreditDisabledIntegrationTest {
     @Autowired CreditService credits;
+    @Autowired AttendanceService attendance;
+    @Autowired AttendanceProperties attendanceProperties;
     @Autowired CreditReservationService reservations;
     @Autowired CreditProperties properties;
     @Autowired UserRepository users;
@@ -25,6 +27,11 @@ class CreditDisabledIntegrationTest {
         assertThat(properties.enabled()).isFalse();assertThat(properties.signupAmount()).isEqualTo(3);
         assertThat(credits.balance(u)).isEqualTo(new CreditBalance(0,0,0));
         assertThat(credits.transactions(u,null,20).items()).isEmpty();
+        assertThat(attendanceProperties).isEqualTo(new AttendanceProperties(false, 1));
+        assertThat(attendance.status(u).claimable()).isFalse();
+        assertThatThrownBy(() -> attendance.claim(u)).isInstanceOfSatisfying(BusinessException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(CreditErrorCode.UNAVAILABLE));
+        assertThat(jdbc.queryForObject("select count(*) from credit_accounts where user_id=?", Long.class, u)).isZero();
         assertThatThrownBy(()->credits.grant(u,CreditSource.PAYMENT,"order",10)).isInstanceOfSatisfying(BusinessException.class,e->assertThat(e.getErrorCode()).isEqualTo(CreditErrorCode.UNAVAILABLE));
         assertThatThrownBy(()->reservations.reserve(u,"attempt",CreditUsage.DREAM_IMAGE_GENERATION,"image:1",Instant.now().plusSeconds(60))).isInstanceOf(BusinessException.class);
     }

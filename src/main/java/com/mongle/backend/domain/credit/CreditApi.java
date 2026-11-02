@@ -10,7 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 
-@Tag(name = "Credit", description = "내 크레딧 조회. 지급·예약·확정·해제는 서버 내부 전용입니다.")
+@Tag(name = "Credit", description = "내 크레딧 조회. 임의 지급·예약·확정·해제는 서버 내부 전용이며 일일 보상은 Attendance API에서 수령합니다.")
 @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
 @ApiResponses({
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 필요", content = @Content(schema = @Schema(implementation = ApiResponse.class))),
