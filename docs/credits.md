@@ -20,11 +20,15 @@
 
 Bearer 인증과 온보딩이 필요하다. 본인 내역만 반환하고 Cache-Control: no-store를 설정한다. 미지급 계정 조회는 모두0을 반환하며 계정 생성·지급을 하지 않는다. 기능 비활성 상태에서도 조회할 수 있다.
 
+출석 보상은 별도 `GET /api/v1/attendance`, `POST /api/v1/attendance/claim`으로 조회·수령한다.
+한국 시간 기준 하루 한 번 기본 1크레딧을 ATTENDANCE 출처로 지급한다. 가입 당일에도 별도로 수령 가능하며
+조회만으로 지급하지 않는다. [일일 출석 보상 계약](attendance-rewards.md)을 참고한다.
+
 total=available+reserved이며 사용 확정된 양은 제외한다. 원장은 ID 내림차순, size1~50이며 hasNext일 때 nextBeforeId를 다음 beforeId로 전달한다. 각 내역에는 kind/source/usage, availableDelta/reservedDelta, availableAfter/reservedAfter, createdAt이 포함된다. source/usage는 해당하지 않는 종류에서 null이다. createdAt은 기존 API와 같은 서버 UTC 기준 LocalDateTime이다. 결제사 키·내부 요청 키·지급 출처 키는 노출하지 않는다.
 
 ## 내부 계약과 트랜잭션
 
-- CreditService.grant(userId, source, sourceKey, amount): 검증한 결제 상태 저장과 같은 트랜잭션에서 호출한다. PAYMENT/SIGNUP/PROMOTION을 구분하고 출처별 지급 원본 수량을 보존한다. 같은 출처·키·소유자·수량은 기존 지급을 반환하고 다른 내용은 충돌한다. 출처의 전역 UNIQUE가 같은 주문의 다른 계정 지급도 방어한다.
+- CreditService.grant(userId, source, sourceKey, amount): 검증한 결제 상태 저장과 같은 트랜잭션에서 호출한다. PAYMENT/SIGNUP/PROMOTION/ATTENDANCE를 구분하고 출처별 지급 원본 수량을 보존한다. 같은 출처·키·소유자·수량은 기존 지급을 반환하고 다른 내용은 충돌한다. 출처의 전역 UNIQUE가 같은 주문의 다른 계정 지급도 방어한다.
 - CreditReservationService.reserve(userId, requestKey, usage, targetKey, expiresAt): 생성 시도 저장과 같은 트랜잭션에 참여한다. targetKey에는 이미지 ID만이 아니라 해당 시도/attempt 식별자를 연결한다. 부족한 잔액으로 외부 AI를 실행하면 안 된다.
 - settle(userId, reservationId, resultKey): 성공 결과/버전 저장과 같은 트랜잭션에서 실행한다. resultKey는 영속 결과 ID이며 URL·원문을 넣지 않는다. 결과 저장이 롤백되면 확정도 롤백된다.
 - release(userId, reservationId, reason): FAILURE/CANCELLED/EXPIRED를 구분한다. 생성 실패 예약 해제는 구매 결제 환불이 아니다. 이미 해제됐으면 최초 사유를 보존한다.
@@ -57,6 +61,8 @@ expiresAt은 해당 생성 시도의 lease 기한이다. DB DATETIME(6) 정밀�
 | MONGLE_CREDIT_ENABLED | false: 신규 지급/예약 비활성 |
 | MONGLE_CREDIT_EXPIRY_POLICY | NO_EXPIRY |
 | MONGLE_CREDIT_SIGNUP_AMOUNT | 기본3. 최초 온보딩 완료 시 1회. 0/null의 신규 지급은 CREDIT_503_1 |
+| MONGLE_CREDIT_ATTENDANCE_ENABLED | false. true이면 한국 시간 기준 일일 출석 보상 수령 가능 |
+| MONGLE_CREDIT_ATTENDANCE_AMOUNT | 기본1. 양수만 허용하며 기존 당일 지급량은 변경하지 않음 |
 | MONGLE_CREDIT_DREAM_IMAGE_GENERATION | 3 |
 | MONGLE_CREDIT_DREAM_IMAGE_REGENERATION | 1 (첫 성공 재생성은 무료) |
 | MONGLE_CREDIT_WORLD_IMAGE_GENERATION | 3 |
