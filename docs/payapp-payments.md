@@ -1,9 +1,10 @@
 # 페이앱 단건 크레딧 충전 (#62)
 
-`feat/60-credit-ledger`의 #61 위에서 구현했다. 새 API는5개이며 기존 잔액/원장 API는 재사용한다.
-실제 페이앱 계정·키·상품 허용·청구·정산을 확인한 상태가 아니다. 기본은 신규 결제/Provider/크레딧 지급 모두 비활성이다.
+최초 #62의 주문·통보 구현을 바탕으로 #124의 실결제 설정·복구 조회를 반영했다.
+개인사업자 계정의 상품·실결제 승인은 팀에서 확인했으며 실제 청구·통보·정산 종단 검증은 별도다. 기본은 신규 결제/Provider/크레딧 지급 모두 비활성이다.
+[실결제 설정·프론트 복구·운영 검증 안내](payapp-live-readiness.md)를 함께 확인한다.
 유상/무료 크레딧 모두 무기한으로 사용하는 정책을 반영해 expiry-policy 기본은 NO_EXPIRY로 변경했다.
-구매 환불 신청·자동 환불·실물 상품·가입 자동 지급·이미지 과금 호출부는 포함하지 않는다.
+결제 모듈은 구매 환불 신청·PG 자동 환불·실물 상품을 포함하지 않는다. 가입 지급과 이미지 과금은 별도 크레딧 기능을 재사용한다.
 
 ## 공개 계약
 
@@ -12,15 +13,16 @@
 
 | API | 책임 |
 | --- | --- |
-| GET /api/v1/payments/products | 설정된 활성 상품 목록. 미설정이면 빈 목록 |
+| GET /api/v1/payments/products | 신규 결제·크레딧·Provider 준비 시 활성 상품 목록. 미준비/미설정이면 빈 목록 |
 | POST /api/v1/payments/orders | requestId·productId·buyerPhone으로 주문 생성/재사용, 결제창 URL 반환 |
 | GET /api/v1/payments/orders/{orderId} | 본인 주문 상태·지급 여부 조회 |
+| GET /api/v1/payments/orders/by-request-id/{requestId} | 응답 유실 시 요청 UUID로 본인 주문 조회, 외부 재요청/지급 없음 |
 | GET /api/v1/payments/orders?beforeId=&size=20 | 본인 주문 내역, ID 내림차순·size1~50 |
 | POST /api/v1/payments/payapp/feedback | 페이앱 서버 FORM 통보, 커밋 완료 후 plain text SUCCESS |
 
-상품 응답은 productId/name/price/currency/credits다. 이번 어댑터는 **국내 휴대폰·원화(KRW) 정수 결제**를 지원한다.
+상품 응답은 productId/name/price/currency/credits다. 이번 어댑터는 **국내 구매자 연락처·원화(KRW) 정수 결제와 카드·간편결제 수단**를 지원한다.
 활성 상품의 최종 결제금액은 공식 최소금액1000원 이상 int 범위, 지급 크레딧은 양수 long이다. USD 등은 조용히 변환하지 않고 설정을 거절한다.
-가격·지급량은 운영 기본값을 넣지 않았다. 다른 통화·세금 분리·국제전화 지원이 필요하면 해당 계약을 별도 검증해 확장한다.
+가격·지급량은 운영 기본값으로 하드코딩하지 않았다. 확정 상품은1,100원·10크레딧이며 명시적으로 설정한다. 다른 통화·세금 분리·국제전화 지원이 필요하면 해당 계약을 별도 검증해 확장한다.
 금액·지급량·회원 ID·복귀 URL·통보 URL을 클라이언트가 결정하지 않는다. 구매자 휴대폰은 국내01x 형식의10~11자리 숫자이며 사용자 프로필 필수값으로 확대하지 않는다.
 
 주문 요청 예시는 형태만 나타낸다.
@@ -93,19 +95,20 @@ PAYMENT_HOLD 원장 항목은 수량 변동0의 검토 표시다. 같은 주문�
 | PAYAPP_SELLER_ID / PAYAPP_LINK_KEY / PAYAPP_LINK_VALUE / PAYAPP_REQUEST_KEY | 빈 값, 서버 비밀 설정에서 주입 |
 | PAYAPP_FEEDBACK_URL | 빈 값. HTTPS /api/v1/payments/payapp/feedback 정확한 경로 |
 | PAYAPP_RETURN_URL | 빈 값. HTTPS 프론트 복귀 페이지. orderId는 서버가 query에 추가 |
+| PAYAPP_OPEN_PAY_TYPES | card,kakaopay,naverpay,tosspay. 중복 없는 카드·간편결제만 허용 |
 | PAYAPP_CONNECT_TIMEOUT | 3s |
 | PAYAPP_TOTAL_TIMEOUT | 30s: connect 이상·최대30s |
 
-products는 운영 YAML/환경의 구조화 설정으로 공급한다. 빈 목록이 기본이다. 다음 비활성 틀의 금액/수량을 회의 결과로 채운 뒤 검증한다.
+products는 운영 YAML/환경의 구조화 설정으로 공급한다. 빈 목록이 기본이다. 다음 틀은 확정 상품이며 판매 전까지 enabled=false로 유지한다.
 
 ```yaml
 mongle:
   payment:
     products:
       - id: credit-pack
-        name: null
-        price: null
-        credits: null
+        name: 몽글 10크레딧
+        price: 1100
+        credits: 10
         currency: KRW
         enabled: false
 ```
@@ -123,7 +126,7 @@ mongle:
 현재 운영 스키마 변경은 [Flyway 배포 절차](database-migrations.md)를 따른다. 이미 적용된 초기 SQL·과거 마이그레이션은 재실행하지 않는다. 앱 DML 계정의 `ddl-auto=validate`를 유지한다. H2와 임시 MySQL 8.4에서 스키마·격리/잠금·회계 계약을 검증하며, 실제 RDS/페이앱 종단 검증은 별도다.
 모의 HTTP로 인코딩·응답 제한/타임아웃·비리다이렉트, 실제 앱 주문→모의 페이앱→먼저 도착하는 HTTP통보→크레딧 지급까지 검증했다.
 중복/동시 통보·위변조·순서 역전·지급/취소 롤백·본인 권한/페이지·예약 사용 보류을 검증한다.
-실제 키/상품 가격을 넣어 청구하지 않았다. 페이앱 실제 계정·키·상품 허용과 공개 HTTPS 통보 URL·최종 상품값이 있어야 실결제 종단 검증을 완료할 수 있다.
+자동 테스트는 가상 키/상품과 로컬 모의 서버만 사용하며 실제 청구하지 않는다. 페이앱 실제 계정·키·상품 허용과 공개 HTTPS 통보 URL·최종 상품값이 있어야 실결제 종단 검증을 완료할 수 있다.
 
 ## 공식 근거
 
