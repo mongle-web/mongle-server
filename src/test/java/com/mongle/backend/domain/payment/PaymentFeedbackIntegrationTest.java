@@ -162,10 +162,16 @@ class PaymentFeedbackIntegrationTest {
     }
     @Test void creditGrantAndNotificationRollbackWithOrderIfFinalStorageFails() throws Exception {
         doThrow(new IllegalStateException("테스트 저장 실패")).when(notifications).saveAndFlush(any(PaymentNotification.class));
-        var response=post(PayAppForm.encode(event(4)));
+        var completion=event(4);
+        var response=post(PayAppForm.encode(completion));
         assertThat(response.statusCode()).isEqualTo(503); assertThat(response.body()).isEqualTo("FAIL");
         assertThat(credits.balance(user).total()).isZero(); assertThat(current().getState()).isEqualTo(PaymentOrder.State.READY);
         assertThat(current().getCreditGrantId()).isNull(); assertThat(events()).isZero();
+        reset(notifications); // 저장 실패 주입을 제거하고 실제 Repository 위임을 복구한다.
+        assertThat(post(PayAppForm.encode(completion)).body()).isEqualTo("SUCCESS");
+        assertThat(post(PayAppForm.encode(completion)).body()).isEqualTo("SUCCESS");
+        assertThat(current().getState()).isEqualTo(PaymentOrder.State.PAID);
+        assertThat(credits.balance(user).total()).isEqualTo(7); assertThat(events()).isEqualTo(1);
     }
     @Test void cancelledUnpaidOrderCannotBeCreditedByLateCompletion() {
         accept(event(8)); assertThat(current().getState()).isEqualTo(PaymentOrder.State.CANCELLED);

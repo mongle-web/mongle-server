@@ -1,6 +1,7 @@
 package com.mongle.backend.domain.payment;
 
 import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
 import java.net.*;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
@@ -9,6 +10,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 
+@Slf4j
 final class PayAppGateway implements PaymentGateway {
     private static final URI ENDPOINT=URI.create("https://api.payapp.kr/oapi/v2");
     private final PayAppProperties properties;
@@ -27,7 +29,7 @@ final class PayAppGateway implements PaymentGateway {
     }
     public boolean available() { return properties.enabled() && !closed; }
     public CompletableFuture<Result> request(Command command) {
-        if(!available()) return CompletableFuture.completedFuture(Result.unknown());
+        if(!available()) return CompletableFuture.completedFuture(diagnose(command,Result.unknown(),Reason.DISABLED,null,null));
         String date=DateTimeFormatter.ofPattern("uuuuMMddHHmmss").withZone(ZoneId.of("Asia/Seoul")).format(clock.instant());
         var values=new LinkedHashMap<String,String>();
         values.put("cmd","payrequest"); values.put("userid",properties.sellerId()); values.put("linkkey",properties.linkKey());
@@ -42,22 +44,37 @@ final class PayAppGateway implements PaymentGateway {
                 .POST(HttpRequest.BodyPublishers.ofString(PayAppForm.encode(values),StandardCharsets.UTF_8)).build();
         final CompletableFuture<HttpResponse<byte[]>> network;
         try { network=client.sendAsync(request,info -> new PayAppBody()); }
-        catch(RuntimeException e) { return CompletableFuture.completedFuture(Result.unknown()); }
+        catch(RuntimeException e) { return CompletableFuture.completedFuture(diagnose(command,Result.unknown(),Reason.SEND_FAILED,null,null)); }
         calls.add(network);
         final ScheduledFuture<?> timeout;
         try { timeout=timer.schedule(() -> network.cancel(true),properties.totalTimeout().toMillis(),TimeUnit.MILLISECONDS); }
-        catch(RejectedExecutionException e) { network.cancel(true); calls.remove(network); return CompletableFuture.completedFuture(Result.unknown()); }
+        catch(RejectedExecutionException e) { network.cancel(true); calls.remove(network); return CompletableFuture.completedFuture(diagnose(command,Result.unknown(),Reason.CLOSED,null,null)); }
         return network.handle((response,error) -> {
             timeout.cancel(false); calls.remove(network);
-            if(error!=null || response.statusCode()!=200) return Result.unknown();
+            if(error!=null) return diagnose(command,Result.unknown(),Reason.NETWORK_FAILED,null,null);
+            if(response.statusCode()!=200) return diagnose(command,Result.unknown(),Reason.HTTP_FAILED,response.statusCode(),null);
             try {
                 var form=PayAppForm.decode(new String(response.body(),StandardCharsets.UTF_8));
-                if("0".equals(form.get("state"))) return Result.rejected();
+                if("0".equals(form.get("state"))) return diagnose(command,Result.rejected(),Reason.REJECTED,200,form.get("errno"));
                 String id=form.get("mul_no"),url=form.get("payurl");
-                if(!"1".equals(form.get("state")) || id==null || !id.matches("[1-9][0-9]{0,39}") || !validPaymentUrl(url)) return Result.unknown();
-                return new Result(Outcome.READY,id,url);
-            } catch(RuntimeException e) { return Result.unknown(); }
+                if(!"1".equals(form.get("state")) || id==null || !id.matches("[1-9][0-9]{0,39}") || !validPaymentUrl(url))
+                    return diagnose(command,Result.unknown(),Reason.INVALID_RESPONSE,200,null);
+                return diagnose(command,new Result(Outcome.READY,id,url),Reason.READY,200,null);
+            } catch(RuntimeException e) { return diagnose(command,Result.unknown(),Reason.INVALID_RESPONSE,200,null); }
         });
+    }
+    private enum Reason { READY, REJECTED, DISABLED, SEND_FAILED, CLOSED, NETWORK_FAILED, HTTP_FAILED, INVALID_RESPONSE }
+    private static Result diagnose(Command command,Result result,Reason reason,Integer httpStatus,String errno) {
+        // 공식 REST 예제의 코드만 허용한다. 오류 원문·URL·인증값·예외 체인은 기록하지 않는다.
+        String code=errno!=null && Set.of("70010","70020","99999").contains(errno)?errno:"NONE";
+        String orderId="INVALID";
+        try {
+            String canonical=UUID.fromString(command.orderId()).toString();
+            if(canonical.equals(command.orderId())) orderId=canonical;
+        } catch(IllegalArgumentException | NullPointerException ignored) { }
+        log.info("PAYAPP_REQUEST orderId={} outcome={} reason={} httpStatus={} errno={}",
+                orderId,result.outcome(),reason,httpStatus==null?"NONE":httpStatus,code);
+        return result;
     }
     static boolean validPaymentUrl(String value) {
         try {
