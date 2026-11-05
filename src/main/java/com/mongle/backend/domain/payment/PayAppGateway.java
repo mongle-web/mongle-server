@@ -36,6 +36,7 @@ final class PayAppGateway implements PaymentGateway {
         values.put("reqaddr","0"); values.put("feedbackurl",properties.feedbackUrl().toString());
         values.put("returnurl",org.springframework.web.util.UriComponentsBuilder.fromUri(properties.returnUrl()).queryParam("orderId",command.orderId()).build().toUriString());
         values.put("var1",command.orderId()); values.put("var2",command.token()); values.put("smsuse","n"); values.put("checkretry","y");
+        values.put("openpaytype",String.join(",",properties.openPayTypes()));
         var request=HttpRequest.newBuilder(endpoint).timeout(properties.totalTimeout())
                 .header("Content-Type","application/x-www-form-urlencoded; charset=UTF-8")
                 .POST(HttpRequest.BodyPublishers.ofString(PayAppForm.encode(values),StandardCharsets.UTF_8)).build();

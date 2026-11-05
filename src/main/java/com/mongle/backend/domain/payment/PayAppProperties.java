@@ -4,12 +4,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 @ConfigurationProperties("mongle.payment.payapp")
 public record PayAppProperties(@DefaultValue("false") boolean enabled, String sellerId, String linkKey,
         String linkValue, String requestKey, URI feedbackUrl, URI returnUrl,
+        @DefaultValue({"card","kakaopay","naverpay","tosspay"}) List<String> openPayTypes,
         @DefaultValue("3s") Duration connectTimeout, @DefaultValue("30s") Duration totalTimeout) {
     public PayAppProperties {
+        Set<String> supported=Set.of("card","kakaopay","naverpay","smilepay","applepay","payco","tosspay");
+        if(openPayTypes==null || openPayTypes.isEmpty() || openPayTypes.stream().anyMatch(t -> t==null || !supported.contains(t))
+                || new HashSet<>(openPayTypes).size()!=openPayTypes.size())
+            throw new IllegalArgumentException("페이앱 결제수단은 중복 없는 카드·간편결제로 지정해주세요.");
+        openPayTypes=List.copyOf(openPayTypes);
         if(connectTimeout==null || totalTimeout==null || connectTimeout.toMillis()<100
                 || connectTimeout.compareTo(Duration.ofSeconds(10))>0 || totalTimeout.compareTo(connectTimeout)<0
                 || totalTimeout.compareTo(Duration.ofSeconds(30))>0)

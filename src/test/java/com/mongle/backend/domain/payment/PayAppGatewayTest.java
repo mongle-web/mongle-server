@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.*;
 class PayAppGatewayTest {
     static PayAppProperties properties(Duration timeout) {
         return new PayAppProperties(true,"seller","link-secret","value-secret","request-secret",
-                URI.create("https://api.mongle.test/api/v1/payments/payapp/feedback"),URI.create("https://mongle.test/payment"),Duration.ofMillis(100),timeout);
+                URI.create("https://api.mongle.test/api/v1/payments/payapp/feedback"),URI.create("https://mongle.test/payment"),java.util.List.of("card","kakaopay"),Duration.ofMillis(100),timeout);
     }
     @Test void sendsEncodedServerOrderOverAsyncHttpAndValidatesPaymentUrl() throws Exception {
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
@@ -28,7 +28,7 @@ class PayAppGatewayTest {
             var result=gateway.value.request(new PaymentGateway.Command("order-1","token-1","꿈 & 충전",1000,"01012345678")).get(5,TimeUnit.SECONDS);
             assertThat(result.outcome()).isEqualTo(PaymentGateway.Outcome.READY);
             var form=PayAppForm.decode(posted.get());
-            assertThat(form).containsEntry("goodname","꿈 & 충전").containsEntry("var1","order-1").containsEntry("var2","token-1").containsEntry("checkretry","y");
+            assertThat(form).containsEntry("goodname","꿈 & 충전").containsEntry("var1","order-1").containsEntry("var2","token-1").containsEntry("checkretry","y").containsEntry("openpaytype","card,kakaopay");
             assertThat(form.get("hash")).isEqualTo(PaymentHashes.sha256("seller20261026090000request-secret"));
             assertThat(form.get("returnurl")).isEqualTo("https://mongle.test/payment?orderId=order-1");
             assertThat(form).doesNotContainKey("requestkey");
@@ -65,8 +65,23 @@ class PayAppGatewayTest {
         } finally { release.countDown(); server.stop(0); }
     }
     @Test void activeConfigurationRejectsMissingKeysAndUnsafeUrls() {
-        assertThatThrownBy(() -> new PayAppProperties(true,"s","k","v","r",URI.create("http://unsafe/feedback"),URI.create("https://return.test"),Duration.ofSeconds(1),Duration.ofSeconds(2))).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new PayAppProperties(true,"s","k","v","",URI.create("https://api.test/api/v1/payments/payapp/feedback"),URI.create("https://return.test"),Duration.ofSeconds(1),Duration.ofSeconds(2))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new PayAppProperties(true,"s","k","v","r",URI.create("http://unsafe/feedback"),URI.create("https://return.test"),java.util.List.of("card"),Duration.ofSeconds(1),Duration.ofSeconds(2))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new PayAppProperties(true,"s","k","v","",URI.create("https://api.test/api/v1/payments/payapp/feedback"),URI.create("https://return.test"),java.util.List.of("card"),Duration.ofSeconds(1),Duration.ofSeconds(2))).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void rejectsEmptyDuplicateAndNonCardOrEasyPayMethods() {
+        var p=properties(Duration.ofSeconds(2));
+        for(var methods:java.util.List.of(java.util.List.<String>of(),java.util.List.of("card","card"),
+                java.util.List.of("phone"),java.util.List.of("vbank"),java.util.List.of("rbank"),
+                java.util.List.of("myaccount"),java.util.List.of("unknown"),java.util.List.of("CARD"))) {
+            assertThatThrownBy(() -> new PayAppProperties(p.enabled(),p.sellerId(),p.linkKey(),p.linkValue(),
+                    p.requestKey(),p.feedbackUrl(),p.returnUrl(),methods,p.connectTimeout(),p.totalTimeout()))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        var methods=new java.util.ArrayList<>(java.util.List.of("card","tosspay"));
+        var immutable=new PayAppProperties(p.enabled(),p.sellerId(),p.linkKey(),p.linkValue(),p.requestKey(),
+                p.feedbackUrl(),p.returnUrl(),methods,p.connectTimeout(),p.totalTimeout());
+        methods.clear();
+        assertThat(immutable.openPayTypes()).containsExactly("card","tosspay");
     }
     record GatewayResource(PayAppGateway value) implements AutoCloseable { public void close() { value.close(); } }
 }
