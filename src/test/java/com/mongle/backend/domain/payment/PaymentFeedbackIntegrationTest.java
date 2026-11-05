@@ -44,6 +44,9 @@ class PaymentFeedbackIntegrationTest {
     @Autowired PaymentOrderIntegrationTest.Stub gateway;
     @Autowired JdbcTemplate jdbc;
     @MockitoSpyBean PaymentNotificationRepository notifications;
+    @MockitoSpyBean PaymentProperties paymentProperties;
+    @Autowired PaymentCatalog catalog;
+    @Autowired PaymentQueryService queries;
     @Value("${local.server.port}") int port;
     Long user; PaymentOrder order;
     @BeforeEach void setup() throws Exception {
@@ -68,6 +71,17 @@ class PaymentFeedbackIntegrationTest {
             return c.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/api/v1/payments/payapp/feedback"))
                     .header("Content-Type","application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString(body,StandardCharsets.UTF_8)).build(),HttpResponse.BodyHandlers.ofString());
         }
+    }
+    @Test void closingNewSalesPreservesLookupReplayAndAlreadyIssuedPaymentNotification() throws Exception {
+        doReturn(false).when(paymentProperties).enabled();
+        assertThat(catalog.products()).isEmpty();
+        assertThatThrownBy(() -> payments.create(user,new PaymentOrderRequest(UUID.randomUUID(),"pack","01012345678")))
+                .isInstanceOfSatisfying(BusinessException.class,e -> assertThat(e.getErrorCode()).isEqualTo(PaymentErrorCode.UNAVAILABLE));
+        accept(event(4));
+        var result=queries.byRequestId(user,order.getRequestId());
+        assertThat(result.state()).isEqualTo(PaymentOrder.State.PAID);
+        assertThat(credits.balance(user).available()).isEqualTo(7);
+        assertThat(payments.create(user,new PaymentOrderRequest(UUID.fromString(order.getRequestId()),"pack","01012345678")).get(5,TimeUnit.SECONDS)).isEqualTo(result);
     }
     @Test void reclaimedOrderNeverGetsNewCreditOrHoldFromValidLateFeedback() {
         accept(event(4));accept(event(9));
