@@ -46,6 +46,7 @@ class PaymentOrderIntegrationTest {
     }
     @Autowired PaymentService payments;
     @Autowired PaymentQueryService queries;
+    @Autowired PaymentCatalog catalog;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired PaymentTransactions transactions;
     @Autowired PaymentOrderRepository orders;
@@ -60,6 +61,12 @@ class PaymentOrderIntegrationTest {
     @BeforeEach void setup() { user=users.saveAndFlush(User.create(UUID.randomUUID()+"@payment.test","결제")).getId(); gateway.next=null; }
     PaymentOrderRequest request() { return new PaymentOrderRequest(UUID.randomUUID(),"pack","01012345678"); }
     PaymentOrderResponse create(PaymentOrderRequest r) throws Exception { return payments.create(user,r).get(10,TimeUnit.SECONDS); }
+    @Test void readyCatalogAdvertisesServerPricesWithoutCreatingOrders() {
+        long count=orders.count(); int calls=gateway.count.get();
+        assertThat(catalog.products()).containsExactly(new CreditProduct("pack","테스트충전",1000,"KRW",7));
+        assertThat(orders.count()).isEqualTo(count);
+        assertThat(gateway.count.get()).isEqualTo(calls);
+    }
     @Test void orderStatusIsOwnedNoStoreAndDoesNotExecuteProvider() throws Exception {
         var created=create(request()); int calls=gateway.count.get();
         assertThat(queries.get(user,created.orderId())).isEqualTo(created);

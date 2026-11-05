@@ -35,7 +35,7 @@ public interface PaymentApi {
     java.util.concurrent.CompletableFuture<ResponseEntity<ApiResponse<PaymentOrderResponse>>> create(
             @Parameter(hidden = true) Jwt jwt, @jakarta.validation.Valid PaymentOrderRequest request);
 
-    @Operation(summary = "크레딧 충전 상품 목록", description = "설정된 활성 상품만 반환하며 미설정이면 빈 목록입니다. 상품 노출은 실결제 준비 완료를 뜻하지 않습니다. 가격·지급량을 클라이언트에서 결정하지 않습니다.")
+    @Operation(summary = "크레딧 충전 상품 목록", description = "신규 결제·크레딧·결제 Provider가 활성화된 경우 설정된 활성 상품을 반환합니다. 미준비·판매 중지·상품 미설정이면 빈 목록입니다. 회원별 결제 보류 및 외부 결제사 장애까지 보장하는 상태 점검은 아닙니다. 가격·지급량을 클라이언트에서 결정하지 않습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="200",description="조회 성공",useReturnTypeSchema=true)
     ResponseEntity<ApiResponse<List<CreditProduct>>> products(@Parameter(hidden = true) Jwt jwt);
 }
