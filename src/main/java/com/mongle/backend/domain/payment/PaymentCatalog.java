@@ -1,5 +1,6 @@
 package com.mongle.backend.domain.payment;
 import com.mongle.backend.global.error.BusinessException;
+import com.mongle.backend.domain.credit.CreditProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.util.List;
@@ -8,7 +9,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PaymentCatalog {
     private final PaymentProperties properties;
+    private final CreditProperties creditProperties;
+    private final PaymentGateway gateway;
     public List<CreditProduct> products() {
+        if(!properties.enabled() || !creditProperties.enabled() || !gateway.available()) return List.of();
         return properties.products().stream().filter(PaymentProperties.Product::enabled).map(CreditProduct::from).toList();
     }
     CreditProduct purchasable(String id) {

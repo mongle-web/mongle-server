@@ -13,6 +13,18 @@ public class PaymentQueryService {
     private final PaymentOrderRepository orders;
     private final UserRepository users;
     private final Clock authClock;
+    public PaymentOrderResponse byRequestId(Long user,String requestId) {
+        requireUser(user);
+        final String canonical;
+        try {
+            canonical=java.util.UUID.fromString(requestId).toString();
+            if(!canonical.equalsIgnoreCase(requestId)) throw new IllegalArgumentException();
+        } catch(IllegalArgumentException | NullPointerException ex) {
+            throw new BusinessException(PaymentErrorCode.INVALID_INPUT);
+        }
+        return PaymentOrderResponse.from(orders.findByUserIdAndRequestId(user,canonical)
+                .orElseThrow(() -> new BusinessException(PaymentErrorCode.NOT_FOUND)),authClock.instant());
+    }
     public PaymentOrderResponse get(Long user,String publicId) {
         requireUser(user);
         return PaymentOrderResponse.from(orders.findByPublicIdAndUserId(publicId,user)

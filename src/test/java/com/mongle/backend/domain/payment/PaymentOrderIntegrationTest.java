@@ -46,6 +46,7 @@ class PaymentOrderIntegrationTest {
     }
     @Autowired PaymentService payments;
     @Autowired PaymentQueryService queries;
+    @Autowired PaymentCatalog catalog;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired PaymentTransactions transactions;
     @Autowired PaymentOrderRepository orders;
@@ -60,6 +61,53 @@ class PaymentOrderIntegrationTest {
     @BeforeEach void setup() { user=users.saveAndFlush(User.create(UUID.randomUUID()+"@payment.test","결제")).getId(); gateway.next=null; }
     PaymentOrderRequest request() { return new PaymentOrderRequest(UUID.randomUUID(),"pack","01012345678"); }
     PaymentOrderResponse create(PaymentOrderRequest r) throws Exception { return payments.create(user,r).get(10,TimeUnit.SECONDS); }
+    @Test void requestIdLookupIsOwnedValidatedAndReadOnlyEvenDuringProviderCall() throws Exception {
+        var r=request(); gateway.next=new CompletableFuture<>();
+        var pending=payments.create(user,r);
+        try {
+            int calls=gateway.count.get(); long count=orders.count();
+            var result=queries.byRequestId(user,r.requestId().toString());
+            assertThat(result.state()).isEqualTo(PaymentOrder.State.REQUESTING);
+            assertThat(queries.byRequestId(user,r.requestId().toString().toUpperCase(java.util.Locale.ROOT))).isEqualTo(result);
+            Long other=users.saveAndFlush(User.create(UUID.randomUUID()+"@payment.test","다른계정")).getId();
+            Long onboarding=users.saveAndFlush(User.register(UUID.randomUUID()+"@payment.test")).getId();
+            try(var client=HttpClient.newHttpClient()) {
+                var uri=URI.create("http://localhost:"+port+"/api/v1/payments/orders/by-request-id/"+r.requestId());
+                assertThat(client.send(HttpRequest.newBuilder(uri).GET().build(),HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
+                for(Long id:List.of(user,other,onboarding)) {
+                    var response=client.send(HttpRequest.newBuilder(uri).header("Authorization","Bearer "+tokens.login(id).response().accessToken()).GET().build(),HttpResponse.BodyHandlers.ofString());
+                    assertThat(response.statusCode()).isEqualTo(id.equals(user)?200:id.equals(other)?404:403);
+                    if(id.equals(user)) {
+                        assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
+                        assertThat(json.readTree(response.body()).at("/data/orderId").asString()).isEqualTo(result.orderId());
+                        assertThat(response.body()).doesNotContain("01012345678","notificationToken","inputHash","providerTransaction");
+                    }
+                }
+                String token=tokens.login(user).response().accessToken();
+                for(String value:List.of("invalid","1-1-1-1-1",UUID.randomUUID().toString())) {
+                    var response=client.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/api/v1/payments/orders/by-request-id/"+value))
+                            .header("Authorization","Bearer "+token).GET().build(),HttpResponse.BodyHandlers.ofString());
+                    assertThat(response.statusCode()).isEqualTo(value.length()==36?404:400);
+                    if(value.length()==36) assertThat(json.readTree(response.body()).at("/code").asString()).isEqualTo("PAYMENT_404_1");
+                }
+                var spec=client.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/v3/api-docs")).GET().build(),HttpResponse.BodyHandlers.ofString());
+                assertThat(json.readTree(spec.body()).get("paths").get("/api/v1/payments/orders/by-request-id/{requestId}").get("get").get("responses").get("200").toString()).contains("PaymentOrderResponse");
+            }
+            jdbc.update("update payment_orders set request_deadline=? where public_id=?",java.sql.Timestamp.from(Instant.now().minusSeconds(60)),result.orderId());
+            assertThat(queries.byRequestId(user,r.requestId().toString()).state()).isEqualTo(PaymentOrder.State.UNKNOWN);
+            assertThat(gateway.count.get()).isEqualTo(calls); assertThat(orders.count()).isEqualTo(count);
+            assertThat(credits.balance(user).total()).isZero();
+        } finally {
+            gateway.next.complete(PaymentGateway.Result.unknown());
+            pending.get(5,TimeUnit.SECONDS);
+        }
+    }
+    @Test void readyCatalogAdvertisesServerPricesWithoutCreatingOrders() {
+        long count=orders.count(); int calls=gateway.count.get();
+        assertThat(catalog.products()).containsExactly(new CreditProduct("pack","테스트충전",1000,"KRW",7));
+        assertThat(orders.count()).isEqualTo(count);
+        assertThat(gateway.count.get()).isEqualTo(calls);
+    }
     @Test void orderStatusIsOwnedNoStoreAndDoesNotExecuteProvider() throws Exception {
         var created=create(request()); int calls=gateway.count.get();
         assertThat(queries.get(user,created.orderId())).isEqualTo(created);

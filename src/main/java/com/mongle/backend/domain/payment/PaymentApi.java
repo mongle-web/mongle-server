@@ -16,6 +16,12 @@ import java.util.List;
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="403",description="온보딩 필요")
 })
 public interface PaymentApi {
+    @Operation(summary="요청 식별자로 내 결제 주문 복구 조회",description="POST 응답을 잃었을 때 보관한 requestId UUID로 본인 주문을 조회합니다. 기존 주문 응답을 재사용하며 결제 요청·신규 주문·지급을 실행하지 않습니다. 타인 주문/없는 주문은 동일한404입니다. 생성 트랜잭션이 진행 중이면 일시적으로404일 수 있으므로 한 번의404로 새 requestId를 만들거나 자동 재결제하지 마세요. REQUESTING/UNKNOWN은 같은 식별자를 보존해 재조회하고 장기 미확정은 문의로 전환합니다. 신규 판매 중지 후에도 조회할 수 있습니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="400",description="PAYMENT_400_1 UUID 형식 오류")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="404",description="PAYMENT_404_1 없는 주문 또는 타인 주문. 생성 중 일시적 미조회 가능")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="200",description="조회 성공",useReturnTypeSchema=true)
+    ResponseEntity<ApiResponse<PaymentOrderResponse>> byRequestId(@Parameter(hidden=true) Jwt jwt,String requestId);
+
     @Operation(summary="내 크레딧 구매 주문 내역",description="본인의 주문만 주문 ID 내림차순으로 조회합니다. 기본 size=20, 최대50. hasNext이면 nextBeforeId를 beforeId에 전달합니다. 요청 중·미확정·취소·결제 완료 상태를 구분합니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="400",description="PAYMENT_400_2 페이지 크기/커서 오류")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="200",description="조회 성공",useReturnTypeSchema=true)
@@ -35,7 +41,7 @@ public interface PaymentApi {
     java.util.concurrent.CompletableFuture<ResponseEntity<ApiResponse<PaymentOrderResponse>>> create(
             @Parameter(hidden = true) Jwt jwt, @jakarta.validation.Valid PaymentOrderRequest request);
 
-    @Operation(summary = "크레딧 충전 상품 목록", description = "설정된 활성 상품만 반환하며 미설정이면 빈 목록입니다. 상품 노출은 실결제 준비 완료를 뜻하지 않습니다. 가격·지급량을 클라이언트에서 결정하지 않습니다.")
+    @Operation(summary = "크레딧 충전 상품 목록", description = "신규 결제·크레딧·결제 Provider가 활성화된 경우 설정된 활성 상품을 반환합니다. 미준비·판매 중지·상품 미설정이면 빈 목록입니다. 회원별 결제 보류 및 외부 결제사 장애까지 보장하는 상태 점검은 아닙니다. 가격·지급량을 클라이언트에서 결정하지 않습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode="200",description="조회 성공",useReturnTypeSchema=true)
     ResponseEntity<ApiResponse<List<CreditProduct>>> products(@Parameter(hidden = true) Jwt jwt);
 }

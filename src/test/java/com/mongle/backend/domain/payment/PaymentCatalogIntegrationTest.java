@@ -31,7 +31,7 @@ class PaymentCatalogIntegrationTest {
             assertThat(response.statusCode()).isEqualTo(200);
             assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
             var json=JsonMapper.builder().build();
-            assertThat(json.readTree(response.body()).at("/data/0/credits").asLong()).isEqualTo(7);
+            assertThat(json.readTree(response.body()).get("data").isEmpty()).isTrue();
             var orderUri=URI.create("http://localhost:"+port+"/api/v1/payments/orders");
             var disabled=client.send(HttpRequest.newBuilder(orderUri).header("Authorization","Bearer "+tokens.login(id).response().accessToken())
                     .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(new PaymentOrderRequest(UUID.randomUUID(),"pack","01012345678")))).build(),HttpResponse.BodyHandlers.ofString());

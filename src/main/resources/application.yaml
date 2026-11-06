@@ -75,6 +75,7 @@ mongle:
       request-key: ${PAYAPP_REQUEST_KEY:}
       feedback-url: ${PAYAPP_FEEDBACK_URL:}
       return-url: ${PAYAPP_RETURN_URL:}
+      open-pay-types: ${PAYAPP_OPEN_PAY_TYPES:card,kakaopay,naverpay,tosspay}
       connect-timeout: ${PAYAPP_CONNECT_TIMEOUT:3s}
       total-timeout: ${PAYAPP_TOTAL_TIMEOUT:30s}
   credit:
