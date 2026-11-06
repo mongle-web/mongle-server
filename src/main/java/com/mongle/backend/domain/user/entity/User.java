@@ -15,6 +15,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.util.Objects;
+import java.time.LocalDateTime;
 
 @Getter
 @Entity
@@ -31,6 +32,25 @@ public class User extends BaseEntity {
 
     @Column(length = 100)
     private String nickname;
+
+    @Column(name = "withdrawn_at")
+    private LocalDateTime withdrawnAt;
+
+    @Column(name = "retention_until")
+    private LocalDateTime retentionUntil;
+
+    public boolean isWithdrawn() { return withdrawnAt != null; }
+
+    public void withdraw(LocalDateTime now, LocalDateTime retainUntil) {
+        email = "deleted@withdrawn.invalid";
+        nickname = null;
+        withdrawnAt = now;
+        retentionUntil = retainUntil;
+    }
+
+    public void retainTransactionUntil(LocalDateTime until) {
+        if (isWithdrawn() && (retentionUntil == null || until.isAfter(retentionUntil))) retentionUntil = until;
+    }
 
     @Builder(access = AccessLevel.PRIVATE)
     private User(String email, String nickname) {
@@ -56,10 +76,11 @@ public class User extends BaseEntity {
     }
 
     public boolean isOnboardingCompleted() {
-        return nickname != null;
+        return nickname != null && !isWithdrawn();
     }
 
     public void completeOnboarding(String nickname) {
+        if (isWithdrawn()) throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
         String validated = NicknamePolicy.validate(nickname);
         if (isOnboardingCompleted()) {
             if (this.nickname.equals(validated)) {

@@ -35,7 +35,7 @@ class TestCreditContextIntegrationTest {
                         "jdbc:h2:mem:operator-credits;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
                         "sa",
                         "");
-        new ResourceDatabasePopulator(new ClassPathResource("db/schema-initial.sql"))
+        new ResourceDatabasePopulator(new ClassPathResource("db/schema-initial.sql"), new ClassPathResource("db/migration/V7__user_withdrawal.sql"))
                 .execute(source);
         return source;
     }

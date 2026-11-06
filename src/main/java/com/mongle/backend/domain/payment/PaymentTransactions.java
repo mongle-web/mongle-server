@@ -46,12 +46,13 @@ public class PaymentTransactions {
     }
     @Transactional
     public PaymentOrderResponse finish(Long user,String publicId,PaymentGateway.Result result) {
-        requireUser(user);
+        requireAccountingUser(user);
         var order=orders.findByPublicIdAndUserId(publicId,user)
                 .orElseThrow(() -> new BusinessException(PaymentErrorCode.NOT_FOUND));
         if(result.outcome()==PaymentGateway.Outcome.READY) bind(order,result.transactionId());
         order.requestFinished(result);
         orders.flush();
+        retainAccountingRecords(user);
         return PaymentOrderResponse.from(order,authClock.instant());
     }
     void bind(PaymentOrder order,String transactionId) {
@@ -63,8 +64,16 @@ public class PaymentTransactions {
         if(prior.isEmpty()) bindings.saveAndFlush(PaymentTransactionBinding.create(transactionId,order.getId()));
     }
     void requireUser(Long id) {
+        if(requireAccountingUser(id).isWithdrawn()) throw new BusinessException(PaymentErrorCode.NOT_FOUND);
+    }
+    com.mongle.backend.domain.user.entity.User requireAccountingUser(Long id) {
         if(id==null || id<1) throw new BusinessException(PaymentErrorCode.INVALID_INPUT);
         var u=users.findByIdForUpdate(id).orElseThrow(() -> new BusinessException(PaymentErrorCode.NOT_FOUND));
-        if(!u.isOnboardingCompleted()) throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+        if(!u.isOnboardingCompleted() && !u.isWithdrawn()) throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+        return u;
+    }
+    void retainAccountingRecords(Long user) {
+        users.findByIdForUpdate(user).orElseThrow()
+                .retainTransactionUntil(LocalDateTime.ofInstant(authClock.instant(),ZoneOffset.UTC).plusYears(5));
     }
 }

@@ -46,7 +46,8 @@ public class TokenService {
 
     @Transactional
     public IssuedTokens login(Long userId) {
-        var user = users.findById(userId)
+        var user = users.findByIdForUpdate(userId)
+                .filter(account -> !account.isWithdrawn())
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_TOKEN));
         Instant now = authClock.instant();
         String refresh = randomToken();
@@ -64,8 +65,7 @@ public class TokenService {
         validateRefresh(refreshToken);
         String presentedHash = hash(refreshToken);
         // 바뀌지 않는 세션 ID로 잠근 뒤 최신 해시를 비교해야 동시 갱신도 탐지된다.
-        var session = sessions.findSessionIdByTokenHash(presentedHash)
-                .flatMap(sessions::findByIdForUpdate)
+        var session = lockSession(presentedHash)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN));
         Instant now = authClock.instant();
         if (session.isExpired(LocalDateTime.ofInstant(now, ZoneOffset.UTC))) {
@@ -96,13 +96,21 @@ public class TokenService {
         if (!isRefreshToken(refreshToken)) {
             return;
         }
-        sessions.findSessionIdByTokenHash(hash(refreshToken))
-                .flatMap(sessions::findByIdForUpdate).ifPresent(session -> {
+        lockSession(hash(refreshToken)).ifPresent(session -> {
                     Long sessionId = session.getId();
                     Long userId = session.getUser().getId();
                     sessions.delete(session);
                     CommittedLog.afterCommit(() -> log.info("로그아웃 세션 폐기 완료: userId={}, sessionId={}", userId, sessionId));
                 });
+    }
+
+    private java.util.Optional<RefreshSession> lockSession(String tokenHash) {
+        var owner = sessions.findOwnerByHash(tokenHash);
+        if (owner.isEmpty()) return java.util.Optional.empty();
+        // 탈퇴와 동일하게 사용자 -> 세션 순서. 세션 join-fetch부터 잠그면 MySQL에서 교착할 수 있다.
+        var user = users.findByIdForUpdate(owner.get().getUserId());
+        if (user.isEmpty() || user.get().isWithdrawn()) return java.util.Optional.empty();
+        return sessions.findByIdForUpdate(owner.get().getSessionId());
     }
 
     private IssuedTokens issue(RefreshSession session, String refresh, Instant now) {

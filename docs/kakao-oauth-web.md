@@ -93,6 +93,6 @@ Nginx는 실제 HTTPS/Host를 전달하고 `SERVER_FORWARD_HEADERS_STRATEGY=fram
 
 모의 종단 테스트는 실제 Spring 보안 필터와 루프백 카카오 모의 서버를 사용한다. 로그인·state·쿠키·CSRF·Refresh·로그아웃·중복 가입 방지·잘못된 이메일/응답·취소·재사용·장애·CORS를 검증한다. Google/미지원 경로 차단과 이전 Google 설정으로 등록이 되살아나지 않는 것도 검증한다. 네이티브 MySQL8.4 테스트는 기존 VARCHAR 스키마의 카카오 계정 저장/조회 및 사전 점검 SQL의 비지원 제공자 탐지를 검증한다.
 
-실제 카카오 계정 동의, 카카오 콘솔 키/Redirect URI, EC2 환경변수, RDS 저장, Nginx/HTTPS, 프론트 화면 복귀는 실환경에서 별도 확인해야 한다. 회원탈퇴/카카오 연결 해제는 이 기능에 포함하지 않는다.
+실제 카카오 계정 동의, 카카오 콘솔 키/Redirect URI, EC2 환경변수, RDS 저장, Nginx/HTTPS, 프론트 화면 복귀는 실환경에서 별도 확인해야 한다. 회원탈퇴·카카오 연결 해제·재가입 경합은 별도 [회원탈퇴 문서](user-withdrawal.md)를 따른다.
 
 참고: [카카오 REST 로그인](https://developers.kakao.com/docs/ko/kakaologin/rest-api), [Spring Security OAuth 로그인 설정](https://docs.spring.io/spring-security/reference/servlet/oauth2/login/advanced.html).

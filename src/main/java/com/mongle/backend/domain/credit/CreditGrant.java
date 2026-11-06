@@ -20,6 +20,7 @@ public class CreditGrant extends BaseCreatedEntity {
     @Column(nullable = false) private long available;
     @Column(nullable = false) private long reserved;
     @Column(nullable = false) private long consumed;
+    @Column(nullable = false) private long forfeited;
 
     @Version @Column(nullable = false) private long version;
 

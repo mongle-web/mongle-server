@@ -15,6 +15,14 @@ import org.springframework.security.oauth2.jwt.Jwt;
 @Tag(name = "User", description = "내 정보·닉네임 온보딩 및 변경")
 @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
 public interface UserApi {
+    @Operation(summary = "회원탈퇴", description = "온보딩 전에도 가능합니다. 모든 로그인 세션을 무효화하고 개인 콘텐츠를 삭제합니다. 카카오 연결/이미지 파일은 후속 작업으로 정리합니다. 유료 잔액에 대한 환불 미접수 또는 결제 승인 미확정이면 차단합니다. 환불 접수 후에는 환불 완료를 기다리지 않습니다.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "탈퇴 완료")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증 필요 또는 이미 무효화된 세션")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "USER_409_2 환불 신청 필요 / USER_409_3 결제 승인 확인 필요")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "USER_503_1 탈퇴 기능 미준비")
+    ResponseEntity<ApiResponse<Void>> withdraw(@Parameter(hidden = true) Jwt jwt,
+            @Parameter(hidden = true) jakarta.servlet.http.HttpServletResponse response);
+
     @Operation(summary = "내 정보 조회", description = "온보딩 전에도 조회할 수 있습니다.")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "사용자 정보 및 온보딩 완료 여부")
     @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "미인증 또는 유효하지 않은 토큰")

@@ -53,7 +53,7 @@ abstract class PaymentReclaimerContract {
                         "");
         new ResourceDatabasePopulator(
                         new ClassPathResource("db/schema-initial.sql"),
-                        new ClassPathResource("db/migration/V6__payment_credit_reclamations.sql"))
+                        new ClassPathResource("db/migration/V6__payment_credit_reclamations.sql"), new ClassPathResource("db/migration/V7__user_withdrawal.sql"))
                 .execute(ds);
         return ds;
     }

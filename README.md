@@ -169,3 +169,5 @@ MySQL 8.4 / RDS TLS, existing-schema upgrade and native regression instructions:
 
 [EC2 자동 배포·복구](docs/server-cd.md)에 OIDC/SSM 권한·서버 설치·GitHub 변수·운영 검증 순서를 정리했다.
 [프론트 연동 전달본](docs/frontend-integration.md)에 현재 API·인증·상태 처리와 미구현 범위를 구분했다.
+[회원탈퇴 문서](docs/user-withdrawal.md)에 탈퇴 API, 유료·무료 잔액 구분, 카카오/이미지 후속 작업,
+거래·가입 보상 기록 보존 및 활성화 조건을 정리했다.

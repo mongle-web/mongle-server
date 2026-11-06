@@ -179,7 +179,7 @@ final class PaymentInspector {
                 db.query(
                                 """
                                 select count(*) as grants,coalesce(sum(g.available),0) as available,coalesce(sum(g.reserved),0) as reserved,
-                                coalesce(sum(case when g.amount<>g.available+g.reserved+g.consumed+coalesce(c.amount,0) then 1 else 0 end),0) as invalid_grants
+                                coalesce(sum(case when g.amount<>g.available+g.reserved+g.consumed+g.forfeited+coalesce(c.amount,0) then 1 else 0 end),0) as invalid_grants
                                 from credit_grants g left join payment_credit_reclamations c on c.grant_id=g.id where g.user_id=?
                                 """,
                                 r -> values(r, "grants", "available", "reserved", "invalid_grants"),

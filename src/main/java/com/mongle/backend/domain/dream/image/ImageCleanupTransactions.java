@@ -15,7 +15,7 @@ public class ImageCleanupTransactions {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordDiscardedUpload(Long userId, Long imageId, String key) {
         // 동일 키 재전송과 꿈 삭제의 정리 요청 기록을 직렬화한다.
-        users.findByIdForUpdate(userId).orElseThrow();
+        users.findByIdForUpdate(userId); // 보존기간 종료로 사용자 행이 제거된 늦은 업로드도 정리 가능
         registration.register(userId, null, imageId, key, ImageCleanupRequest.Reason.DISCARDED_UPLOAD);
     }
 }

@@ -83,7 +83,7 @@ class Mysql84MigrationTest {
         assertThat(new MigrationEngine(source, "flyway_existing", "filesystem:" + priorRelease).execute("migrate"))
                 .containsEntry("targetVersion", "3");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='recent_interpretations'", Integer.class)).isZero();
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 3).containsEntry("targetVersion", "6");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 4).containsEntry("targetVersion", "7");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 0);
         assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("HISTORY_ALREADY_EXISTS");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE email='preserved@test.invalid'", String.class)).isEqualTo("keep");
@@ -102,7 +102,7 @@ class Mysql84MigrationTest {
         jdbc.update("INSERT INTO users(email,nickname,created_at,updated_at) VALUES('summary-preserved@test.invalid','keep-summary',NOW(),NOW())");
         var history=jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
         var engine=new MigrationEngine(source,"flyway_summary");
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",2).containsEntry("targetVersion","6");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",3).containsEntry("targetVersion","7");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",0);
         assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version in ('1','3','4') order by installed_rank")).isEqualTo(history);
         assertThat(jdbc.queryForObject("select nickname from users where email='summary-preserved@test.invalid'",String.class)).isEqualTo("keep-summary");
@@ -124,11 +124,13 @@ class Mysql84MigrationTest {
         var history=jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
         var accounts=jdbc.queryForList("select * from credit_accounts");var grants=jdbc.queryForList("select * from credit_grants");
         var engine=new MigrationEngine(ds,"flyway_reclamation");
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",1).containsEntry("targetVersion","6");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",2).containsEntry("targetVersion","7");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",0);
-        assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version<>'6' order by installed_rank")).isEqualTo(history);
+        assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version not in ('6','7') order by installed_rank")).isEqualTo(history);
         assertThat(jdbc.queryForList("select * from credit_accounts")).isEqualTo(accounts);
-        assertThat(jdbc.queryForList("select * from credit_grants")).isEqualTo(grants);
+        var upgradedGrants=jdbc.queryForList("select * from credit_grants");
+        upgradedGrants.forEach(row -> assertThat(row.remove("forfeited")).isEqualTo(0L));
+        assertThat(upgradedGrants).isEqualTo(grants);
         assertThat(jdbc.queryForObject("select count(*) from payment_credit_reclamations",Long.class)).isZero();
     }
 
