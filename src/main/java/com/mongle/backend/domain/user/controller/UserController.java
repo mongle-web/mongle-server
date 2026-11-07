@@ -20,6 +20,17 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping(value = "/api/v1/users/me", produces = MediaType.APPLICATION_JSON_VALUE)
 public class UserController implements UserApi {
     private final UserService users;
+    private final com.mongle.backend.domain.user.withdrawal.WithdrawalService withdrawals;
+    private final com.mongle.backend.global.security.AuthCookies cookies;
+
+    @Override
+    @DeleteMapping
+    public ResponseEntity<ApiResponse<Void>> withdraw(@AuthenticationPrincipal Jwt jwt,
+            jakarta.servlet.http.HttpServletResponse response) {
+        withdrawals.withdraw(Long.valueOf(jwt.getSubject()));
+        cookies.clear(response);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(ApiResponse.success(null));
+    }
 
     @Override
     @GetMapping

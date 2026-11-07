@@ -19,7 +19,7 @@ public class PaymentFeedbackService {
         // 사용자 행 잠금보다 먼저 읽은 가변 엔티티를 잠금 뒤 그대로 재사용하지 않는다.
         Long user=orders.findOwnerByPublicId(event.orderId())
                 .orElseThrow(() -> new BusinessException(PaymentErrorCode.NOT_FOUND));
-        transactions.requireUser(user);
+        transactions.requireAccountingUser(user);
         var order=orders.findByPublicIdAndUserId(event.orderId(),user)
                 .orElseThrow(() -> new BusinessException(PaymentErrorCode.NOT_FOUND));
         if(!PaymentHashes.equal(order.getNotificationToken(),event.token())) invalid();
@@ -37,6 +37,7 @@ public class PaymentFeedbackService {
         // 운영 회수 완료는 종결 상태다. 검증된 늦은 통보는 감사용으로 보존하되 재지급/재보류하지 않는다.
         if(order.getState()==PaymentOrder.State.CREDIT_RECLAIMED) {
             notifications.saveAndFlush(PaymentNotification.create(event,order.getId()));
+            transactions.retainAccountingRecords(user);
             return;
         }
         switch(event.state()) {
@@ -57,6 +58,7 @@ public class PaymentFeedbackService {
         }
         notifications.saveAndFlush(PaymentNotification.create(event,order.getId()));
         orders.flush();
+        transactions.retainAccountingRecords(user);
     }
     static String sourceKey(PaymentOrder order) { return "payapp:"+order.getPublicId(); }
     private static void invalid() { throw new BusinessException(PaymentErrorCode.INVALID_FEEDBACK); }

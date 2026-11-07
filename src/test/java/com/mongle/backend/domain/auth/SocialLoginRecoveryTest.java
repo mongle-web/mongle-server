@@ -36,7 +36,8 @@ class SocialLoginRecoveryTest {
         when(users.save(any())).thenAnswer(call -> call.getArgument(0));
         var conflict = new DataIntegrityViolationException("소셜 계정이 중복되었습니다.");
         when(accounts.saveAndFlush(any())).thenThrow(conflict);
-        var service = new SocialLoginService(accounts, users, manager);
+        var service = new SocialLoginService(accounts, users, manager,
+                org.mockito.Mockito.mock(com.mongle.backend.domain.user.withdrawal.WithdrawalIdentityService.class));
 
         assertThat(service.login(identity).nickname()).isEqualTo("몽글이");
         var order = inOrder(manager, accounts);

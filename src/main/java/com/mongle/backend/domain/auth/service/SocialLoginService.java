@@ -23,11 +23,14 @@ public class SocialLoginService {
     private final UserRepository users;
     private final TransactionTemplate read;
     private final TransactionTemplate write;
+    private final com.mongle.backend.domain.user.withdrawal.WithdrawalIdentityService withdrawalIdentities;
 
     public SocialLoginService(SocialAccountRepository accounts, UserRepository users,
-                              PlatformTransactionManager manager) {
+                              PlatformTransactionManager manager,
+                              com.mongle.backend.domain.user.withdrawal.WithdrawalIdentityService withdrawalIdentities) {
         this.accounts = accounts;
         this.users = users;
+        this.withdrawalIdentities = withdrawalIdentities;
         read = new TransactionTemplate(manager);
         read.setReadOnly(true);
         read.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -43,6 +46,7 @@ public class SocialLoginService {
         }
         try {
             return write.execute(status -> {
+                withdrawalIdentities.beforeNewLogin(identity);
                 // 가입 트랜잭션을 시작한 뒤 같은 소셜 계정이 이미 저장됐는지 다시 확인한다.
                 Optional<SocialAccount> account = accounts.findByProviderAndProviderUserId(
                         identity.provider(), identity.providerUserId());

@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.*;
 public class CreditController implements CreditApi {
     private final CreditService credits;
     @Override @GetMapping("/balance")
-    public ResponseEntity<ApiResponse<CreditBalance>> balance(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<ApiResponse<CreditBalanceResponse>> balance(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(ApiResponse.success(credits.balance(Long.valueOf(jwt.getSubject()))));
+                .body(ApiResponse.success(credits.balanceBreakdown(Long.valueOf(jwt.getSubject()))));
     }
 
     @Override @GetMapping("/transactions")

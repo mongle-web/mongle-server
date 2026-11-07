@@ -106,6 +106,7 @@ public class SecurityConfig {
                             .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
                             .requestMatchers(HttpMethod.POST, "/api/v1/payments/payapp/feedback").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/v1/users/me").hasRole("USER")
+                            .requestMatchers(HttpMethod.DELETE, "/api/v1/users/me").hasRole("USER")
                             .requestMatchers(HttpMethod.POST, "/api/v1/users/me/onboarding").hasRole("USER")
                             .anyRequest().hasRole("ONBOARDED");
                 });

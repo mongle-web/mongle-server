@@ -12,6 +12,9 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 public interface RefreshSessionRepository extends JpaRepository<RefreshSession, Long> {
+    interface Owner { Long getSessionId(); Long getUserId(); }
+    @Query("select s.id as sessionId,s.user.id as userId from RefreshSession s join s.tokenHashes h where h=:hash")
+    Optional<Owner> findOwnerByHash(@Param("hash") String hash);
     @Query("select s.id from RefreshSession s join s.tokenHashes h where h = :hash")
     Optional<Long> findSessionIdByTokenHash(@Param("hash") String hash);
 
@@ -19,7 +22,7 @@ public interface RefreshSessionRepository extends JpaRepository<RefreshSession, 
     @Query("select s from RefreshSession s join fetch s.user where s.id = :id")
     Optional<RefreshSession> findByIdForUpdate(@Param("id") Long id);
 
-    @Query("select s.user from RefreshSession s where s.id = :id and s.user.id = :userId and s.expiresAt > :now")
+    @Query("select s.user from RefreshSession s where s.id = :id and s.user.id = :userId and s.expiresAt > :now and s.user.withdrawnAt is null")
     Optional<User> findActiveUser(@Param("id") Long id, @Param("userId") Long userId,
                                  @Param("now") LocalDateTime now);
 }

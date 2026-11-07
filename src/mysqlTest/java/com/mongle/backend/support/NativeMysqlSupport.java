@@ -44,7 +44,9 @@ public final class NativeMysqlSupport {
         registry.add("spring.datasource.username", () -> "mongle_test");
         registry.add("spring.datasource.password", () -> required("MONGLE_MYSQL_TEST_PASSWORD"));
         registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
-        registry.add("spring.datasource.hikari.maximum-pool-size", () -> 8);
+        // Cached Spring contexts share the 64-connection disposable server.
+        registry.add("spring.datasource.hikari.maximum-pool-size", () -> 4);
+        registry.add("spring.datasource.hikari.minimum-idle", () -> 0);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("spring.sql.init.mode", () -> "never");
         byte[] secret = new byte[32];

@@ -17,6 +17,21 @@ public class CreditService {
     private final CreditLedgerRepository ledger;
     private final CreditProperties properties;
     private final CreditPaymentHoldRepository paymentHolds;
+    private final jakarta.persistence.EntityManager entityManager;
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public CreditBalanceResponse balanceBreakdown(Long userId) {
+        var balance = balance(userId);
+        Object[] row = (Object[]) entityManager.createNativeQuery(
+                "select coalesce(sum(case when source_type='PAYMENT' then available else 0 end),0),"
+                + "coalesce(sum(case when source_type='PAYMENT' then reserved else 0 end),0),"
+                + "coalesce(sum(case when source_type<>'PAYMENT' then available else 0 end),0),"
+                + "coalesce(sum(case when source_type<>'PAYMENT' then reserved else 0 end),0)"
+                + " from credit_grants where user_id=:user").setParameter("user", userId).getSingleResult();
+        return new CreditBalanceResponse(balance.available(), balance.reserved(), balance.total(), balance.spendingBlocked(),
+                ((Number) row[0]).longValue(), ((Number) row[1]).longValue(),
+                ((Number) row[2]).longValue(), ((Number) row[3]).longValue());
+    }
 
     public CreditBalance balance(Long userId) {
         requireUser(userId, false);
@@ -40,7 +55,8 @@ public class CreditService {
         CreditRules.positive(amount);
         if (source == null) throw new BusinessException(CreditErrorCode.INVALID_INPUT);
         String hash = CreditRules.hash(sourceKey);
-        requireUser(userId, true);
+        if (source == CreditSource.PAYMENT) requireAccountingUser(userId, true);
+        else requireUser(userId, true);
         var prior = grants.findBySourceTypeAndSourceHash(source, hash);
         if (prior.isPresent()) {
             var g = prior.get();
@@ -61,7 +77,7 @@ public class CreditService {
     @Transactional
     public void holdPayment(Long userId,String sourceKey) {
         String hash=CreditRules.hash(sourceKey);
-        requireUser(userId,true);
+        requireAccountingUser(userId,true);
         var grant=grants.findBySourceTypeAndSourceHash(CreditSource.PAYMENT,hash)
                 .orElseThrow(() -> new BusinessException(CreditErrorCode.NOT_FOUND));
         if(!grant.getUserId().equals(userId) || !grant.getSourceKey().equals(sourceKey))
@@ -77,9 +93,14 @@ public class CreditService {
         return accounts.findById(userId).orElseGet(() -> accounts.save(CreditAccount.create(userId)));
     }
     void requireUser(Long userId, boolean lock) {
+        var user = requireAccountingUser(userId, lock);
+        if (user.isWithdrawn()) throw new BusinessException(CreditErrorCode.NOT_FOUND);
+    }
+    private com.mongle.backend.domain.user.entity.User requireAccountingUser(Long userId, boolean lock) {
         if (userId == null || userId < 1) throw new BusinessException(CreditErrorCode.INVALID_INPUT);
         var user = (lock ? users.findByIdForUpdate(userId) : users.findById(userId))
                 .orElseThrow(() -> new BusinessException(CreditErrorCode.NOT_FOUND));
-        if (!user.isOnboardingCompleted()) throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+        if (!user.isOnboardingCompleted() && !user.isWithdrawn()) throw new BusinessException(UserErrorCode.ONBOARDING_REQUIRED);
+        return user;
     }
 }

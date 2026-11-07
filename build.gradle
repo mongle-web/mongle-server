@@ -75,6 +75,8 @@ tasks.register('mysqlTest', Test) {
     testClassesDirs = sourceSets.mysqlTest.output.classesDirs
     classpath = sourceSets.mysqlTest.runtimeClasspath
     maxHeapSize = '1g'
+    // Close old context pools instead of exhausting the shared fixture as the suite grows.
+    systemProperty 'spring.test.context.cache.maxSize', '4'
     useJUnitPlatform()
     doFirst {
         if (!System.getenv('MONGLE_MYSQL_TEST_PORT')) {

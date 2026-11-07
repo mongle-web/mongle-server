@@ -15,7 +15,10 @@ public enum UserErrorCode implements ErrorCode {
     ONBOARDING_ALREADY_COMPLETED(HttpStatus.CONFLICT, "USER_409_1",
             "이미 온보딩을 완료했습니다."),
     ONBOARDING_REQUIRED(HttpStatus.FORBIDDEN, "USER_403_1",
-            "닉네임 입력을 먼저 완료해주세요.");
+            "닉네임 입력을 먼저 완료해주세요."),
+    WITHDRAWAL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "USER_503_1", "회원탈퇴 기능이 준비되지 않았습니다."),
+    REFUND_REQUIRED(HttpStatus.CONFLICT, "USER_409_2", "남은 유료 크레딧에 대한 환불을 먼저 신청해주세요."),
+    PAYMENT_UNCONFIRMED(HttpStatus.CONFLICT, "USER_409_3", "결제 승인 여부를 확인한 후 탈퇴할 수 있습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;
