@@ -161,7 +161,7 @@ public class LegalConsentIntegrationTest {
             var documents=client.send(HttpRequest.newBuilder(URI.create("http://localhost:"+port+"/api/v1/legal/documents"))
                     .GET().build(),HttpResponse.BodyHandlers.ofString());
             assertThat(documents.statusCode()).isEqualTo(200); assertThat(documents.body()).contains("TERMS","PRIVACY");
-            var body=""" 
+            var body="""
                     {"termsVersion":"2026-11-07-v1","termsDigest":"%s","termsAccepted":true,
                      "privacyVersion":"2026-11-07-v1","privacyDigest":"%s","privacyAccepted":true,"age14OrOlder":true}
                     """.formatted("a".repeat(64),"b".repeat(64));

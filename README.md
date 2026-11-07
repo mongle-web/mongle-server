@@ -171,3 +171,5 @@ MySQL 8.4 / RDS TLS, existing-schema upgrade and native regression instructions:
 [프론트 연동 전달본](docs/frontend-integration.md)에 현재 API·인증·상태 처리와 미구현 범위를 구분했다.
 [회원탈퇴 문서](docs/user-withdrawal.md)에 탈퇴 API, 유료·무료 잔액 구분, 카카오/이미지 후속 작업,
 거래·가입 보상 기록 보존 및 활성화 조건을 정리했다.
+
+[필수 문서 동의](docs/legal-consents.md)에 API·기존 회원 재동의·버전/해시·단계적 활성화 방법을 정리했습니다.
