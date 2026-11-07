@@ -22,12 +22,15 @@ public class SocialLoginService {
     private final SocialAccountRepository accounts;
     private final UserRepository users;
     private final TransactionTemplate read;
+    private final com.mongle.backend.domain.legal.LegalService legal;
     private final TransactionTemplate write;
     private final com.mongle.backend.domain.user.withdrawal.WithdrawalIdentityService withdrawalIdentities;
 
     public SocialLoginService(SocialAccountRepository accounts, UserRepository users,
                               PlatformTransactionManager manager,
-                              com.mongle.backend.domain.user.withdrawal.WithdrawalIdentityService withdrawalIdentities) {
+                              com.mongle.backend.domain.user.withdrawal.WithdrawalIdentityService withdrawalIdentities,
+                              com.mongle.backend.domain.legal.LegalService legal) {
+        this.legal = legal;
         this.accounts = accounts;
         this.users = users;
         this.withdrawalIdentities = withdrawalIdentities;
@@ -51,14 +54,14 @@ public class SocialLoginService {
                 Optional<SocialAccount> account = accounts.findByProviderAndProviderUserId(
                         identity.provider(), identity.providerUserId());
                 if (account.isPresent()) {
-                    return UserResponse.from(account.get().getUser());
+                    return legal.response(account.get().getUser());
                 }
                 User user = users.save(User.register(identity.email()));
                 accounts.saveAndFlush(SocialAccount.link(user, identity.provider(), identity.providerUserId()));
                 Long userId = user.getId();
                 // 이메일·소셜 제공자 사용자 ID 대신 내부 PK와 제공사만 남긴다.
                 CommittedLog.afterCommit(() -> log.info("소셜 회원 가입 완료: userId={}, provider={}", userId, identity.provider()));
-                return UserResponse.from(user);
+                return legal.response(user);
             });
         } catch (DataIntegrityViolationException duplicate) {
             // 중복 가입으로 실패한 트랜잭션은 사용자 저장까지 모두 롤백된 상태다.
@@ -70,6 +73,6 @@ public class SocialLoginService {
     private Optional<UserResponse> find(SocialIdentity identity) {
         return read.execute(status -> accounts.findByProviderAndProviderUserId(
                 identity.provider(), identity.providerUserId())
-                .map(account -> UserResponse.from(account.getUser())));
+                .map(account -> legal.response(account.getUser())));
     }
 }

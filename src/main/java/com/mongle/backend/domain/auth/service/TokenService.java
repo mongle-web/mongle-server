@@ -40,6 +40,7 @@ public class TokenService {
     private final JwtEncoder encoder;
     private final AuthProperties properties;
     private final Clock authClock;
+    private final com.mongle.backend.domain.legal.LegalService legal;
 
     // 쿠키에 담을 원문 토큰은 응답 DTO에 포함하지 않는다.
     public record IssuedTokens(TokenResponse response, String refreshToken, Instant refreshExpiresAt) { }
@@ -127,7 +128,7 @@ public class TokenService {
         String access = encoder.encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).type("JWT").build(), claims)).getTokenValue();
         var response = new TokenResponse(access, "Bearer", accessExpiry.getEpochSecond() - now.getEpochSecond(),
-                UserResponse.from(session.getUser()));
+                legal.response(session.getUser()));
         return new IssuedTokens(response, refresh, sessionExpiry);
     }
 
