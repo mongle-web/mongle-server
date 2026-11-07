@@ -26,7 +26,13 @@ public class WithdrawalRetention {
     @Transactional(propagation=Propagation.REQUIRES_NEW)
     public boolean purge(Long userId) {
         var found=users.findByIdForUpdate(userId);
-        if(found.isEmpty() || !found.get().isWithdrawn() || found.get().getRetentionUntil().isAfter(now())) return false;
+        if(found.isEmpty() || !found.get().isWithdrawn()) return false;
+        var user=found.get();
+        // Operator commands use JDBC and can append accounting records without updating User.
+        // Recompute under the same user lock before any deletion.
+        if(data.hasFinancialRecords(userId))
+            user.retainTransactionUntil(data.financialRetention(userId,now()));
+        if(user.getRetentionUntil()==null || user.getRetentionUntil().isAfter(now())) return false;
         if(refunds.hasOpenRefunds(userId) || tasks.existsByUserIdAndStateIn(userId,List.of(
                 SocialUnlinkTask.State.PENDING,SocialUnlinkTask.State.PROCESSING,SocialUnlinkTask.State.RETRY_WAIT))) return false;
         long unfinished=em.createQuery("select count(r) from ImageCleanupRequest r where r.userId=:user and r.status<>:done",Long.class)

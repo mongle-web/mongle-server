@@ -303,6 +303,7 @@ public class UserWithdrawalIntegrationTest {
         seed("payment_orders",Map.of("user_id",user,"price",1000L,"credits",10L,"state","CANCELLED"));
         withdraw(user);
         assertThat(retention.purge(user)).isFalse();
+        jdbc.update("update payment_orders set updated_at=? where user_id=?",LocalDateTime.now().minusYears(6),user);
         jdbc.update("update users set retention_until=? where id=?",LocalDateTime.now().minusDays(1),user);
         var id=tasks.findAll().stream().filter(t->t.getUserId().equals(user)).findFirst().orElseThrow().getIdentityHash();
         unlink.finish(unlink.claim(id).orElseThrow(),true);
@@ -311,6 +312,27 @@ public class UserWithdrawalIntegrationTest {
         when(refunds.hasOpenRefunds(user)).thenReturn(false);
         assertThat(retention.purge(user)).isTrue();
         assertThat(count("payment_orders",user)).isZero();
+    }
+
+    @Test
+    void lateOperatorReclamationExtendsRetentionBeforePurge() {
+        Long user=member();
+        var grant=credits.grant(user,CreditSource.PAYMENT,"late-retention-"+user,10);
+        long order=seed("payment_orders",Map.of("user_id",user,"price",1100L,"credits",10L,
+                "credit_grant_id",grant.grantId(),"state","CANCELLED"));
+        when(refunds.coversRemainingPurchases(user)).thenReturn(true);
+        withdraw(user);
+        String hash=tasks.findAll().stream().filter(t->t.getUserId().equals(user)).findFirst().orElseThrow().getIdentityHash();
+        unlink.finish(unlink.claim(hash).orElseThrow(),true);
+        jdbc.update("update payment_orders set updated_at=? where user_id=?",LocalDateTime.now().minusYears(6),user);
+        jdbc.update("update credit_ledger set created_at=? where user_id=? and source_type='PAYMENT'",LocalDateTime.now().minusYears(6),user);
+        jdbc.update("update users set retention_until=? where id=?",LocalDateTime.now().minusDays(1),user);
+        var observed=LocalDateTime.ofInstant(Instant.now(),ZoneOffset.UTC).withNano(0);
+        seed("payment_credit_reclamations",Map.of("order_id",order,"user_id",user,"grant_id",grant.grantId(),
+                "amount",10L,"created_at",observed));
+        assertThat(retention.purge(user)).isFalse();
+        assertThat(users.findById(user).orElseThrow().getRetentionUntil()).isAfterOrEqualTo(observed.plusYears(5));
+        assertThat(count("payment_credit_reclamations",user)).isEqualTo(1);
     }
 
     HttpResponse<String> send(HttpClient client,String token,String method,String path) throws Exception {

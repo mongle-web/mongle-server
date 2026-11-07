@@ -24,7 +24,13 @@ public class WithdrawalData {
         return count("select coalesce(sum(available+reserved),0) from credit_grants where user_id=:user and source_type='PAYMENT'",user);
     }
     public LocalDateTime financialRetention(Long user, LocalDateTime now) {
-        var latest=em.createNativeQuery("select max(updated_at) from payment_orders where user_id=:user")
+        var latest=em.createNativeQuery("""
+                select max(event_at) from (
+                  select max(updated_at) event_at from payment_orders where user_id=:user
+                  union all select max(created_at) event_at from payment_credit_reclamations where user_id=:user
+                  union all select max(created_at) event_at from credit_ledger where user_id=:user and source_type='PAYMENT'
+                ) accounting_dates
+                """)
                 .setParameter("user",user).getSingleResult();
         LocalDateTime event=latest instanceof java.sql.Timestamp t?t.toLocalDateTime():
                 latest instanceof LocalDateTime t?t:now;
