@@ -85,7 +85,10 @@ public class RefundService implements WithdrawalRefundPolicy {
         }
         var rows = refunds.page(userId, beforeId, PageRequest.of(0, size + 1));
         boolean hasNext = rows.size() > size;
-        return new RefundPage(rows.stream().limit(size).map(this::receipt).toList(),
+        var page = rows.subList(0, Math.min(size, rows.size()));
+        var totals = refunds.confirmedCancellationAmounts(page.stream()
+                .map(row -> row.getOrder().getId()).distinct().toList());
+        return new RefundPage(page.stream().map(row -> receipt(row, totals.get(row.getOrder().getId()))).toList(),
                 hasNext, hasNext ? rows.get(size - 1).getId() : null);
     }
 
@@ -128,6 +131,10 @@ public class RefundService implements WithdrawalRefundPolicy {
     }
 
     private RefundReceipt receipt(PaymentRefundRequest row) {
+        return receipt(row, refunds.confirmedCancellationAmount(row.getOrder().getId()));
+    }
+
+    private RefundReceipt receipt(PaymentRefundRequest row, Long confirmedCancellationAmount) {
         var order = row.getOrder();
         var resolution = row.getResolution();
         var estimate = resolution == null
@@ -138,7 +145,8 @@ public class RefundService implements WithdrawalRefundPolicy {
                 resolution.getRefundedAmount(), resolution.getRevokedCredits(), resolution.getResolvedAt());
         return new RefundReceipt(row.getReceiptId(), order.getPublicId(), row.getRequestId(), row.getCreatedAt(), row.getReason(),
                 row.getInitialStatus(), row.getAvailableAtRequest(), row.getReservedAtRequest(),
-                row.getUsedAtRequest(), row.getEstimatedAmount(), row.getFeePercent(), estimate, properties.supportEmail(), status, result);
+                row.getUsedAtRequest(), row.getEstimatedAmount(), row.getFeePercent(), estimate, properties.supportEmail(),
+                status, result, order.getState(), confirmedCancellationAmount);
     }
 
     private void requireActive(Long userId) {

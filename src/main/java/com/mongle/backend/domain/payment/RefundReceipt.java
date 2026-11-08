@@ -12,7 +12,11 @@ public record RefundReceipt(
         String requestId, Instant receivedAt, PaymentRefundRequest.Reason reason,
         RefundEstimate.Status initialStatus, long unusedAtRequest, long reservedAtRequest, long usedAtRequest,
         Long estimatedAmountAtRequest, Integer feePercentAtRequest, RefundEstimate currentEstimate,
-        String supportEmail, ProcessingStatus processingStatus, Resolution resolution) {
+        String supportEmail, ProcessingStatus processingStatus, Resolution resolution,
+        @Schema(description = "원주문의 현재 결제 상태. 환불 정산 후 새 취소를 확인 중이면 PAYMENT_REVIEW.")
+        PaymentOrder.State orderState,
+        @Schema(description = "원주문에서 확인한 누적 취소액. 해당 접수의 최초 정산액은 resolution.refundedAmount로 별도 제공.")
+        Long confirmedCancellationAmount) {
 
     public enum ProcessingStatus { RECEIVED, COMPLETED, REJECTED, WITHDRAWN }
 

@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.Optional;
 
 interface PaymentRefundRepository extends JpaRepository<PaymentRefundRequest, Long> {
@@ -34,6 +36,29 @@ interface PaymentRefundRepository extends JpaRepository<PaymentRefundRequest, Lo
             """, nativeQuery = true)
     long countMatchedCancellation(@Param("orderId") Long orderId, @Param("transaction") String transaction,
             @Param("amount") long amount, @Param("full") boolean full);
+
+    interface ConfirmedCancellation {
+        Long getOrderId();
+        Long getAmount();
+    }
+
+    @Query("""
+            select r.order.id as orderId, sum(e.amount) as amount
+            from PaymentRefundRequest r join PaymentRefundEvidence e on e.refundId = r.id
+            where r.order.id in :orderIds and r.resolution.status = COMPLETED
+            group by r.order.id
+            """)
+    List<ConfirmedCancellation> sumConfirmedByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    default Map<Long, Long> confirmedCancellationAmounts(List<Long> orderIds) {
+        if (orderIds.isEmpty()) return Map.of();
+        return sumConfirmedByOrderIds(orderIds).stream()
+                .collect(Collectors.toMap(ConfirmedCancellation::getOrderId, ConfirmedCancellation::getAmount));
+    }
+
+    default Long confirmedCancellationAmount(Long orderId) {
+        return confirmedCancellationAmounts(List.of(orderId)).get(orderId);
+    }
 
     @Query("""
             select r from PaymentRefundRequest r join fetch r.order join fetch r.grant left join fetch r.resolution

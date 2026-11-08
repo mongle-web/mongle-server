@@ -415,6 +415,139 @@ class RefundIntakeIntegrationTest {
     }
 
     @Test
+    void reconcilesMultipleFollowUpsWithOneCreditReclaimAndKeepsOtherHolds() throws Exception {
+        var paid = approvePurchase();
+        var receipt = completePartialRefund(paid);
+        var other = approvePurchase();
+        feedback.accept(verifier.verify(notification(other, 9, now)));
+        assertThat(json.writeValueAsString(listFollowUps())).doesNotContain(receipt.receiptId());
+
+        now = now.plusSeconds(1);
+        partial(paid, "62001", 100, 70);
+        partial(paid, "62001", 100, 71);
+        var queue = listFollowUps();
+        assertThat(json.writeValueAsString(queue)).contains(receipt.receiptId(), paid.getPublicId());
+        var later = RefundResolutionTestDriver.run(dataSource, clock, "--payment-refund=list-follow-ups",
+                "--after-receipt-id=" + receipt.receiptId());
+        assertThat(json.writeValueAsString(later)).doesNotContain(receipt.receiptId());
+        assertThat(followUp("inspect-follow-up", receipt, null, 0, null))
+                .containsEntry("unreviewedCancellationCount", 1)
+                .containsEntry("confirmedCancellationAmount", java.math.BigInteger.valueOf(770));
+        var stale = readySnapshot(followUp("preview", receipt, "first", 100, null));
+        now = now.plusSeconds(1);
+        partial(paid, "62002", 50, 70);
+        assertThatThrownBy(() -> followUp("apply", receipt, "first", 100, stale))
+                .hasMessage("CANCELLATION_DOES_NOT_MATCH_APPROVAL");
+
+        var snapshot = readySnapshot(followUp("preview", receipt, "first", 150, null));
+        var start = new CountDownLatch(1);
+        Map<String, Object> firstResult;
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            Callable<Map<String, Object>> apply = () -> {
+                if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("apply start timeout");
+                return followUp("apply", receipt, "first", 150, snapshot);
+            };
+            var first = pool.submit(apply);
+            var second = pool.submit(apply);
+            start.countDown();
+            firstResult = first.get(15, TimeUnit.SECONDS);
+            assertThat(second.get(15, TimeUnit.SECONDS)).isEqualTo(firstResult);
+        }
+        assertThat(firstResult).containsEntry("confirmedCancellationAmount", 920L);
+        assertThatThrownBy(() -> followUp("apply", receipt, "first", 149, snapshot))
+                .hasMessage("FOLLOW_UP_REFERENCE_USED");
+        assertThat(json.writeValueAsString(listFollowUps())).doesNotContain(receipt.receiptId());
+        assertThat(credits.balance(user).spendingBlocked()).isTrue();
+        assertThat(grantAvailable(other)).isEqualTo(10);
+
+        now = now.plusSeconds(1);
+        partial(paid, "62002", 50, 71);
+        assertThat(orders.findById(paid.getId()).orElseThrow().getState()).isEqualTo(PaymentOrder.State.REFUND_SETTLED);
+        partial(paid, "62003", 180, 71);
+        assertThat(followUp("apply", receipt, "first", 150, snapshot)).isEqualTo(firstResult);
+        assertThat(refunds.get(user, UUID.fromString(receipt.receiptId())).orderState())
+                .isEqualTo(PaymentOrder.State.PAYMENT_REVIEW);
+        var second = readySnapshot(followUp("preview", receipt, "second", 180, null));
+        assertThat(followUp("apply", receipt, "second", 180, second))
+                .containsEntry("confirmedCancellationAmount", 1100L);
+        assertThat(reclaimedEntries()).isEqualTo(1);
+        assertThat(grantAvailable(paid)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from credit_payment_holds where user_id=?", Long.class, user))
+                .isEqualTo(1);
+        assertThat(refunds.page(user, null, 20).items()).singleElement().satisfies(result -> {
+            assertThat(result.resolution().refundedAmount()).isEqualTo(770);
+            assertThat(result.confirmedCancellationAmount()).isEqualTo(1100);
+            assertThat(result.orderState()).isEqualTo(PaymentOrder.State.REFUND_SETTLED);
+        });
+
+        String bearer = tokens.login(user).response().accessToken();
+        String another = tokens.login(member()).response().accessToken();
+        try (var client = HttpClient.newHttpClient()) {
+            for (String path : List.of("/api/v1/payments/orders/" + paid.getPublicId(),
+                    "/api/v1/payments/orders/by-request-id/" + paid.getRequestId(),
+                    "/api/v1/payments/refunds/" + receipt.receiptId())) {
+                var response = http(client, bearer, "GET", path, null);
+                assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+                assertThat(json.readTree(response.body()).path("data").path("confirmedCancellationAmount").asLong())
+                        .isEqualTo(1100);
+                assertThat(http(client, another, "GET", path, null).statusCode()).isEqualTo(404);
+            }
+            var page = http(client, bearer, "GET", "/api/v1/payments/orders", null);
+            assertThat(page.statusCode()).isEqualTo(200);
+            var pageItems = json.readTree(page.body()).path("data").path("items");
+            assertThat(pageItems.get(0).path("confirmedCancellationAmount").isNull()).isTrue();
+            assertThat(pageItems.get(1).path("confirmedCancellationAmount").asLong()).isEqualTo(1100);
+        }
+    }
+
+    @Test
+    void leavesConflictingOrExcessFollowUpOnHold() throws Exception {
+        var paid = approvePurchase();
+        var receipt = completePartialRefund(paid);
+        now = now.plusSeconds(1);
+        partial(paid, "63001", 400, 70);
+        partial(paid, "63001", 401, 71);
+        var preview = followUp("preview", receipt, "excess", 400, null);
+        assertThat(preview).containsEntry("decision", "REVIEW_REQUIRED");
+        assertThat(preview.get("findings")).asList()
+                .contains("CANCELLATION_EVIDENCE_CONFLICT", "CANCELLATION_EXCEEDS_ORDER_AMOUNT");
+        assertThatThrownBy(() -> followUp("apply", receipt, "excess", 400, preview.get("snapshot").toString()))
+                .hasMessage("CANCELLATION_EVIDENCE_CONFLICT");
+        assertThat(credits.balance(user).spendingBlocked()).isTrue();
+        assertThat(reclaimedEntries()).isEqualTo(1);
+        assertThat(refunds.get(user, UUID.fromString(receipt.receiptId())).confirmedCancellationAmount())
+                .isEqualTo(770);
+    }
+
+    @Test
+    void followsUpAfterWithdrawalAndPreservesRecordsUntilTheNewResolutionAgesOut() throws Exception {
+        var paid = approvePurchase();
+        var receipt = completePartialRefund(paid);
+        withdrawals.withdraw(user);
+        now = now.plus(Duration.ofDays(5));
+        partial(paid, "64001", 330, 71);
+        var preview = readySnapshot(followUp("preview", receipt, "after-withdrawal", 330, null));
+
+        // A new audit event invalidates the preview, even if it leaves the cancellation amount unchanged.
+        now = now.plusSeconds(1);
+        partial(paid, "64001", 330, 70);
+        assertThatThrownBy(() -> followUp("apply", receipt, "after-withdrawal", 330, preview))
+                .hasMessage("SNAPSHOT_CHANGED");
+        now = now.plus(Duration.ofDays(5));
+        var latest = readySnapshot(followUp("preview", receipt, "after-withdrawal", 330, null));
+        followUp("apply", receipt, "after-withdrawal", 330, latest);
+        var resolvedAt = now;
+        now = resolvedAt.atOffset(ZoneOffset.UTC).plusYears(5).minusDays(1).toInstant();
+        assertThat(retention.purge(user)).isFalse();
+        now = resolvedAt.atOffset(ZoneOffset.UTC).plusYears(5).plusDays(1).toInstant();
+        assertThat(retention.purge(user)).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from payment_refund_requests where user_id=?", Long.class, user))
+                .isZero();
+        assertThat(jdbc.queryForObject("select count(*) from payment_refund_evidence where provider_transaction=?",
+                Long.class, "64001" + paid.getId())).isZero();
+    }
+
+    @Test
     void refusesUnverifiedOrConflictingCancellationAmountsWithoutReleasingFunds() throws Exception {
         var paid = approvePurchase();
         var receipt = refunds.receive(user, request(UUID.fromString(paid.getPublicId()), STANDARD));
@@ -526,6 +659,29 @@ class RefundIntakeIntegrationTest {
         if (!mode.equals("inspect")) {
             args.addAll(List.of("--action=settle", "--operator-reference=case-134", "--amount=" + amount,
                     "--credits=" + quantity, "--basis=" + basis));
+        }
+        if (snapshot != null) args.add("--expected-snapshot=" + snapshot);
+        return RefundResolutionTestDriver.run(dataSource, clock, args.toArray(String[]::new));
+    }
+
+    private RefundReceipt completePartialRefund(PaymentOrder order) throws Exception {
+        reservations.settle(user, reserve("used-before-follow-up").reservationId(), "saved-image");
+        var receipt = refunds.receive(user, request(UUID.fromString(order.getPublicId()), STANDARD));
+        partial(order, "61001", 770, 70);
+        var snapshot = readySnapshot(settlement("preview", receipt, 770, 7, "STANDARD", null));
+        settlement("apply", receipt, 770, 7, "STANDARD", snapshot);
+        return receipt;
+    }
+
+    private Map<String, Object> listFollowUps() throws Exception {
+        return RefundResolutionTestDriver.run(dataSource, clock, "--payment-refund=list-follow-ups");
+    }
+
+    private Map<String, Object> followUp(String mode, RefundReceipt receipt, String reference, long amount,
+            String snapshot) throws Exception {
+        var args = new ArrayList<>(List.of("--payment-refund=" + mode, "--receipt-id=" + receipt.receiptId()));
+        if (reference != null) {
+            args.addAll(List.of("--action=follow-up", "--operator-reference=" + reference, "--amount=" + amount));
         }
         if (snapshot != null) args.add("--expected-snapshot=" + snapshot);
         return RefundResolutionTestDriver.run(dataSource, clock, args.toArray(String[]::new));

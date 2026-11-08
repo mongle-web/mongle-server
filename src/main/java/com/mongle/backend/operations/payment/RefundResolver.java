@@ -40,6 +40,9 @@ final class RefundResolver {
             connection.setAutoCommit(false);
             try {
                 var db = new PaymentInspector.Session(connection, deadline);
+                if (request.mode() == RefundResolutionRequest.Mode.LIST_FOLLOW_UPS) {
+                    return RefundFollowUp.list(db, request.receiptId());
+                }
                 long user = one(db.query("select user_id from payment_refund_requests where receipt_id=?",
                         row -> row.getLong(1), request.receiptId()), "REFUND_NOT_FOUND");
                 if (request.apply()) {
@@ -48,7 +51,13 @@ final class RefundResolver {
                 }
                 var receipt = load(db, request.receiptId(), user);
                 var prior = resolution(db, receipt.id);
-                var report = new PaymentInspector(source, clock).inspect(connection, receipt.orderId, deadline);
+                var inspector = new PaymentInspector(source, clock);
+                var report = inspector.inspect(connection, receipt.orderId, deadline);
+                if (request.followUp()) {
+                    var result = RefundFollowUp.execute(db, clock, request, receipt, prior, report, inspector);
+                    if (request.apply()) connection.commit();
+                    return result;
+                }
                 var response = summary(request, receipt, report, prior);
                 if (prior != null) {
                     if (request.apply()) verifyReplay(request, prior);
@@ -131,7 +140,7 @@ final class RefundResolver {
         return rows.isEmpty() ? null : rows.getFirst();
     }
 
-    private static Evidence evidence(PaymentInspector.Session db, Receipt receipt) throws SQLException {
+    static Evidence evidence(PaymentInspector.Session db, Receipt receipt) throws SQLException {
         var items = db.query("""
                 select n.provider_transaction,min(n.amount) as minimum,max(n.amount) as maximum,
                     min(case when n.state_code in (9,64) then 1 else 0 end) as min_full,
@@ -299,7 +308,7 @@ final class RefundResolver {
                 r.grantVersion, state, evidence.requestCancellation, evidence.approvalMatches, evidence.items)));
     }
 
-    private static void update(PaymentInspector.Session db, String sql, Object... values) throws SQLException {
+    static void update(PaymentInspector.Session db, String sql, Object... values) throws SQLException {
         long left = db.deadline() - System.nanoTime();
         if (left <= 0) throw new SQLTimeoutException();
         try (var statement = db.connection().prepareStatement(sql)) {
@@ -309,7 +318,7 @@ final class RefundResolver {
         }
     }
 
-    private static Instant instant(ResultSet row, String field) throws SQLException {
+    static Instant instant(ResultSet row, String field) throws SQLException {
         var value = row.getTimestamp(field, Calendar.getInstance(TimeZone.getTimeZone("UTC")));
         return value == null ? null : value.toInstant();
     }
@@ -319,23 +328,23 @@ final class RefundResolver {
         return rows.getFirst();
     }
 
-    private static PaymentInspectCommand.Failure fail(String code) {
+    static PaymentInspectCommand.Failure fail(String code) {
         return new PaymentInspectCommand.Failure(code);
     }
 
-    private record Receipt(long id, long user, long orderKey, long grant, String reason, Instant received,
+    record Receipt(long id, long user, long orderKey, long grant, String reason, Instant received,
             long initialAvailable, long initialReserved, String orderId, String originalTransaction, long linkedGrant,
             long price, long purchased, String orderState, long orderVersion, Instant approved, long available,
             long reserved, long consumed, long forfeited, long grantVersion, long accountAvailable,
             long accountReserved, long accountVersion, boolean hold) {}
 
-    private record Resolution(String status, long refunded, long revoked, String basis, String reference,
+    record Resolution(String status, long refunded, long revoked, String basis, String reference,
             String snapshot, Instant resolvedAt) {}
 
-    private record Evidence(List<Cancellation> items, BigInteger total, boolean requestCancellation,
+    record Evidence(List<Cancellation> items, BigInteger total, boolean requestCancellation,
             boolean approvalMatches) {}
 
-    private record Cancellation(String transaction, long minimum, long maximum, int minFull,
+    record Cancellation(String transaction, long minimum, long maximum, int minFull,
             int maxFull, boolean badBinding, Instant firstNotice) {
         boolean matches(Receipt receipt) {
             if (receipt.originalTransaction == null || transaction == null || !transaction.matches("[1-9][0-9]{0,39}")

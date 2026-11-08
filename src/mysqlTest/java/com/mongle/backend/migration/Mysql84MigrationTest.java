@@ -83,7 +83,7 @@ class Mysql84MigrationTest {
         assertThat(new MigrationEngine(source, "flyway_existing", "filesystem:" + priorRelease).execute("migrate"))
                 .containsEntry("targetVersion", "3");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='recent_interpretations'", Integer.class)).isZero();
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 7).containsEntry("targetVersion", "10");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 8).containsEntry("targetVersion", "11");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 0);
         assertThatThrownBy(() -> engine.execute("baseline")).hasMessage("HISTORY_ALREADY_EXISTS");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE email='preserved@test.invalid'", String.class)).isEqualTo("keep");
@@ -102,7 +102,7 @@ class Mysql84MigrationTest {
         jdbc.update("INSERT INTO users(email,nickname,created_at,updated_at) VALUES('summary-preserved@test.invalid','keep-summary',NOW(),NOW())");
         var history=jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
         var engine=new MigrationEngine(source,"flyway_summary");
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 6).containsEntry("targetVersion", "10");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 7).containsEntry("targetVersion", "11");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",0);
         assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version in ('1','3','4') order by installed_rank")).isEqualTo(history);
         assertThat(jdbc.queryForObject("select nickname from users where email='summary-preserved@test.invalid'",String.class)).isEqualTo("keep-summary");
@@ -124,9 +124,9 @@ class Mysql84MigrationTest {
         var history=jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
         var accounts=jdbc.queryForList("select * from credit_accounts");var grants=jdbc.queryForList("select * from credit_grants");
         var engine=new MigrationEngine(ds,"flyway_reclamation");
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 5).containsEntry("targetVersion", "10");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 6).containsEntry("targetVersion", "11");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",0);
-        assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version not in ('6','7','8','9','10') order by installed_rank")).isEqualTo(history);
+        assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version not in ('6','7','8','9','10','11') order by installed_rank")).isEqualTo(history);
         assertThat(jdbc.queryForList("select * from credit_accounts")).isEqualTo(accounts);
         var upgradedGrants=jdbc.queryForList("select * from credit_grants");
         upgradedGrants.forEach(row -> assertThat(row.remove("forfeited")).isEqualTo(0L));
@@ -146,13 +146,13 @@ class Mysql84MigrationTest {
         var before=jdbc.queryForMap("select * from users where email='legal-existing@test.invalid'");
         var history=jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
         var engine=new MigrationEngine(ds,"flyway_legal");
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 3).containsEntry("targetVersion", "10");
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 4).containsEntry("targetVersion", "11");
         assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted",0);
         var after=jdbc.queryForMap("select * from users where email='legal-existing@test.invalid'");
         for(String column:java.util.List.of("terms_version","terms_digest","privacy_version","privacy_digest"))
             assertThat(after.remove(column)).isNull();
         assertThat(after).isEqualTo(before);
-        assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version not in ('8','9','10') order by installed_rank")).isEqualTo(history);
+        assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version not in ('8','9','10','11') order by installed_rank")).isEqualTo(history);
         assertThat(jdbc.queryForObject("select count(*) from legal_consents",Long.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from legal_document_versions where document_digest is null",Long.class)).isEqualTo(2);
     }
@@ -210,9 +210,12 @@ class Mysql84MigrationTest {
         jdbc.update(insert, user);
         var originalReceipt = jdbc.queryForMap("select * from payment_refund_requests where user_id=?", user);
         var v9History = jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
-        var engine = new MigrationEngine(source, "flyway_refund");
-        assertThat(engine.execute("migrate")).containsEntry("targetVersion", "10").containsEntry("migrationsExecuted", 1);
-        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 0);
+        String settlementMigration = "V10__payment_refund_settlement.sql";
+        try (var sql = new ClassPathResource("db/migration/" + settlementMigration).getInputStream()) {
+            Files.copy(sql, prior.resolve(settlementMigration));
+        }
+        assertThat(new MigrationEngine(source, "flyway_refund", "filesystem:" + prior).execute("migrate"))
+                .containsEntry("targetVersion", "10").containsEntry("migrationsExecuted", 1);
         assertThat(jdbc.queryForMap("select * from payment_refund_requests where user_id=?", user)).isEqualTo(originalReceipt);
         assertThat(jdbc.queryForObject("select count(*) from payment_refund_resolutions", Long.class)).isZero();
         assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version<>'10' order by installed_rank"))
@@ -220,6 +223,25 @@ class Mysql84MigrationTest {
         jdbc.update(insert, user);
         assertThat(jdbc.queryForObject("select count(*) from payment_refund_requests where user_id=?", Long.class, user))
                 .isEqualTo(2);
+        Long refund = ((Number) originalReceipt.get("id")).longValue();
+        jdbc.update("""
+                insert into payment_refund_resolutions(refund_id,status,refunded_amount,revoked_credits,
+                    released_payment_hold,basis,operator_reference,snapshot_hash,resolved_at)
+                values(?,'COMPLETED',1100,10,true,'STANDARD','original',REPEAT('a',64),NOW())
+                """, refund);
+        jdbc.update("""
+                insert into payment_refund_evidence(refund_id,provider_transaction,amount,full_cancellation)
+                values(?,'555010',1100,true)
+                """, refund);
+        var v10History = jdbc.queryForList("select version,checksum from flyway_schema_history order by installed_rank");
+        var engine = new MigrationEngine(source, "flyway_refund");
+        assertThat(engine.execute("migrate")).containsEntry("targetVersion", "11").containsEntry("migrationsExecuted", 1);
+        assertThat(engine.execute("migrate")).containsEntry("migrationsExecuted", 0);
+        assertThat(jdbc.queryForList("select version,checksum from flyway_schema_history where version<>'11' order by installed_rank"))
+                .isEqualTo(v10History);
+        assertThat(jdbc.queryForMap("select amount,full_cancellation,follow_up_id from payment_refund_evidence where refund_id=?", refund))
+                .containsEntry("amount", 1100L).containsEntry("full_cancellation", true).containsEntry("follow_up_id", null);
+        assertThat(jdbc.queryForObject("select count(*) from payment_refund_follow_ups", Long.class)).isZero();
     }
 
     @Test void baselineRejectsColumnIndexAndForeignKeyDriftEvenWith33Tables() throws Exception {

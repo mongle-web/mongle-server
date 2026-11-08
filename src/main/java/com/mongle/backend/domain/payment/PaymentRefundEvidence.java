@@ -12,6 +12,7 @@ class PaymentRefundEvidence {
     private Long id;
     @Column(nullable = false)
     private Long refundId;
+    private Long followUpId;
     @Column(nullable = false, length = 40, unique = true)
     private String providerTransaction;
     @Column(nullable = false)

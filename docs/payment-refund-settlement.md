@@ -69,3 +69,45 @@
 - V10을 CD로 적용한다. V9 접수와 원장은 보존된다. 정산이 열린 동안은 탈퇴 기록을 파기하지 않으며, 완료된 환불의 보관 기한에는 최종 처리 시각을 반영한다.
 - 환불 접수 공개 전 대상 판매자 계정의 전액·부분취소, 정산 후 반환, 실제 취소 통보, 탈퇴 후 문의를 운영자와 검증한다. 현재 공개 플래그 기본값은 false다.
 - 운영 정산이 시작되면 `REFUND_SETTLED`와 정산 기록을 읽는 버전으로 운영한다. 일시 중지는 신규 접수 플래그를 내려 처리한다.
+
+## 정산 후 추가 취소 대조 (#139)
+
+V11은 최초 정산과 증빙을 보존하고 추가 취소 확인 이력을 분리한다.
+기존 확인 취소와 다른 확정 통보가 수신되어 보류된 완료 접수만 대상으로 한다.
+
+1. 보류된 완료 접수를 조회한다. 한 번에 최대 20건이며 다음 페이지는 반환된
+   `nextAfterReceiptId`를 `--after-receipt-id`에 넣어 조회한다.
+
+   ```bash
+   java -jar "$MONGLE_JAR" --payment-refund=list-follow-ups
+   java -jar "$MONGLE_JAR" --payment-refund=inspect-follow-up --receipt-id="$RECEIPT_ID"
+   ```
+
+2. 페이앱 판매자 화면에서 원주문과 추가 취소가 확정됐는지 대조한다.
+   조회 결과에서 최초 정산액, 이전 추가 확인 이력, 이미 확인한 누적액, 새 통보 금액을 구분한다.
+   새 통보 금액은 판단 전 참고값이다. 금액·귀속이 다르거나 통보가 충돌하면 보류한다.
+3. 새로 확인한 금액만 `--amount`에 넣는다. 아래 예시는 최초 정산 900원, 추가 확정 취소 200원이다.
+   운영 참조번호는 같은 접수의 추가 대조 건마다 새로 부여한다.
+
+   ```bash
+   java -jar "$MONGLE_JAR" --payment-refund=preview --receipt-id="$RECEIPT_ID" \
+     --action=follow-up --amount=200 --operator-reference=case-139-001
+   java -jar "$MONGLE_JAR" --payment-refund=apply --receipt-id="$RECEIPT_ID" \
+     --action=follow-up --amount=200 --operator-reference=case-139-001 \
+     --expected-snapshot="$REFUND_SNAPSHOT"
+   ```
+
+4. `READY`인 미리보기만 적용한다. 이후 통보나 상태가 달라졌으면 다시 대조한다.
+   적용 후 같은 주문만 `REFUND_SETTLED`로 돌아간다. 다른 주문의 보류가 남으면 계정의
+   `spendingBlocked`도 계속 true다.
+
+추가 대조는 최초 접수의 `resolution.refundedAmount`와 크레딧 회수 원장을 변경하지 않는다.
+새 확인 이력과 증빙 저장, 해당 보류 해제, 주문 상태 변경은 사용자 잠금 아래 함께 커밋한다.
+같은 참조번호·금액·스냅샷으로 재실행하면 당시 처리 결과를 반환하며, 더 최근에 잡힌 보류에는 손대지 않는다.
+한 주문에서 확정 통보의 거래 식별자가 32건 이상이면 증빙을 일부만 처리하지 않고 검토 상태를 유지한다.
+추가 대조가 적용된 거래의 보존 기한에는 최종 확인 시각을 반영한다. 재검토 중에는 파기하지 않는다.
+
+주문·환불 조회의 `confirmedCancellationAmount`는 최초 정산과 적용한 추가 취소를 합한 주문 단위 금액이다.
+확인된 정산이 없으면 null이며, 새 통보가 보류 중이면 확인을 끝낸 금액까지만 포함한다.
+환불 조회의 `orderState`가 `PAYMENT_REVIEW`여도 원래 접수의 `processingStatus=COMPLETED`는 유지된다.
+V11을 적용한 릴리스의 운영 명령을 사용한다.

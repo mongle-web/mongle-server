@@ -252,20 +252,23 @@ final class PaymentInspector {
                                 """
                                 select coalesce(sum(case when user_id=? then 1 else 0 end),0) as account_holds,
                                 coalesce(sum(case when grant_id=? then 1 else 0 end),0) as purchase_holds,
-                                coalesce(sum(case when grant_id=? and user_id<>? then 1 else 0 end),0) as invalid_owner
+                                coalesce(sum(case when grant_id=? and user_id<>? then 1 else 0 end),0) as invalid_owner,
+                                (select count(*) from payment_refund_follow_ups where refund_id=?) as follow_up_releases
                                 from credit_payment_holds where user_id=? or grant_id=?
                                 """,
-                                r -> values(r, "account_holds", "purchase_holds", "invalid_owner"),
+                                r -> values(r, "account_holds", "purchase_holds", "invalid_owner", "follow_up_releases"),
                                 order.user,
                                 grantId,
                                 grantId,
                                 order.user,
+                                refund == null ? -1L : refund.id,
                                 order.user,
                                 grantId)
                         .getFirst();
         if (holds.get(2).signum() != 0
                 || !holds.get(1)
                         .add(reclamation != null || (refund != null && refund.releasedHold) ? BigInteger.ONE : BigInteger.ZERO)
+                        .add(holds.get(3))
                         .equals(ledger.get(5))) findings.add("PAYMENT_HOLD_LEDGER_MISMATCH");
         if (holds.get(1).signum() > 0 && !storedState.equals("PAYMENT_REVIEW"))
             findings.add("HOLD_WITHOUT_REVIEW_STATE");
