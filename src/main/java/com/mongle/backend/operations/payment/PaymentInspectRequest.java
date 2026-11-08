@@ -2,9 +2,9 @@ package com.mongle.backend.operations.payment;
 
 import java.util.*;
 
-record PaymentInspectRequest(String orderId) {
+record PaymentInspectRequest(Mode mode, String orderId) {
+    enum Mode { ORDER, UNCONFIRMED }
     static PaymentInspectRequest parse(String[] arguments) {
-        if (arguments.length != 2) throw new IllegalArgumentException();
         var values = new HashMap<String, String>();
         for (String argument : arguments) {
             int split = argument.indexOf('=');
@@ -13,12 +13,19 @@ record PaymentInspectRequest(String orderId) {
                                     argument.substring(0, split), argument.substring(split + 1))
                             != null) throw new IllegalArgumentException();
         }
-        if (!values.keySet().equals(Set.of("--payment-inspect", "--order-id"))
-                || !"order".equals(values.get("--payment-inspect")))
-            throw new IllegalArgumentException();
-        String id = values.get("--order-id");
-        if (!id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-                || !UUID.fromString(id).toString().equals(id)) throw new IllegalArgumentException();
-        return new PaymentInspectRequest(id);
+        String mode = values.remove("--payment-inspect");
+        if ("order".equals(mode) && values.keySet().equals(Set.of("--order-id"))) {
+            return new PaymentInspectRequest(Mode.ORDER, canonical(values.get("--order-id")));
+        }
+        if ("unconfirmed".equals(mode) && (values.isEmpty() || values.keySet().equals(Set.of("--after-order-id")))) {
+            return new PaymentInspectRequest(Mode.UNCONFIRMED,
+                    values.isEmpty() ? "" : canonical(values.get("--after-order-id")));
+        }
+        throw new IllegalArgumentException();
+    }
+
+    private static String canonical(String id) {
+        if (!UUID.fromString(id).toString().equals(id)) throw new IllegalArgumentException();
+        return id;
     }
 }

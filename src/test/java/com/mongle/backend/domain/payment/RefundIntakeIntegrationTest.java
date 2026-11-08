@@ -66,6 +66,7 @@ class RefundIntakeIntegrationTest {
     @Autowired PaymentOrderRepository orders;
     @Autowired RefundService refunds;
     @Autowired PaymentFeedbackService feedback;
+    @Autowired PaymentRecoveryService recovery;
     @Autowired PayAppFeedbackVerifier verifier;
     @Autowired CreditService credits;
     @Autowired CreditReservationService reservations;
@@ -302,6 +303,135 @@ class RefundIntakeIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from payment_refund_requests where user_id=?",
                 Long.class, user)).isEqualTo(2);
         assertThat(users.findById(user).orElseThrow().isWithdrawn()).isTrue();
+    }
+
+    @Test
+    void recoversAgedApprovalThroughTheOperatorPathAndPreservesWebhookFreshness() throws Exception {
+        var order = readyOrder(10);
+        jdbc.update("update payment_orders set state='UNKNOWN',provider_transaction=null where id=?", order.getId());
+        Instant notice = recoveryNoticeTime(order);
+        var form = notification(order, 4, notice);
+        form.put("pay_date", form.get("responsedate"));
+        now = notice.plus(Duration.ofHours(1));
+        var evidence = recoveryEvidence(form);
+        assertError(() -> withdrawals.withdraw(user), UserErrorCode.PAYMENT_UNCONFIRMED);
+        try (var client = HttpClient.newHttpClient()) {
+            var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/payments/payapp/feedback"))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(evidence.originalForm())).build();
+            assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(400);
+            var preview = recovery.preview(order.getPublicId(), "approval-141", evidence);
+            assertThat(preview.status()).isEqualTo("READY");
+            assertThat(credits.balance(user).available()).isZero();
+            assertThat(recovery.apply(order.getPublicId(), "approval-141", preview.snapshot(), evidence).status())
+                    .isEqualTo("RECOVERED");
+            assertThat(recovery.apply(order.getPublicId(), "approval-141", preview.snapshot(), evidence).status())
+                    .isEqualTo("ALREADY_RECOVERED");
+            assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).body()).isEqualTo("SUCCESS");
+        }
+        assertThat(orders.findById(order.getId()).orElseThrow().getApprovedAt()).isEqualTo(notice);
+        assertThat(credits.balance(user).available()).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select count(*) from payment_notification_recoveries where order_id=?",
+                Long.class, order.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from payment_notifications where order_id=?",
+                Long.class, order.getId())).isEqualTo(1);
+        assertError(() -> withdrawals.withdraw(user), UserErrorCode.REFUND_REQUIRED);
+    }
+
+    @Test
+    void confirmedCancellationAllowsWithdrawalAndAuditIsPurgedAfterRetention() {
+        var order = readyOrder(10);
+        var readyUser = user;
+        withdrawals.withdraw(readyUser);
+        assertThat(users.findById(readyUser).orElseThrow().isWithdrawn()).isTrue();
+
+        user = member();
+        var pending = readyOrder(10);
+        now = recoveryNoticeTime(pending);
+        feedback.accept(verifier.verify(notification(pending, 10, now)));
+        assertError(() -> withdrawals.withdraw(user), UserErrorCode.PAYMENT_UNCONFIRMED);
+        now = now.plusSeconds(1);
+        var evidence = recoveryEvidence(notification(pending, 32, now));
+        var preview = recovery.preview(pending.getPublicId(), "cancel-141", evidence);
+        assertThat(recovery.apply(pending.getPublicId(), "cancel-141", preview.snapshot(), evidence).orderState())
+                .isEqualTo(PaymentOrder.State.CANCELLED);
+        assertThat(credits.balance(user).available()).isZero();
+        withdrawals.withdraw(user);
+        now = now.atOffset(ZoneOffset.UTC).plusYears(5).plusDays(1).toInstant();
+        assertThat(retention.purge(user)).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from payment_notification_recoveries where order_id=?",
+                Long.class, pending.getId())).isZero();
+        assertThat(orders.findById(order.getId())).isPresent();
+    }
+
+    @Test
+    void rejectsInvalidEvidenceAndStalePreviewThenSerializesWithTheNormalWebhook() throws Exception {
+        var order = readyOrder(10);
+        now = recoveryNoticeTime(order);
+        jdbc.update("update payment_orders set state='REQUESTING' where id=?", order.getId());
+        var initial = recoveryEvidence(notification(order, 4, now));
+        assertThatThrownBy(() -> recovery.preview(order.getPublicId(), "race", initial))
+                .hasMessage("ORDER_NOT_UNCONFIRMED");
+
+        now = now.plus(Duration.ofMinutes(2));
+        var invalid = new PaymentRecoveryEvidence(initial.originalForm(), providerId(order), 4, 999);
+        assertThatThrownBy(() -> recovery.preview(order.getPublicId(), "race", invalid))
+                .hasMessage("SELLER_CONFIRMATION_MISMATCH");
+        var wrongAmount = notification(order, 4, now);
+        wrongAmount.put("price", "999");
+        assertThatThrownBy(() -> recovery.preview(order.getPublicId(), "race", recoveryEvidence(wrongAmount)))
+                .hasMessage("ORDER_EVIDENCE_MISMATCH");
+        var invalidHash = notification(order, 4, now);
+        invalidHash.put("hash", "b".repeat(64));
+        assertThatThrownBy(() -> recovery.preview(order.getPublicId(), "race", recoveryEvidence(invalidHash)))
+                .hasMessage("INVALID_ORIGINAL_NOTIFICATION");
+        var wrongTransaction = notification(order, 4, now);
+        wrongTransaction.put("mul_no", "99900001");
+        assertThatThrownBy(() -> recovery.preview(order.getPublicId(), "race", recoveryEvidence(wrongTransaction)))
+                .hasMessage("TRANSACTION_CONFLICT");
+
+        var stale = recovery.preview(order.getPublicId(), "race", initial);
+        now = now.plusSeconds(1);
+        feedback.accept(verifier.verify(notification(order, 10, now)));
+        assertThatThrownBy(() -> recovery.apply(order.getPublicId(), "race", stale.snapshot(), initial))
+                .hasMessage("NOTIFICATION_TIMELINE_CONFLICT");
+        now = now.plusSeconds(1);
+        var finalForm = notification(order, 4, now);
+        var evidence = recoveryEvidence(finalForm);
+        var preview = recovery.preview(order.getPublicId(), "race", evidence);
+        assertThatThrownBy(() -> recovery.apply(order.getPublicId(), "race", "a".repeat(64), evidence))
+                .hasMessage("SNAPSHOT_CHANGED");
+
+        var start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var live = pool.submit(() -> {
+                if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("webhook start timeout");
+                feedback.accept(verifier.verify(finalForm));
+                return null;
+            });
+            var replay = pool.submit(() -> {
+                if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("recovery start timeout");
+                return recovery.apply(order.getPublicId(), "race", preview.snapshot(), evidence);
+            });
+            start.countDown();
+            live.get(15, TimeUnit.SECONDS);
+            assertThat(replay.get(15, TimeUnit.SECONDS).status()).isIn("RECOVERED", "ALREADY_RECORDED");
+        }
+        assertThat(credits.balance(user).available()).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind='GRANT'",
+                Long.class, user)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from payment_notifications where order_id=? and state_code=4",
+                Long.class, order.getId())).isEqualTo(1);
+    }
+
+    private Instant recoveryNoticeTime(PaymentOrder order) {
+        return orders.findById(order.getId()).orElseThrow().getCreatedAt().toInstant(ZoneOffset.UTC)
+                .truncatedTo(ChronoUnit.SECONDS).plusSeconds(1);
+    }
+
+    private static PaymentRecoveryEvidence recoveryEvidence(Map<String, String> form) {
+        return new PaymentRecoveryEvidence(PayAppForm.encode(form), form.get("mul_no"),
+                Integer.parseInt(form.get("pay_state")), Long.parseLong(form.get("price")));
     }
 
     @Test

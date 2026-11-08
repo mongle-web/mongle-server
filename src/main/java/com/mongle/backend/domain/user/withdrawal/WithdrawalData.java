@@ -33,6 +33,8 @@ public class WithdrawalData {
                     join payment_refund_requests r on r.id=s.refund_id where r.user_id=:user
                   union all select max(f.confirmed_at) event_at from payment_refund_follow_ups f
                     join payment_refund_requests r on r.id=f.refund_id where r.user_id=:user
+                  union all select max(r.recovered_at) event_at from payment_notification_recoveries r
+                    join payment_orders o on o.id=r.order_id where o.user_id=:user
                   union all select max(created_at) event_at from credit_ledger where user_id=:user and source_type='PAYMENT'
                 ) accounting_dates
                 """)
@@ -146,6 +148,7 @@ public class WithdrawalData {
                 "delete from payment_refund_requests where user_id=:user",
                 "delete from payment_credit_reclamations where user_id=:user",
                 "delete from credit_payment_holds where user_id=:user",
+                "delete from payment_notification_recoveries where order_id in (select id from payment_orders where user_id=:user)",
                 "delete from payment_notifications where order_id in (select id from payment_orders where user_id=:user)",
                 "delete from payment_transaction_bindings where order_id in (select id from payment_orders where user_id=:user)",
                 "delete from payment_orders where user_id=:user",

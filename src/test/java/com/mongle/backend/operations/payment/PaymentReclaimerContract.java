@@ -55,7 +55,8 @@ abstract class PaymentReclaimerContract {
                         new ClassPathResource("db/schema-initial.sql"),
                         new ClassPathResource("db/migration/V6__payment_credit_reclamations.sql"), new ClassPathResource("db/migration/V7__user_withdrawal.sql"), new ClassPathResource("db/migration/V8__legal_consents.sql"), new ClassPathResource("db/migration/V9__payment_refund_intake.sql"),
                         new ClassPathResource("db/migration/V10__payment_refund_settlement.sql"),
-                        new ClassPathResource("db/migration/V11__payment_refund_follow_up.sql"))
+                        new ClassPathResource("db/migration/V11__payment_refund_follow_up.sql"),
+                        new ClassPathResource("db/migration/V12__payment_notification_recovery.sql"))
                 .execute(ds);
         return ds;
     }

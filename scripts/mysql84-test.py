@@ -223,6 +223,8 @@ def main():
                 verify_payment_inspection(repo, jars[0], credit_env, sql)
                 from payment_reclamation_smoke import verify as verify_payment_reclamation
                 verify_payment_reclamation(repo, jars[0], credit_env, sql)
+                from payment_recovery_smoke import verify as verify_payment_recovery
+                verify_payment_recovery(repo, jars[0], credit_env, sql)
 
                 return 0
             except (Exception, KeyboardInterrupt):
