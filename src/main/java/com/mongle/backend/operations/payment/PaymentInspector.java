@@ -133,26 +133,35 @@ final class PaymentInspector {
         if (storedState.equals("PAID") && grant == null)
             findings.add("PAID_WITHOUT_MATCHING_GRANT");
         if (grant != null
-                && !Set.of("PAID", "PAYMENT_REVIEW", "CREDIT_RECLAIMED").contains(storedState))
+                && !Set.of("PAID", "PAYMENT_REVIEW", "CREDIT_RECLAIMED", "REFUND_SETTLED").contains(storedState))
             findings.add("GRANT_WITHOUT_CONFIRMED_ORDER_STATE");
         long grantId = grant == null ? -1 : grant.id;
-        var reclaimedRows =
-                db.query(
-                        "select id,user_id,grant_id,amount from payment_credit_reclamations where"
-                                + " order_id=?",
-                        r -> values(r, "id", "user_id", "grant_id", "amount"),
-                        order.id);
-        var reclamation = reclaimedRows.isEmpty() ? null : reclaimedRows.getFirst();
-        BigInteger reclaimed = reclamation == null ? BigInteger.ZERO : reclamation.get(3);
-        if (reclamation != null
-                && (grant == null
-                        || !reclamation.get(1).equals(BigInteger.valueOf(order.user))
-                        || !reclamation.get(2).equals(BigInteger.valueOf(grantId))
-                        || !reclaimed.equals(order.credits)
-                        || !storedState.equals("CREDIT_RECLAIMED")))
+        var adjustments = db.query("""
+                select id,user_id,grant_id,amount,'LEGACY' as source,false as released_hold
+                from payment_credit_reclamations where order_id=?
+                union all
+                select s.refund_id,r.user_id,r.grant_id,s.revoked_credits,'REFUND',s.released_payment_hold
+                from payment_refund_resolutions s join payment_refund_requests r on r.id=s.refund_id
+                where r.order_id=? and s.status='COMPLETED'
+                """, row -> new Adjustment(row.getLong("id"), row.getLong("user_id"), row.getLong("grant_id"),
+                        number(row, "amount"), "LEGACY".equals(row.getString("source")), row.getBoolean("released_hold")),
+                order.id, order.id);
+        var adjustment = adjustments.isEmpty() ? null : adjustments.getFirst();
+        var reclamation = adjustment != null && adjustment.legacy ? adjustment : null;
+        var refund = adjustment != null && !adjustment.legacy ? adjustment : null;
+        BigInteger reclaimed = adjustment == null ? BigInteger.ZERO : adjustment.amount;
+        if (adjustments.size() > 1 || (adjustment != null
+                && (grant == null || adjustment.user != order.user || adjustment.grant != grantId
+                        || reclaimed.signum() < 0
+                        || (adjustment.legacy
+                            ? !reclaimed.equals(order.credits) || !storedState.equals("CREDIT_RECLAIMED")
+                            : !Set.of("REFUND_SETTLED", "PAYMENT_REVIEW").contains(storedState))))) {
             findings.add("RECLAMATION_STATE_MISMATCH");
-        if (storedState.equals("CREDIT_RECLAIMED") && reclamation == null)
+        }
+        if ((storedState.equals("CREDIT_RECLAIMED") && reclamation == null)
+                || (storedState.equals("REFUND_SETTLED") && refund == null)) {
             findings.add("RECLAMATION_STATE_MISMATCH");
+        }
         if (grant != null
                 && (!grant.amount.equals(order.credits)
                         || !grant.amount.equals(
@@ -179,11 +188,16 @@ final class PaymentInspector {
                 db.query(
                                 """
                                 select count(*) as grants,coalesce(sum(g.available),0) as available,coalesce(sum(g.reserved),0) as reserved,
-                                coalesce(sum(case when g.amount<>g.available+g.reserved+g.consumed+g.forfeited+coalesce(c.amount,0) then 1 else 0 end),0) as invalid_grants
-                                from credit_grants g left join payment_credit_reclamations c on c.grant_id=g.id where g.user_id=?
+                                coalesce(sum(case when g.amount<>g.available+g.reserved+g.consumed+g.forfeited+coalesce(c.amount,0)+coalesce(f.amount,0) then 1 else 0 end),0) as invalid_grants
+                                from credit_grants g left join payment_credit_reclamations c on c.grant_id=g.id
+                                left join (
+                                    select r.grant_id, sum(s.revoked_credits) as amount
+                                    from payment_refund_resolutions s join payment_refund_requests r on r.id=s.refund_id
+                                    where r.user_id=? and s.status='COMPLETED' group by r.grant_id
+                                ) f on f.grant_id=g.id where g.user_id=?
                                 """,
                                 r -> values(r, "grants", "available", "reserved", "invalid_grants"),
-                                order.user)
+                                order.user, order.user)
                         .getFirst();
         if (!account.get(0).equals(totals.get(1))
                 || !account.get(1).equals(totals.get(2))
@@ -251,7 +265,7 @@ final class PaymentInspector {
                         .getFirst();
         if (holds.get(2).signum() != 0
                 || !holds.get(1)
-                        .add(reclamation == null ? BigInteger.ZERO : BigInteger.ONE)
+                        .add(reclamation != null || (refund != null && refund.releasedHold) ? BigInteger.ONE : BigInteger.ZERO)
                         .equals(ledger.get(5))) findings.add("PAYMENT_HOLD_LEDGER_MISMATCH");
         if (holds.get(1).signum() > 0 && !storedState.equals("PAYMENT_REVIEW"))
             findings.add("HOLD_WITHOUT_REVIEW_STATE");
@@ -269,7 +283,7 @@ final class PaymentInspector {
                                 order.user,
                                 grantId)
                         .getFirst();
-        if (!reclaimLedger.get(0).equals(reclamation == null ? BigInteger.ZERO : BigInteger.ONE)
+        if (!reclaimLedger.get(0).equals(reclaimed.signum() == 0 ? BigInteger.ZERO : BigInteger.ONE)
                 || !reclaimLedger.get(1).equals(reclaimed.negate())
                 || reclaimLedger.get(2).signum() != 0) findings.add("RECLAMATION_LEDGER_MISMATCH");
 
@@ -331,7 +345,7 @@ final class PaymentInspector {
         if (storedState.equals("PAID") && completions.signum() == 0)
             findings.add("COMPLETION_NOTIFICATION_MISSING");
         if (grant != null
-                && reclamation == null
+                && adjustment == null
                 && cancellations.signum() > 0
                 && holds.get(1).signum() == 0) findings.add("CANCELLATION_HOLD_MISSING");
         String status =
@@ -347,7 +361,8 @@ final class PaymentInspector {
         result.put("scope", "INTERNAL_DATABASE_ONLY");
         result.put(
                 "reclamation",
-                reclamation == null ? null : map("id", reclamation.get(0), "amount", reclaimed));
+                reclamation == null ? null : map("id", reclamation.id, "amount", reclaimed));
+        result.put("refundResolution", refund == null ? null : map("revokedCredits", reclaimed));
         result.put("status", status);
         result.put("observedAt", observed);
         result.put(
@@ -505,6 +520,8 @@ final class PaymentInspector {
             BigInteger available,
             BigInteger reserved,
             BigInteger consumed) {}
+
+    private record Adjustment(long id, long user, long grant, BigInteger amount, boolean legacy, boolean releasedHold) {}
 
     private record Notice(
             int stateCode, BigInteger count, BigInteger minimum, BigInteger maximum) {}

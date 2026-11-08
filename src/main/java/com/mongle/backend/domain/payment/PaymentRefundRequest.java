@@ -44,6 +44,10 @@ public class PaymentRefundRequest {
     private long usedAtRequest;
     private Long estimatedAmount;
     private Integer feePercent;
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id", referencedColumnName = "refund_id", insertable = false, updatable = false,
+            foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    private PaymentRefundResolution resolution;
     @JdbcTypeCode(SqlTypes.TIMESTAMP) @Column(nullable = false)
     private Instant createdAt;
 

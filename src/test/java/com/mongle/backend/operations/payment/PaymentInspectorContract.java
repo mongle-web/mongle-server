@@ -41,7 +41,8 @@ abstract class PaymentInspectorContract {
                         "jdbc:h2:mem:payment-inspect;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
                         "sa",
                         "");
-        new ResourceDatabasePopulator(new ClassPathResource("db/schema-initial.sql"),new ClassPathResource("db/migration/V6__payment_credit_reclamations.sql"), new ClassPathResource("db/migration/V7__user_withdrawal.sql"), new ClassPathResource("db/migration/V8__legal_consents.sql"), new ClassPathResource("db/migration/V9__payment_refund_intake.sql")).execute(ds);
+        new ResourceDatabasePopulator(new ClassPathResource("db/schema-initial.sql"),new ClassPathResource("db/migration/V6__payment_credit_reclamations.sql"), new ClassPathResource("db/migration/V7__user_withdrawal.sql"), new ClassPathResource("db/migration/V8__legal_consents.sql"), new ClassPathResource("db/migration/V9__payment_refund_intake.sql"),
+                        new ClassPathResource("db/migration/V10__payment_refund_settlement.sql")).execute(ds);
         return ds;
     }
 

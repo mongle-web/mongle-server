@@ -37,7 +37,7 @@ public class RefundService implements WithdrawalRefundPolicy {
         requireEnabled();
         var order = ownedOrder(userId, orderId);
         var grant = purchaseGrant(order);
-        if (refunds.existsByGrantId(grant.getId())) throw new BusinessException(RefundError.CONFLICT);
+        if (refunds.countOpenOrCompletedForGrant(grant.getId()) > 0) throw new BusinessException(RefundError.CONFLICT);
         return RefundEstimate.calculate(order, grant, reason, authClock.instant());
     }
 
@@ -58,7 +58,7 @@ public class RefundService implements WithdrawalRefundPolicy {
         requireEnabled();
         var order = ownedOrder(userId, request.orderId());
         var grant = purchaseGrant(order);
-        if (refunds.existsByGrantId(grant.getId())) throw new BusinessException(RefundError.CONFLICT);
+        if (refunds.countOpenOrCompletedForGrant(grant.getId()) > 0) throw new BusinessException(RefundError.CONFLICT);
 
         var now = authClock.instant().truncatedTo(ChronoUnit.MICROS);
         var estimate = RefundEstimate.calculate(order, grant, request.reason(), now);
@@ -98,7 +98,7 @@ public class RefundService implements WithdrawalRefundPolicy {
     @Override
     @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
     public boolean hasOpenRefunds(Long userId) {
-        return refunds.existsByUserId(userId);
+        return refunds.countOpen(userId) > 0;
     }
 
     private PaymentOrder ownedOrder(Long userId, UUID orderId) {
@@ -128,10 +128,16 @@ public class RefundService implements WithdrawalRefundPolicy {
     }
 
     private RefundReceipt receipt(PaymentRefundRequest row) {
-        var estimate = RefundEstimate.calculate(row.getOrder(), row.getGrant(), row.getReason(), row.getCreatedAt());
+        var resolution = row.getResolution();
+        var estimate = resolution == null
+                ? RefundEstimate.calculate(row.getOrder(), row.getGrant(), row.getReason(), row.getCreatedAt()) : null;
+        var status = resolution == null ? RefundReceipt.ProcessingStatus.RECEIVED
+                : RefundReceipt.ProcessingStatus.valueOf(resolution.getStatus().name());
+        var result = resolution == null ? null : new RefundReceipt.Resolution(
+                resolution.getRefundedAmount(), resolution.getRevokedCredits(), resolution.getResolvedAt());
         return new RefundReceipt(row.getReceiptId(), row.getRequestId(), row.getCreatedAt(), row.getReason(),
                 row.getInitialStatus(), row.getAvailableAtRequest(), row.getReservedAtRequest(),
-                row.getUsedAtRequest(), row.getEstimatedAmount(), row.getFeePercent(), estimate, properties.supportEmail());
+                row.getUsedAtRequest(), row.getEstimatedAmount(), row.getFeePercent(), estimate, properties.supportEmail(), status, result);
     }
 
     private void requireActive(Long userId) {
