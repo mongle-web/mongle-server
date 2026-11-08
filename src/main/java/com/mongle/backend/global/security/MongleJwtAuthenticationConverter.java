@@ -21,6 +21,7 @@ import java.util.ArrayList;
 public class MongleJwtAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
     private final RefreshSessionRepository sessions;
     private final Clock authClock;
+    private final com.mongle.backend.domain.legal.LegalService legal;
 
     @Override
     @Transactional(readOnly = true)
@@ -32,6 +33,7 @@ public class MongleJwtAuthenticationConverter implements Converter<Jwt, Abstract
                 .orElseThrow(() -> new InvalidBearerTokenException("로그인이 만료되었거나 로그아웃한 계정입니다."));
         var authorities = new ArrayList<SimpleGrantedAuthority>();
         authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+        if(legal.accessAllowed(user)) authorities.add(new SimpleGrantedAuthority("ROLE_AGREED"));
         if (user.isOnboardingCompleted()) {
             authorities.add(new SimpleGrantedAuthority("ROLE_ONBOARDED"));
         }

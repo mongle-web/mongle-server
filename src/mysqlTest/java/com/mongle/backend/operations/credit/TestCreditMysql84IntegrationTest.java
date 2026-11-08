@@ -31,6 +31,7 @@ class TestCreditMysql84IntegrationTest extends TestCreditContextIntegrationTest 
 
     @Override
     DataSource dataSource() {
+        com.mongle.backend.support.NativeMysqlSupport.register((name,value) -> {}, "credit_test");
         return TestCreditSettings.fromEnvironment(fixture()).dataSource();
     }
 

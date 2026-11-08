@@ -134,6 +134,7 @@ public class WithdrawalData {
     public void deleteAccounting(Long user, LocalDateTime now) {
         em.flush();
         for(String sql:List.of(
+                "delete from legal_consents where user_id=:user",
                 "delete from payment_credit_reclamations where user_id=:user",
                 "delete from credit_payment_holds where user_id=:user",
                 "delete from payment_notifications where order_id in (select id from payment_orders where user_id=:user)",

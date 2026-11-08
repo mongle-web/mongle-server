@@ -39,6 +39,11 @@ logging:
 
 
 mongle:
+  legal:
+    published: ${MONGLE_LEGAL_PUBLISHED:false}
+    enforce: ${MONGLE_LEGAL_ENFORCE:false}
+    terms-digest: ${MONGLE_LEGAL_TERMS_DIGEST:}
+    privacy-digest: ${MONGLE_LEGAL_PRIVACY_DIGEST:}
   oauth:
     web:
       success-url: ${MONGLE_OAUTH_SUCCESS_URL:}

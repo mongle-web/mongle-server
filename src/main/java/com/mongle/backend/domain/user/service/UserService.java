@@ -22,11 +22,12 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final CreditService credits;
+    private final com.mongle.backend.domain.legal.LegalService legal;
     private final CreditProperties creditProperties;
     private final com.mongle.backend.domain.user.withdrawal.WithdrawalIdentityService withdrawalIdentities;
 
     public UserResponse getMe(Long authenticatedUserId) {
-        return UserResponse.from(userRepository.findById(authenticatedUserId)
+        return legal.response(userRepository.findById(authenticatedUserId)
                 .filter(user -> !user.isWithdrawn())
                 .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND)));
     }
@@ -39,7 +40,7 @@ public class UserService {
         if (user.changeNickname(nickname)) {
             CommittedLog.afterCommit(() -> log.info("사용자 닉네임 변경 완료: userId={}", authenticatedUserId));
         }
-        return UserResponse.from(user);
+        return legal.response(user);
     }
 
     @Transactional
@@ -49,6 +50,7 @@ public class UserService {
         User user = userRepository.findByIdForUpdate(authenticatedUserId)
                 .filter(account -> !account.isWithdrawn())
                 .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
+        legal.requireAccepted(user);
         boolean alreadyCompleted = user.isOnboardingCompleted();
         user.completeOnboarding(nickname);
         // 같은 닉네임의 멱등 재요청은 새 상태 변경이 아니다. 최초 커밋에만 성공 로그를 남긴다.
@@ -58,6 +60,6 @@ public class UserService {
                         creditProperties.signupGrantAmount());
             CommittedLog.afterCommit(() -> log.info("사용자 온보딩 완료: userId={}", authenticatedUserId));
         }
-        return UserResponse.from(user);
+        return legal.response(user);
     }
 }

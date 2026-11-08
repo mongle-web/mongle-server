@@ -33,7 +33,7 @@ class OAuthLoginHandlersTest {
         var request = new MockHttpServletRequest();
         request.getSession().setAttribute("oauth-secret", "provider-token");
         var response = new MockHttpServletResponse();
-        var principal = new MongleOAuth2User(new UserResponse(7L, "user@example.com", null, false));
+        var principal = new MongleOAuth2User(new UserResponse(7L, "user@example.com", null, false, false));
         var authentication =
                 new UsernamePasswordAuthenticationToken(
                         principal, null, principal.getAuthorities());
@@ -76,7 +76,7 @@ class OAuthLoginHandlersTest {
 
     @Test
     void sessionIssueFailuresClearRefreshAndReturnOnlyServiceErrors() throws Exception {
-        var principal = new MongleOAuth2User(new UserResponse(7L, "user@example.com", null, false));
+        var principal = new MongleOAuth2User(new UserResponse(7L, "user@example.com", null, false, false));
         var authentication =
                 new UsernamePasswordAuthenticationToken(
                         principal, null, principal.getAuthorities());

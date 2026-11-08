@@ -54,7 +54,9 @@ public class SecurityConfig {
             boolean pending = !(exception instanceof CsrfException) && current != null
                     && current.getPrincipal() instanceof Jwt
                     && current.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ONBOARDED"));
-            responses.failure(response, pending ? UserErrorCode.ONBOARDING_REQUIRED : CommonErrorCode.FORBIDDEN);
+            boolean agreement=!(exception instanceof CsrfException) && current!=null && current.getPrincipal() instanceof Jwt
+                    && current.getAuthorities().stream().noneMatch(a->a.getAuthority().equals("ROLE_AGREED"));
+            responses.failure(response, pending ? UserErrorCode.ONBOARDING_REQUIRED : agreement ? com.mongle.backend.domain.legal.LegalError.REQUIRED : CommonErrorCode.FORBIDDEN);
         };
         var corsFilter = new CorsFilter(corsSource);
         corsFilter.setCorsProcessor(new DefaultCorsProcessor() {
@@ -105,10 +107,17 @@ public class SecurityConfig {
                     auth.requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                             .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
                             .requestMatchers(HttpMethod.POST, "/api/v1/payments/payapp/feedback").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/v1/legal/documents").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/v1/users/me").hasRole("USER")
                             .requestMatchers(HttpMethod.DELETE, "/api/v1/users/me").hasRole("USER")
-                            .requestMatchers(HttpMethod.POST, "/api/v1/users/me/onboarding").hasRole("USER")
-                            .anyRequest().hasRole("ONBOARDED");
+                            .requestMatchers(HttpMethod.POST, "/api/v1/users/me/agreements", "/api/v1/users/me/onboarding").hasRole("USER")
+                            // Rights-related endpoints must remain usable while re-consent is pending.
+                            .requestMatchers(HttpMethod.POST, "/api/v1/payments/refunds").hasRole("ONBOARDED")
+                            .requestMatchers(HttpMethod.GET, "/api/v1/payments/refunds", "/api/v1/payments/refunds/**").hasRole("ONBOARDED")
+                            .requestMatchers(HttpMethod.GET, "/api/v1/payments/orders", "/api/v1/payments/orders/**", "/api/v1/credits/balance", "/api/v1/credits/transactions").hasRole("ONBOARDED")
+                            .anyRequest().access(org.springframework.security.authorization.AuthorizationManagers.allOf(
+                                    org.springframework.security.authorization.AuthorityAuthorizationManager.hasRole("ONBOARDED"),
+                                    org.springframework.security.authorization.AuthorityAuthorizationManager.hasRole("AGREED")));
                 });
         if (local) {
             http.csrf(csrf -> csrf.ignoringRequestMatchers("/h2-console/**"))

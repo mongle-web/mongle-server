@@ -39,6 +39,13 @@ public class User extends BaseEntity {
     @Column(name = "retention_until")
     private LocalDateTime retentionUntil;
 
+    @Column(name="terms_version",length=40) private String termsVersion;
+    @Column(name="terms_digest",length=64) private String termsDigest;
+    @Column(name="privacy_version",length=40) private String privacyVersion;
+    @Column(name="privacy_digest",length=64) private String privacyDigest;
+    public void acceptLegal(String terms,String termsHash,String privacy,String privacyHash) {
+        termsVersion=terms; termsDigest=termsHash; privacyVersion=privacy; privacyDigest=privacyHash;
+    }
     public boolean isWithdrawn() { return withdrawnAt != null; }
 
     public void withdraw(LocalDateTime now, LocalDateTime retainUntil) {
