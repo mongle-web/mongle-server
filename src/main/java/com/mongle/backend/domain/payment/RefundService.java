@@ -128,14 +128,15 @@ public class RefundService implements WithdrawalRefundPolicy {
     }
 
     private RefundReceipt receipt(PaymentRefundRequest row) {
+        var order = row.getOrder();
         var resolution = row.getResolution();
         var estimate = resolution == null
-                ? RefundEstimate.calculate(row.getOrder(), row.getGrant(), row.getReason(), row.getCreatedAt()) : null;
+                ? RefundEstimate.calculate(order, row.getGrant(), row.getReason(), row.getCreatedAt()) : null;
         var status = resolution == null ? RefundReceipt.ProcessingStatus.RECEIVED
                 : RefundReceipt.ProcessingStatus.valueOf(resolution.getStatus().name());
         var result = resolution == null ? null : new RefundReceipt.Resolution(
                 resolution.getRefundedAmount(), resolution.getRevokedCredits(), resolution.getResolvedAt());
-        return new RefundReceipt(row.getReceiptId(), row.getRequestId(), row.getCreatedAt(), row.getReason(),
+        return new RefundReceipt(row.getReceiptId(), order.getPublicId(), row.getRequestId(), row.getCreatedAt(), row.getReason(),
                 row.getInitialStatus(), row.getAvailableAtRequest(), row.getReservedAtRequest(),
                 row.getUsedAtRequest(), row.getEstimatedAmount(), row.getFeePercent(), estimate, properties.supportEmail(), status, result);
     }
