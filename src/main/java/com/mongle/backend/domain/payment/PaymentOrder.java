@@ -4,6 +4,8 @@ import com.mongle.backend.global.common.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Getter @Entity
@@ -60,9 +62,10 @@ public class PaymentOrder extends BaseEntity {
         state = State.PAID;
         creditGrantId = grantId;
         paymentUrl = null;
-        // The provider reports second precision and can approve within the creation second.
-        if (approved != null && !approved.isBefore(getCreatedAt().toInstant(java.time.ZoneOffset.UTC)
-                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS))) {
+        // DATETIME(0) can round the order creation time up to the next second in MySQL.
+        Instant earliestApproval = getCreatedAt().toInstant(ZoneOffset.UTC)
+                .truncatedTo(ChronoUnit.SECONDS).minusSeconds(1);
+        if (approved != null && !approved.isBefore(earliestApproval)) {
             approvedAt = approved;
         }
     }

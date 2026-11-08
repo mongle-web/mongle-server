@@ -274,8 +274,11 @@ class RefundIntakeIntegrationTest {
     @Test
     void storesOnlyVerifiedApprovalTimeAndNeverReplacesItOnReplay() {
         var order = readyOrder(10);
-        var approved = order.getCreatedAt().toInstant(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS);
-        now = approved.plusSeconds(10);
+        var storedCreation = orders.findById(order.getId()).orElseThrow().getCreatedAt()
+                .toInstant(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS);
+        // Exercise a provider approval that falls in the second before the stored, rounded creation time.
+        var approved = storedCreation.minusSeconds(1);
+        now = storedCreation.plusSeconds(10);
         var form = notification(order, 4, now);
         form.put("pay_date", DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withZone(ZoneId.of("Asia/Seoul"))
                 .format(approved));
@@ -292,6 +295,9 @@ class RefundIntakeIntegrationTest {
         var other = readyOrder(10);
         var invalidDate = notification(other, 4, now);
         invalidDate.put("pay_date", "20991231235959");
+        assertThat(verifier.verify(invalidDate).approvedAt()).isNull();
+        invalidDate.put("pay_date", DateTimeFormatter.ofPattern("uuuuMMddHHmmss").withZone(ZoneId.of("Asia/Seoul"))
+                .format(storedCreation.minusSeconds(60)));
         feedback.accept(verifier.verify(invalidDate));
         assertThat(orders.findById(other.getId()).orElseThrow().getState()).isEqualTo(PaymentOrder.State.PAID);
         assertThat(refunds.estimate(user, UUID.fromString(other.getPublicId()), STANDARD).status())
