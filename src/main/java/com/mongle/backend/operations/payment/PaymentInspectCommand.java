@@ -23,9 +23,9 @@ public final class PaymentInspectCommand {
                 throw new Failure("INVALID_ARGUMENTS");
             }
             var settings = PaymentInspectSettings.fromEnvironment(environment);
-            var report =
-                    new PaymentInspector(settings.dataSource(), Clock.systemUTC())
-                            .inspect(request.orderId());
+            var inspector = new PaymentInspector(settings.dataSource(), Clock.systemUTC());
+            var report = request.mode() == PaymentInspectRequest.Mode.ORDER
+                    ? inspector.inspect(request.orderId()) : inspector.unconfirmed(request.orderId());
             output.println(json.writeValueAsString(report));
             return 0;
         } catch (Exception failure) {

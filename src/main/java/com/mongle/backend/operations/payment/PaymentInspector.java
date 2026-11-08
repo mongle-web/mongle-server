@@ -23,6 +23,47 @@ final class PaymentInspector {
     }
 
     Map<String, Object> inspect(String orderId) throws SQLException {
+        return read(db -> snapshot(db, orderId));
+    }
+
+    Map<String, Object> unconfirmed(String afterOrderId) throws SQLException {
+        return read(db -> {
+            Instant now = clock.instant();
+            var rows = db.query("""
+                    select candidates.*,
+                        (select count(*) from payment_notifications n where n.order_id=candidates.id) as notice_count,
+                        (select max(n.responded_at) from payment_notifications n where n.order_id=candidates.id) as last_notice_at
+                    from (
+                        select id,public_id,state,request_deadline,created_at
+                        from payment_orders
+                        where public_id>? and (state in ('UNKNOWN','PENDING') or (state='REQUESTING' and request_deadline<=?))
+                        order by public_id limit 21
+                    ) candidates order by public_id
+                    """, row -> {
+                String state = row.getString("state");
+                long notices = row.getLong("notice_count");
+                return map("orderId", row.getString("public_id"), "storedState", state,
+                        "effectiveState", "REQUESTING".equals(state) ? "UNKNOWN" : state,
+                        "reason", switch (state) {
+                            case "REQUESTING" -> "REQUEST_DEADLINE_PASSED";
+                            case "PENDING" -> "AWAITING_FINAL_NOTIFICATION";
+                            default -> "REQUEST_RESULT_UNKNOWN";
+                        },
+                        "createdAt", instant(row, "created_at"), "requestDeadline", instant(row, "request_deadline"),
+                        "notificationCount", notices, "lastNotificationAt", instant(row, "last_notice_at"));
+            }, afterOrderId, Timestamp.from(now));
+            var page = rows.stream().limit(20).toList();
+            return map("event", "payment-unconfirmed-orders", "scope", "INTERNAL_DATABASE_ONLY", "observedAt", now,
+                    "items", page, "nextAfterOrderId", rows.size() > 20 ? page.getLast().get("orderId") : null);
+        });
+    }
+
+    @FunctionalInterface
+    private interface ReadOperation {
+        Map<String, Object> execute(Session db) throws SQLException;
+    }
+
+    private Map<String, Object> read(ReadOperation operation) throws SQLException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         Connection connection;
         try {
@@ -35,7 +76,7 @@ final class PaymentInspector {
             connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
             connection.setAutoCommit(false);
             try {
-                return snapshot(new Session(connection, deadline), orderId);
+                return operation.execute(new Session(connection, deadline));
             } catch (SQLTimeoutException failure) {
                 throw new PaymentInspectCommand.Failure("INSPECTION_TIMEOUT");
             } finally {

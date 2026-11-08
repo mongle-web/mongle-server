@@ -23,6 +23,14 @@ public class PaymentFeedbackService {
         transactions.requireAccountingUser(user);
         var order=orders.findByPublicIdAndUserId(event.orderId(),user)
                 .orElseThrow(() -> new BusinessException(PaymentErrorCode.NOT_FOUND));
+        bindVerifiedOrder(order, event);
+        // 이미 저장한 정확히 같은 통보는 시각 창이 지나도 재지급 없이 ACK한다.
+        if(notifications.existsById(event.eventHash())) return;
+        verifier.requireFresh(event);
+        applyVerified(order, event);
+    }
+
+    void bindVerifiedOrder(PaymentOrder order, PayAppFeedback event) {
         if(!PaymentHashes.equal(order.getNotificationToken(),event.token())) invalid();
         if(event.partialCancellation()) {
             if(event.originalAmount()!=order.getPrice() || event.amount()>order.getPrice()) invalid();
@@ -32,9 +40,11 @@ public class PaymentFeedbackService {
             order.bindTransaction(event.transactionId());
         }
         transactions.bind(order,event.transactionId());
-        // 이미 저장한 정확히 같은 통보는 시각 창이 지나도 재지급 없이 ACK한다.
-        if(notifications.existsById(event.eventHash())) return;
-        verifier.requireFresh(event);
+    }
+
+    // Callers authenticate the event and hold the accounting user lock.
+    void applyVerified(PaymentOrder order, PayAppFeedback event) {
+        Long user = order.getUserId();
         // 운영 회수 완료는 종결 상태다. 검증된 늦은 통보는 감사용으로 보존하되 재지급/재보류하지 않는다.
         if(order.getState()==PaymentOrder.State.CREDIT_RECLAIMED) {
             notifications.saveAndFlush(PaymentNotification.create(event,order.getId()));

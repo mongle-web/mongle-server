@@ -5,7 +5,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:payment-schema;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
-        "spring.sql.init.mode=always","spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql,classpath:db/migration/V4__recent_interpretations.sql,classpath:db/migration/V5__world_summaries.sql,classpath:db/migration/V7__user_withdrawal.sql,classpath:db/migration/V8__legal_consents.sql,classpath:db/migration/V9__payment_refund_intake.sql,classpath:db/migration/V10__payment_refund_settlement.sql,classpath:db/migration/V11__payment_refund_follow_up.sql","spring.jpa.hibernate.ddl-auto=validate"})
+        "spring.sql.init.mode=always","spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql,classpath:db/migration/V4__recent_interpretations.sql,classpath:db/migration/V5__world_summaries.sql,classpath:db/migration/V7__user_withdrawal.sql,classpath:db/migration/V8__legal_consents.sql,classpath:db/migration/V9__payment_refund_intake.sql,classpath:db/migration/V10__payment_refund_settlement.sql,classpath:db/migration/V11__payment_refund_follow_up.sql,classpath:db/migration/V12__payment_notification_recovery.sql","spring.jpa.hibernate.ddl-auto=validate"})
 @ActiveProfiles("test")
 class PaymentMigrationTest {
     @Test void initialSchemaMatchesHibernateAndMigrationCanBeAppliedTwice() {
