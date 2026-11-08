@@ -168,6 +168,10 @@ final class PaymentReclaimer {
                                 metadata.grant,
                                 user);
                 var reasons = new ArrayList<String>();
+                long refundRequests = db.query(
+                        "select count(*) from payment_refund_requests where order_id=? or grant_id=?",
+                        row -> row.getLong(1), metadata.id, metadata.grant).getFirst();
+                if (refundRequests != 0) reasons.add("REFUND_INTAKE_EXISTS");
                 if (!((List<?>) report.get("findings")).isEmpty())
                     reasons.add("INTERNAL_RECORDS_INCONSISTENT");
                 if (!metadata.state.equals("PAYMENT_REVIEW")) reasons.add("ORDER_NOT_IN_REVIEW");

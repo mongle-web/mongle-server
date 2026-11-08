@@ -59,7 +59,7 @@ public class UserWithdrawalIntegrationTest {
     @Autowired EntityManagerFactory emf;
     @Autowired PlatformTransactionManager manager;
     @Autowired JdbcTemplate jdbc;
-    @MockitoBean WithdrawalRefundPolicy refunds;
+    @MockitoBean com.mongle.backend.domain.payment.RefundService refunds;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean WithdrawalProperties withdrawalProperties;
     @Value("${local.server.port}") int port;
     static final AtomicLong IDS=new AtomicLong(100000);
