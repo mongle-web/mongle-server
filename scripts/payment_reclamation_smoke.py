@@ -90,3 +90,44 @@ def verify(repo, jar, credit_env, sql):
     if sql(f"SELECT available FROM credit_accounts WHERE user_id={owner};", "credit_test").strip() != "0":
         raise RuntimeError("Packaged reclamation final balance mismatch.")
     print("Packaged JAR: reclaim preview SELECT-only/apply/replay/safe rejection/concurrent JVMs passed without Boot or provider calls.", flush=True)
+
+    order, grant = cancelled()
+    verify_refund(repo, jar, credit_env, sql, order, grant)
+
+
+def verify_refund(repo, jar, credit_env, sql, order, grant):
+    env = {**credit_env, "MONGLE_PAYMENT_REFUND_OPS_ENABLED": "true",
+           "MONGLE_PAYMENT_REFUND_OPS_EXPECTED_HOST": "127.0.0.1",
+           "MONGLE_PAYMENT_REFUND_OPS_EXPECTED_DATABASE": "credit_test"}
+    receipt = str(uuid.uuid4())
+    sql(f"""INSERT INTO payment_refund_requests(receipt_id,request_id,user_id,order_id,grant_id,
+        reason,initial_status,available_at_request,reserved_at_request,used_at_request,created_at)
+        SELECT '{receipt}','{uuid.uuid4()}',user_id,id,{grant},'RIGHTS_REVIEW','REVIEW_REQUIRED',10,0,0,NOW()
+        FROM payment_orders WHERE public_id='{order}';""", "credit_test")
+
+    def command(mode, token=None, enabled=True, expected_exit=0):
+        args = ["java", "-Xmx128m", "-jar", str(jar), "--payment-refund=" + mode, "--receipt-id=" + receipt]
+        if mode != "inspect":
+            args.extend(["--action=settle", "--amount=1100", "--credits=10", "--basis=REVIEW",
+                         "--operator-reference=fixture-134"])
+        if token:
+            args.append("--expected-snapshot=" + token)
+        outcome = subprocess.run(args, cwd=repo, env={
+            **env, "MONGLE_PAYMENT_REFUND_OPS_ENABLED": str(enabled).lower()
+        }, capture_output=True, text=True, timeout=90)
+        if outcome.returncode != expected_exit or outcome.stderr.strip() or len(outcome.stdout.splitlines()) != 1:
+            raise RuntimeError("Packaged refund resolution failed; raw output suppressed.")
+        return json.loads(outcome.stdout)
+
+    if command("inspect", enabled=False, expected_exit=1).get("code") != "OPERATOR_COMMAND_DISABLED":
+        raise RuntimeError("Packaged refund command bypassed its operator flag.")
+    plan = command("preview")
+    if plan.get("decision") != "READY" or command("inspect").get("status") != "RECEIVED":
+        raise RuntimeError("Packaged refund preview mismatch.")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: command("apply", plan["snapshot"]), range(2)))
+    if outcomes[0] != outcomes[1] or outcomes[0].get("status") != "COMPLETED":
+        raise RuntimeError("Packaged refund settlement was not idempotent.")
+    if sql(f"SELECT available FROM credit_grants WHERE id={grant};", "credit_test").strip() != "0":
+        raise RuntimeError("Packaged refund did not reclaim the target grant.")
+    print("Packaged JAR: refund inspect/preview/flag and concurrent apply passed without Boot or provider calls.", flush=True)

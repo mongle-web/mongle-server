@@ -30,14 +30,22 @@ public record RefundEstimate(
             status = Status.REVIEW_REQUIRED;
         } else {
             status = Status.ESTIMATED;
-            fee = evaluatedAt.isAfter(order.getApprovedAt().plus(Duration.ofDays(7))) ? 10 : 0;
-            // Round once at the end, up to a whole won. BigInteger also supports large credit quantities.
-            var numerator = BigInteger.valueOf(order.getPrice()).multiply(BigInteger.valueOf(available))
-                    .multiply(BigInteger.valueOf(100 - fee));
-            var divisor = BigInteger.valueOf(order.getCredits()).multiply(BigInteger.valueOf(100));
-            amount = numerator.add(divisor).subtract(BigInteger.ONE).divide(divisor).longValueExact();
+            fee = standardFeePercent(order.getApprovedAt(), evaluatedAt);
+            amount = standardAmount(order.getPrice(), order.getCredits(), available, fee);
         }
         return new RefundEstimate(order.getPublicId(), order.getPrice(), order.getCurrency(), order.getCredits(),
                 grant.getConsumed(), reserved, available, order.getApprovedAt(), requestable, status, amount, fee);
+    }
+
+    public static int standardFeePercent(Instant approvedAt, Instant requestedAt) {
+        return requestedAt.isAfter(approvedAt.plus(Duration.ofDays(7))) ? 10 : 0;
+    }
+
+    public static long standardAmount(long price, long purchased, long unused, int feePercent) {
+        // Round once at the end, up to a whole won.
+        var numerator = BigInteger.valueOf(price).multiply(BigInteger.valueOf(unused))
+                .multiply(BigInteger.valueOf(100 - feePercent));
+        var divisor = BigInteger.valueOf(purchased).multiply(BigInteger.valueOf(100));
+        return numerator.add(divisor).subtract(BigInteger.ONE).divide(divisor).longValueExact();
     }
 }

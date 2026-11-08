@@ -9,7 +9,9 @@ public interface CreditGrantRepository extends JpaRepository<CreditGrant, Long> 
     Optional<CreditGrant> findBySourceTypeAndSourceHash(CreditSource type, String hash);
     String SPENDABLE_GRANTS = """
             from credit_grants g where g.user_id = :userId and g.available > 0
-            and not exists (select 1 from payment_refund_requests r where r.grant_id = g.id)
+            and not exists (select 1 from payment_refund_requests r
+                left join payment_refund_resolutions s on s.refund_id = r.id
+                where r.grant_id = g.id and s.refund_id is null)
             """;
 
     @Query(value = "select coalesce(sum(g.available), 0) " + SPENDABLE_GRANTS, nativeQuery = true)

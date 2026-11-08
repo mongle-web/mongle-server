@@ -24,6 +24,12 @@ public class CreditLedger extends BaseCreatedEntity {
     @Column(name = "available_after", nullable = false) private long availableAfter;
     @Column(name = "reserved_after", nullable = false) private long reservedAfter;
 
+    static CreditLedger paymentHold(CreditAccount account, Long grantId, long previousHolds) {
+        var entry = entry(account, Kind.PAYMENT_HOLD, grantId, null, CreditSource.PAYMENT, null, 0, 0);
+        if (previousHolds > 0) entry.entryKey += ":" + (previousHolds + 1);
+        return entry;
+    }
+
     static CreditLedger entry(CreditAccount account, Kind kind, Long grantId, Long reservationId,
             CreditSource source, CreditUsage usage, long availableDelta, long reservedDelta) {
         var l = new CreditLedger(); l.userId = account.getUserId(); l.kind = kind;

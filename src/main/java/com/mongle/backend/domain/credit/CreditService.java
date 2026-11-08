@@ -84,7 +84,8 @@ public class CreditService {
             throw new BusinessException(CreditErrorCode.REQUEST_CONFLICT);
         if(paymentHolds.existsById(grant.getId())) return;
         paymentHolds.saveAndFlush(CreditPaymentHold.create(grant.getId(),userId));
-        ledger.saveAndFlush(CreditLedger.entry(account(userId),CreditLedger.Kind.PAYMENT_HOLD,grant.getId(),null,CreditSource.PAYMENT,null,0,0));
+        ledger.saveAndFlush(CreditLedger.paymentHold(account(userId), grant.getId(),
+                ledger.countByGrantIdAndKind(grant.getId(), CreditLedger.Kind.PAYMENT_HOLD)));
     }
     void requireSpendingAllowed(Long userId) {
         if(paymentHolds.existsByUserId(userId)) throw new BusinessException(CreditErrorCode.PAYMENT_REVIEW);

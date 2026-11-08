@@ -4,6 +4,7 @@ import com.mongle.backend.migration.MigrationCommand;
 import com.mongle.backend.operations.credit.TestCreditCommand;
 import com.mongle.backend.operations.payment.PaymentInspectCommand;
 import com.mongle.backend.operations.payment.PaymentReclaimCommand;
+import com.mongle.backend.operations.payment.PaymentRefundCommand;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -11,6 +12,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class MongleBackendApplication {
 
 	public static void main(String[] args) {
+		if (PaymentRefundCommand.requested(args)) {
+			System.exit(PaymentRefundCommand.run(args, System.getenv(), System.out));
+			return;
+		}
 		if (PaymentReclaimCommand.requested(args)) {
 			System.exit(PaymentReclaimCommand.run(args, System.getenv(), System.out));
 			return;

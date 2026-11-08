@@ -9,9 +9,12 @@ import com.mongle.backend.domain.user.withdrawal.WithdrawalRetention;
 import com.mongle.backend.domain.user.withdrawal.WithdrawalService;
 import com.mongle.backend.global.error.BusinessException;
 import com.mongle.backend.global.error.ErrorCode;
+import com.mongle.backend.operations.payment.RefundResolutionTestDriver;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -69,6 +72,7 @@ class RefundIntakeIntegrationTest {
     @Autowired WithdrawalService withdrawals;
     @Autowired WithdrawalRetention retention;
     @Autowired JdbcTemplate jdbc;
+    @Autowired javax.sql.DataSource dataSource;
     @Autowired PlatformTransactionManager transactions;
     @MockitoBean(name = "authClock") Clock clock;
     @Value("${local.server.port}") int port;
@@ -302,6 +306,210 @@ class RefundIntakeIntegrationTest {
         assertThat(orders.findById(other.getId()).orElseThrow().getState()).isEqualTo(PaymentOrder.State.PAID);
         assertThat(refunds.estimate(user, UUID.fromString(other.getPublicId()), STANDARD).status())
                 .isEqualTo(REVIEW_REQUIRED);
+    }
+
+    @Test
+    void confirmsWholeRefundAfterWithdrawalAndRetainsRecordsUntilResolutionAgesOut() throws Exception {
+        var paid = approvePurchase();
+        var receipt = refunds.receive(user, request(UUID.fromString(paid.getPublicId()), STANDARD));
+        withdrawals.withdraw(user);
+
+        var pending = settlement("preview", receipt, 1100, 10, "STANDARD", null);
+        assertThat(pending.get("findings")).asList().contains("AWAITING_CANCEL_CONFIRMATION");
+        assertThat(settlement("inspect", receipt, 0, 0, null, null).get("status")).isEqualTo("RECEIVED");
+        now = now.plus(Duration.ofDays(10));
+        feedback.accept(verifier.verify(notification(paid, 9, now)));
+        var preview = settlement("preview", receipt, 1100, 10, "STANDARD", null);
+        var snapshot = readySnapshot(preview);
+        var result = settlement("apply", receipt, 1100, 10, "STANDARD", snapshot);
+        assertThat(result).containsEntry("status", "COMPLETED").containsEntry("refundedAmount", 1100L)
+                .containsEntry("revokedCredits", 10L).containsEntry("orderState", "REFUND_SETTLED");
+        assertThat(settlement("apply", receipt, 1100, 10, "STANDARD", snapshot)).isEqualTo(result);
+        assertThat(grantAvailable(paid)).isZero();
+        assertThat(reclaimedEntries()).isEqualTo(1);
+
+        Instant resolved = now;
+        now = resolved.atOffset(ZoneOffset.UTC).plusYears(5).minusDays(1).toInstant();
+        assertThat(retention.purge(user)).isFalse();
+        now = resolved.atOffset(ZoneOffset.UTC).plusYears(5).plusDays(1).toInstant();
+        assertThat(retention.purge(user)).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from payment_refund_requests where user_id=?",
+                Long.class, user)).isZero();
+    }
+
+    @Test
+    void reconcilesDistinctPartialCancellationsOnceAndPreservesOtherPurchaseHold() throws Exception {
+        var paid = approvePurchase();
+        reservations.settle(user, reserve("partly-used").reservationId(), "completed-image");
+        var other = approvePurchase();
+        now = now.plus(Duration.ofDays(8));
+        var receipt = refunds.receive(user, request(UUID.fromString(paid.getPublicId()), STANDARD));
+        assertThat(receipt.estimatedAmountAtRequest()).isEqualTo(693);
+
+        partial(paid, "33001", 350, 70);
+        partial(paid, "33001", 350, 71);
+        partial(paid, "33002", 343, 71);
+        feedback.accept(verifier.verify(notification(other, 9, now)));
+        var preview = settlement("preview", receipt, 693, 7, "STANDARD", null);
+        assertThat(preview).containsEntry("cancellationCount", 2);
+        String snapshot = readySnapshot(preview);
+        var start = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            Callable<Map<String, Object>> apply = () -> {
+                if (!start.await(10, TimeUnit.SECONDS)) throw new AssertionError("apply start timeout");
+                return settlement("apply", receipt, 693, 7, "STANDARD", snapshot);
+            };
+            var first = pool.submit(apply);
+            var second = pool.submit(apply);
+            start.countDown();
+            assertThat(first.get(15, TimeUnit.SECONDS)).isEqualTo(second.get(15, TimeUnit.SECONDS));
+        }
+        assertThat(grantAvailable(paid)).isZero();
+        assertThat(grantAvailable(other)).isEqualTo(10);
+        assertThat(credits.balance(user).spendingBlocked()).isTrue();
+        assertThat(reclaimedEntries()).isEqualTo(1);
+        var status = refunds.get(user, UUID.fromString(receipt.receiptId()));
+        assertThat(status.processingStatus()).isEqualTo(RefundReceipt.ProcessingStatus.COMPLETED);
+        assertThat(status.currentEstimate()).isNull();
+        assertThat(status.resolution().refundedAmount()).isEqualTo(693);
+        assertThat(refunds.page(user, null, 20).items().getFirst().resolution()).isEqualTo(status.resolution());
+
+        now = now.plusSeconds(1);
+        partial(paid, "33001", 350, 71);
+        assertThat(orders.findById(paid.getId()).orElseThrow().getState()).isEqualTo(PaymentOrder.State.REFUND_SETTLED);
+        partial(paid, "33003", 10, 71);
+        assertThat(orders.findById(paid.getId()).orElseThrow().getState()).isEqualTo(PaymentOrder.State.PAYMENT_REVIEW);
+        assertThat(jdbc.queryForObject("select count(*) from credit_payment_holds where user_id=?",
+                Long.class, user)).isEqualTo(2);
+        assertThat(reclaimedEntries()).isEqualTo(1);
+    }
+
+    @Test
+    void refusesUnverifiedOrConflictingCancellationAmountsWithoutReleasingFunds() throws Exception {
+        var paid = approvePurchase();
+        var receipt = refunds.receive(user, request(UUID.fromString(paid.getPublicId()), STANDARD));
+        partial(paid, "44001", 700, 70);
+        var mismatch = settlement("preview", receipt, 1100, 10, "STANDARD", null);
+        assertThat(mismatch.get("findings")).asList().contains("CANCELLATION_DOES_NOT_MATCH_APPROVAL");
+        partial(paid, "44001", 701, 71);
+        partial(paid, "44002", 500, 71);
+        var conflict = settlement("preview", receipt, 1100, 10, "STANDARD", null);
+        assertThat(conflict.get("findings")).asList()
+                .contains("CANCELLATION_EVIDENCE_CONFLICT", "CANCELLATION_EXCEEDS_ORDER_AMOUNT");
+        assertThatThrownBy(() -> settlement("apply", receipt, 1100, 10, "STANDARD",
+                conflict.get("snapshot").toString())).hasMessage("CANCELLATION_EVIDENCE_CONFLICT");
+        assertThat(grantAvailable(paid)).isEqualTo(10);
+        assertThat(credits.balance(user).spendingBlocked()).isTrue();
+        assertThat(reclaimedEntries()).isZero();
+    }
+
+    @Test
+    void reviewCanRefundMoneyForAConsumedPurchaseWithoutRecreatingItsCredits() throws Exception {
+        var paid = approvePurchase();
+        for (int i = 0; i < 3; i++) reservations.settle(user, reserve("rights-used-" + i).reservationId(), "image-" + i);
+        reservations.settle(user, reservations.reserve(user, "rights-last", CreditUsage.DREAM_IMAGE_REGENERATION,
+                "last-image", now.plusSeconds(60)).reservationId(), "last-result");
+        var receipt = refunds.receive(user, request(UUID.fromString(paid.getPublicId()), RIGHTS_REVIEW));
+        feedback.accept(verifier.verify(notification(paid, 9, now)));
+        var standard = settlement("preview", receipt, 1100, 0, "STANDARD", null);
+        assertThat(standard.get("findings")).asList().contains("APPROVAL_REQUIRES_REVIEW");
+        var snapshot = readySnapshot(settlement("preview", receipt, 1100, 0, "REVIEW", null));
+        settlement("apply", receipt, 1100, 0, "REVIEW", snapshot);
+        var status = refunds.get(user, UUID.fromString(receipt.receiptId()));
+        assertThat(status.resolution().revokedCredits()).isZero();
+        assertThat(status.resolution().refundedAmount()).isEqualTo(1100);
+        assertThat(credits.balance(user).available()).isZero();
+        assertThat(reclaimedEntries()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"reject", "withdraw"})
+    void closingWithoutProviderCancellationReleasesOnlyThisReceiptAndAllowsReapplication(String action)
+            throws Exception {
+        var paid = approvePurchase();
+        var orderId = UUID.fromString(paid.getPublicId());
+        var receipt = refunds.receive(user, request(orderId, STANDARD));
+        String snapshot = readySnapshot(operator("preview", action, receipt, null));
+        // Changing the same user's balance after preview must make the approval stale.
+        credits.grant(user, CreditSource.PROMOTION, "stale-close:" + user, 1);
+        assertThatThrownBy(() -> operator("apply", action, receipt, snapshot)).hasMessage("SNAPSHOT_CHANGED");
+        String refreshed = readySnapshot(operator("preview", action, receipt, null));
+        var closed = operator("apply", action, receipt, refreshed);
+        assertThat(closed.get("status")).isEqualTo(action.equals("reject") ? "REJECTED" : "WITHDRAWN");
+        var image = reserve("after-close");
+        reservations.release(user, image.reservationId(), CreditReservation.ReleaseReason.FAILURE);
+        var next = refunds.receive(user, request(orderId, STANDARD));
+        assertThat(next.receiptId()).isNotEqualTo(receipt.receiptId());
+        assertError(() -> reserve("after-receiving-again"), CreditErrorCode.INSUFFICIENT);
+        assertThat(refunds.page(user, null, 20).items()).hasSize(2);
+    }
+
+    @Test
+    void keepsExistingReservationAndRefusesClosureWhenProviderStatusIsUnclear() throws Exception {
+        var paid = approvePurchase();
+        var image = reserve("before-cancel");
+        var receipt = refunds.receive(user, request(UUID.fromString(paid.getPublicId()), STANDARD));
+        var pending = settlement("preview", receipt, 1100, 7, "STANDARD", null);
+        assertThat(pending.get("findings")).asList().contains("RESERVATION_STILL_OPEN", "AWAITING_CANCEL_CONFIRMATION");
+        feedback.accept(verifier.verify(notification(paid, 8, now)));
+        var close = operator("preview", "withdraw", receipt, null);
+        assertThat(close.get("findings")).asList().contains("PROVIDER_STATUS_REQUIRES_REVIEW");
+        assertThat(credits.balance(user).reserved()).isEqualTo(3);
+        reservations.release(user, image.reservationId(), CreditReservation.ReleaseReason.FAILURE);
+        assertThat(credits.balance(user).spendingBlocked()).isTrue();
+        assertThat(grantAvailable(paid)).isEqualTo(10);
+    }
+
+    private PaymentOrder approvePurchase() {
+        var order = readyOrder(10);
+        var approved = orders.findById(order.getId()).orElseThrow().getCreatedAt()
+                .toInstant(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS);
+        if (now.isBefore(approved.plusSeconds(1))) now = approved.plusSeconds(1);
+        var form = notification(order, 4, now);
+        form.put("pay_date", DateTimeFormatter.ofPattern("uuuuMMddHHmmss").withZone(ZoneId.of("Asia/Seoul"))
+                .format(approved));
+        feedback.accept(verifier.verify(form));
+        return orders.findById(order.getId()).orElseThrow();
+    }
+
+    private void partial(PaymentOrder order, String transaction, long amount, int state) {
+        var form = notification(order, state, now);
+        form.put("orig_mul_no", providerId(order));
+        form.put("orig_price", "1100");
+        form.put("mul_no", transaction + order.getId());
+        form.put("price", Long.toString(amount));
+        feedback.accept(verifier.verify(form));
+    }
+
+    private Map<String, Object> settlement(String mode, RefundReceipt receipt, long amount, long quantity,
+            String basis, String snapshot) throws Exception {
+        var args = new ArrayList<>(List.of("--payment-refund=" + mode, "--receipt-id=" + receipt.receiptId()));
+        if (!mode.equals("inspect")) {
+            args.addAll(List.of("--action=settle", "--operator-reference=case-134", "--amount=" + amount,
+                    "--credits=" + quantity, "--basis=" + basis));
+        }
+        if (snapshot != null) args.add("--expected-snapshot=" + snapshot);
+        return RefundResolutionTestDriver.run(dataSource, clock, args.toArray(String[]::new));
+    }
+
+    private Map<String, Object> operator(String mode, String action, RefundReceipt receipt, String snapshot) throws Exception {
+        var args = new ArrayList<>(List.of("--payment-refund=" + mode, "--receipt-id=" + receipt.receiptId(),
+                "--action=" + action, "--operator-reference=case-134"));
+        if (snapshot != null) args.add("--expected-snapshot=" + snapshot);
+        return RefundResolutionTestDriver.run(dataSource, clock, args.toArray(String[]::new));
+    }
+
+    private static String readySnapshot(Map<String, Object> result) {
+        assertThat(result).containsEntry("decision", "READY").as("%s", result);
+        return result.get("snapshot").toString();
+    }
+
+    private long reclaimedEntries() {
+        return jdbc.queryForObject("select count(*) from credit_ledger where user_id=? and kind='RECLAIM'", Long.class, user);
+    }
+
+    private long grantAvailable(PaymentOrder order) {
+        return jdbc.queryForObject("select available from credit_grants where id=?", Long.class, order.getCreditGrantId());
     }
 
     private long member() {
