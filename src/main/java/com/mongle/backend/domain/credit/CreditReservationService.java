@@ -41,6 +41,7 @@ public class CreditReservationService {
             throw new BusinessException(CreditErrorCode.REQUEST_CONFLICT);
         credits.requireSpendingAllowed(userId);
         long amount = properties.cost(usage);
+        if (grants.spendable(userId) < amount) throw new BusinessException(CreditErrorCode.INSUFFICIENT);
         var account = credits.account(userId);
         account.reserve(amount);
         var reservation = reservations.saveAndFlush(CreditReservation.create(userId, requestKey, usage, targetKey, amount, expiresAt));

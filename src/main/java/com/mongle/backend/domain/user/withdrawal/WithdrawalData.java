@@ -28,6 +28,7 @@ public class WithdrawalData {
                 select max(event_at) from (
                   select max(updated_at) event_at from payment_orders where user_id=:user
                   union all select max(created_at) event_at from payment_credit_reclamations where user_id=:user
+                  union all select max(created_at) event_at from payment_refund_requests where user_id=:user
                   union all select max(created_at) event_at from credit_ledger where user_id=:user and source_type='PAYMENT'
                 ) accounting_dates
                 """)
@@ -135,6 +136,7 @@ public class WithdrawalData {
         em.flush();
         for(String sql:List.of(
                 "delete from legal_consents where user_id=:user",
+                "delete from payment_refund_requests where user_id=:user",
                 "delete from payment_credit_reclamations where user_id=:user",
                 "delete from credit_payment_holds where user_id=:user",
                 "delete from payment_notifications where order_id in (select id from payment_orders where user_id=:user)",

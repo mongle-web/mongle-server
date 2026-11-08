@@ -53,7 +53,7 @@ abstract class PaymentReclaimerContract {
                         "");
         new ResourceDatabasePopulator(
                         new ClassPathResource("db/schema-initial.sql"),
-                        new ClassPathResource("db/migration/V6__payment_credit_reclamations.sql"), new ClassPathResource("db/migration/V7__user_withdrawal.sql"), new ClassPathResource("db/migration/V8__legal_consents.sql"))
+                        new ClassPathResource("db/migration/V6__payment_credit_reclamations.sql"), new ClassPathResource("db/migration/V7__user_withdrawal.sql"), new ClassPathResource("db/migration/V8__legal_consents.sql"), new ClassPathResource("db/migration/V9__payment_refund_intake.sql"))
                 .execute(ds);
         return ds;
     }
@@ -125,6 +125,25 @@ abstract class PaymentReclaimerContract {
         assertThatThrownBy(() -> apply(o, "refuse-" + o, plan.path("snapshot").asString()))
                 .hasMessage("RECLAMATION_NOT_ALLOWED");
         assertThat(f.snapshot()).isEqualTo(before);
+    }
+
+    @Test
+    void anIntakeCommittedAfterPreviewPreventsLegacyReclaim() throws Exception {
+        String order = cancelled();
+        String key = "before-intake-" + order;
+        var plan = preview(order, key);
+        assertThat(plan.path("status").asString()).isEqualTo("WOULD_RECLAIM");
+        jdbc.update("""
+                insert into payment_refund_requests(receipt_id,request_id,user_id,order_id,grant_id,
+                  reason,initial_status,available_at_request,reserved_at_request,used_at_request,created_at)
+                values(?,?,?,?,?,'STANDARD','REVIEW_REQUIRED',10,0,0,?)
+                """, UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                f.user, f.id(order), grant(order), LocalDateTime.ofInstant(PaymentInspectorContract.NOW, ZoneOffset.UTC));
+        assertThat(preview(order, key).toString()).contains("REFUND_INTAKE_EXISTS", "REFUSED");
+        assertThatThrownBy(() -> apply(order, key, plan.path("snapshot").asString()))
+                .hasMessage("RECLAMATION_NOT_ALLOWED");
+        assertThat(jdbc.queryForObject("select available from credit_grants where id=?",
+                Long.class, grant(order))).isEqualTo(10);
     }
 
     @Test

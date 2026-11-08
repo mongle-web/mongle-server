@@ -5,7 +5,7 @@ import org.springframework.context.annotation.*;
 import java.time.Clock;
 import java.util.concurrent.CompletableFuture;
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({PaymentProperties.class,PayAppProperties.class})
+@EnableConfigurationProperties({PaymentProperties.class,PayAppProperties.class, RefundProperties.class})
 public class PaymentConfiguration {
     @Bean @ConditionalOnMissingBean(PaymentGateway.class)
     PaymentGateway paymentGateway(PayAppProperties properties,Clock authClock) {

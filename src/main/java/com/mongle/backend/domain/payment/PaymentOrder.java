@@ -4,6 +4,8 @@ import com.mongle.backend.global.common.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Getter @Entity
@@ -29,6 +31,8 @@ public class PaymentOrder extends BaseEntity {
     @Column(name="provider_transaction",length=40) private String providerTransaction;
     @Column(name="payment_url",length=2048) private String paymentUrl;
     @Column(name="credit_grant_id") private Long creditGrantId;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.TIMESTAMP)
+    @Column(name="approved_at") private Instant approvedAt;
     @Column(name="request_deadline",nullable=false) private Instant requestDeadline;
     @Version @Column(nullable=false) private long version;
 
@@ -54,7 +58,17 @@ public class PaymentOrder extends BaseEntity {
         }
     }
     void pending() { if(state==State.REQUESTING || state==State.READY || state==State.UNKNOWN) state=State.PENDING; }
-    void paid(Long grantId) { state=State.PAID; creditGrantId=grantId; paymentUrl=null; }
+    void paid(Long grantId, Instant approved) {
+        state = State.PAID;
+        creditGrantId = grantId;
+        paymentUrl = null;
+        // DATETIME(0) can round the order creation time up to the next second in MySQL.
+        Instant earliestApproval = getCreatedAt().toInstant(ZoneOffset.UTC)
+                .truncatedTo(ChronoUnit.SECONDS).minusSeconds(1);
+        if (approved != null && !approved.isBefore(earliestApproval)) {
+            approvedAt = approved;
+        }
+    }
     void cancelled() { state=creditGrantId==null ? State.CANCELLED : State.PAYMENT_REVIEW; paymentUrl=null; }
     void review() { state=State.PAYMENT_REVIEW; paymentUrl=null; }
 }

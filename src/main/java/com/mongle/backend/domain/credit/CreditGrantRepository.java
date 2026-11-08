@@ -7,8 +7,16 @@ import java.util.*;
 public interface CreditGrantRepository extends JpaRepository<CreditGrant, Long> {
     Optional<CreditGrant> findFirstByUserIdAndSourceTypeOrderByIdAsc(Long userId, CreditSource sourceType);
     Optional<CreditGrant> findBySourceTypeAndSourceHash(CreditSource type, String hash);
+    String SPENDABLE_GRANTS = """
+            from credit_grants g where g.user_id = :userId and g.available > 0
+            and not exists (select 1 from payment_refund_requests r where r.grant_id = g.id)
+            """;
+
+    @Query(value = "select coalesce(sum(g.available), 0) " + SPENDABLE_GRANTS, nativeQuery = true)
+    long spendable(@Param("userId") Long userId);
+
     // Apply priority before pagination; retain grant order within free and paid groups.
-    @Query("select g from CreditGrant g where g.userId=:userId and g.available>0 "
-            + "order by case when g.sourceType=com.mongle.backend.domain.credit.CreditSource.PAYMENT then 1 else 0 end,g.id")
+    @Query(value = "select g.* " + SPENDABLE_GRANTS
+            + "order by case when g.source_type = 'PAYMENT' then 1 else 0 end, g.id", nativeQuery = true)
     List<CreditGrant> available(@Param("userId") Long userId, Pageable page);
 }

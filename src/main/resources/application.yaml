@@ -72,6 +72,9 @@ mongle:
     enabled: ${MONGLE_PAYMENT_ENABLED:false}
     # 상품 목록은 운영 설정으로 공급한다. 임의 가격/지급량을 기본 제공하지 않는다.
     products: []
+    refund:
+      enabled: ${MONGLE_PAYMENT_REFUND_ENABLED:false}
+      support-email: ${MONGLE_PAYMENT_REFUND_SUPPORT_EMAIL:}
     payapp:
       enabled: ${MONGLE_PAYAPP_ENABLED:false}
       seller-id: ${PAYAPP_SELLER_ID:}

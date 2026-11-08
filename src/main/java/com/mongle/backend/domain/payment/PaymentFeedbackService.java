@@ -47,7 +47,7 @@ public class PaymentFeedbackService {
                     order.review();
                 } else if(order.getCreditGrantId()==null) {
                     var grant=credits.grant(user,CreditSource.PAYMENT,sourceKey(order),order.getCredits());
-                    order.paid(grant.grantId());
+                    order.paid(grant.grantId(), event.approvedAt());
                 }
             }
             case 8,32,9,64,70,71 -> {

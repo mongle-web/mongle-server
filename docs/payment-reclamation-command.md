@@ -93,7 +93,7 @@ sudo /usr/bin/systemd-run --quiet --wait --pipe --collect \
 - REQUEST_CONFLICT / RECLAMATION_WRITE_CONFLICT: 키·기존 처리·동시 쓰기 충돌. 새 키로 우회하지 않는다.
 - RECLAMATION_RECORD_INCONSISTENT / POSTCONDITION_FAILED: 기존 이력 또는 적용 후 검증 불일치. 새 변경은 롤백하며 운영 검토로 넘긴다.
 
-부분 사용·부분취소·실제 환불 신청/PG 취소 API·임의 보류 해제는 후속 범위다. 모든 보류를 한꺼번에 지우는 명령은 제공하지 않는다.
+환불 신청이 접수된 주문은 REFUND_INTAKE_EXISTS로 거절한다. 부분 사용·부분취소·PG 취소 및 접수 건 정산은 별도 범위다. 모든 보류를 한꺼번에 지우는 명령은 제공하지 않는다.
 
 ## 프론트 반영 사항
 
