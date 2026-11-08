@@ -12,6 +12,10 @@ public class PayAppFeedbackVerifier {
     private final PayAppProperties properties;
     private final Clock authClock;
     private static final DateTimeFormatter DATE=DateTimeFormatter.ofPattern("uuuuMMddHHmmss").withResolverStyle(ResolverStyle.STRICT);
+    private static final DateTimeFormatter APPROVAL_DATE =
+            DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withResolverStyle(ResolverStyle.STRICT);
+    private static final ZoneId PAYAPP_ZONE = ZoneId.of("Asia/Seoul");
+
     PayAppFeedback verify(Map<String,String> values) {
         if(!properties.enabled()) throw new BusinessException(PaymentErrorCode.UNAVAILABLE);
         try {
@@ -21,7 +25,7 @@ public class PayAppFeedbackVerifier {
                     || !PaymentHashes.equal(value,properties.linkValue()) || !hash.matches("[0-9a-fA-F]{64}")
                     || !PaymentHashes.equal(hash.toLowerCase(Locale.ROOT),PaymentHashes.sha256(seller+date+properties.requestKey()))) invalid();
             if(!date.matches("[0-9]{14}")) invalid();
-            Instant responded=LocalDateTime.parse(date,DATE).atZone(ZoneId.of("Asia/Seoul")).toInstant();
+            Instant responded=LocalDateTime.parse(date,DATE).atZone(PAYAPP_ZONE).toInstant();
             String order=field(values,"var1",36),token=field(values,"var2",36),transaction=id(values,"mul_no");
             if(!UUID.fromString(order).toString().equals(order) || !UUID.fromString(token).toString().equals(token)) invalid();
             int state=Integer.parseInt(field(values,"pay_state",2));
@@ -31,9 +35,21 @@ public class PayAppFeedbackVerifier {
             if(state==70 || state==71) { original=id(values,"orig_mul_no"); originalAmount=amount(values,"orig_price"); }
             String canonical=String.join(":",order,token,transaction,Integer.toString(state),Long.toString(amount),
                     original==null?"":original,originalAmount==null?"":originalAmount.toString(),date);
-            return new PayAppFeedback(order,token,transaction,state,amount,original,originalAmount,responded,PaymentHashes.sha256(canonical));
+            Instant approved = state == 4 ? approvalDate(values.get("pay_date"), responded) : null;
+            return new PayAppFeedback(order,token,transaction,state,amount,original,originalAmount,responded,approved,PaymentHashes.sha256(canonical));
         } catch(RuntimeException e) { throw new BusinessException(PaymentErrorCode.INVALID_FEEDBACK); }
     }
+    private static Instant approvalDate(String value, Instant responded) {
+        if (value == null || (value.length() != 14 && value.length() != 19)) return null;
+        try {
+            var approved = LocalDateTime.parse(value, value.length() == 14 ? DATE : APPROVAL_DATE)
+                    .atZone(PAYAPP_ZONE).toInstant();
+            return approved.isAfter(responded) ? null : approved;
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
     void requireFresh(PayAppFeedback event) {
         Instant now=authClock.instant();
         if(event.respondedAt().isBefore(now.minus(Duration.ofMinutes(15))) || event.respondedAt().isAfter(now.plusSeconds(120))) invalid();

@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:mongle-schema;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "spring.sql.init.mode=always",
-        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql,classpath:db/migration/V4__recent_interpretations.sql,classpath:db/migration/V5__world_summaries.sql,classpath:db/migration/V7__user_withdrawal.sql,classpath:db/migration/V8__legal_consents.sql",
+        "spring.sql.init.schema-locations=classpath:db/schema-initial.sql,classpath:db/migration/V3__image_regeneration_policy.sql,classpath:db/migration/V4__recent_interpretations.sql,classpath:db/migration/V5__world_summaries.sql,classpath:db/migration/V7__user_withdrawal.sql,classpath:db/migration/V8__legal_consents.sql,classpath:db/migration/V9__payment_refund_intake.sql",
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @ActiveProfiles("test")
@@ -41,19 +41,19 @@ class InitialSchemaValidationTest {
 
     @Test
     void creditMigrationIsRepeatableAndKeepsReservationTrace() {
-        for (String table : java.util.List.of("credit_ledger", "credit_allocations", "credit_reservations", "credit_grants", "credit_accounts")) {
-            jdbcTemplate.execute("drop table " + table);
-        }
-        jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+        var legacy = new JdbcTemplate(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                "jdbc:h2:mem:legacy-credit;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE", "sa", ""));
+        legacy.execute("create table users(id bigint not null primary key)");
+        legacy.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
             var script = new org.springframework.core.io.ClassPathResource("db/migrations/20261026-credit-ledger.sql");
             org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, script);
             org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection, script);
             return null;
         });
         for (String table : java.util.List.of("credit_accounts", "credit_grants", "credit_reservations", "credit_allocations", "credit_ledger")) {
-            assertThat(jdbcTemplate.queryForObject("select count(*) from information_schema.tables where table_schema='public' and table_name=?", Long.class, table)).isEqualTo(1);
+            assertThat(legacy.queryForObject("select count(*) from information_schema.tables where table_schema='public' and table_name=?", Long.class, table)).isEqualTo(1);
         }
-        assertThat(jdbcTemplate.queryForList("select column_name from information_schema.columns where table_schema='public' and table_name='credit_grants'", String.class))
+        assertThat(legacy.queryForList("select column_name from information_schema.columns where table_schema='public' and table_name='credit_grants'", String.class))
                 .contains("source_type", "source_key", "source_hash", "available", "reserved", "consumed", "version");
     }
 
