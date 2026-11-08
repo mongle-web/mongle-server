@@ -45,6 +45,7 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.datasource.url=jdbc:h2:mem:refund-intake;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
+        "springdoc.api-docs.enabled=true",
         "mongle.credit.enabled=true", "mongle.credit.dream-image-generation=3",
         "mongle.payment.refund.enabled=true", "mongle.payment.refund.support-email=help@example.invalid",
         "mongle.legal.published=true", "mongle.legal.enforce=true",
@@ -256,9 +257,37 @@ class RefundIntakeIntegrationTest {
             assertThat(response.headers().firstValue("Cache-Control")).hasValue("no-store");
             var data = json.readTree(response.body()).path("data");
             String id = data.path("receiptId").asString();
+            var orderResponse = http(client, bearer, "GET", "/api/v1/payments/orders/" + paid, null);
+            assertThat(orderResponse.statusCode()).isEqualTo(200);
+            assertThat(data.path("orderId")).isEqualTo(json.readTree(orderResponse.body()).path("data").path("orderId"));
+            assertThat(data.path("orderId").asString()).isEqualTo(paid.toString());
+            assertThat(data.path("currentEstimate").path("orderId")).isEqualTo(data.path("orderId"));
+            assertThat(data.path("processingStatus").asString()).isEqualTo("RECEIVED");
             assertThat(data.path("supportEmail").asString()).isEqualTo("help@example.invalid");
             assertThat(response.body()).doesNotContain("providerTransaction", "notificationToken", "grantId");
+
+            var replay = http(client, bearer, "POST", path, body);
+            assertThat(replay.statusCode()).isEqualTo(200);
+            assertThat(json.readTree(replay.body()).path("data")).isEqualTo(data);
+            var detail = http(client, bearer, "GET", path + "/" + id, null);
+            assertThat(detail.statusCode()).isEqualTo(200);
+            assertThat(json.readTree(detail.body()).path("data")).isEqualTo(data);
+            var list = http(client, bearer, "GET", path, null);
+            assertThat(list.statusCode()).isEqualTo(200);
+            assertThat(json.readTree(list.body()).path("data").path("items").get(0)).isEqualTo(data);
+
             assertThat(http(client, another, "GET", path + "/" + id, null).statusCode()).isEqualTo(404);
+            assertThat(http(client, another, "GET", path + "/estimate?orderId=" + paid, null).statusCode()).isEqualTo(404);
+            var otherList = http(client, another, "GET", path, null);
+            assertThat(otherList.statusCode()).isEqualTo(200);
+            assertThat(json.readTree(otherList.body()).path("data").path("items").size()).isZero();
+
+            var apiDocs = http(client, null, "GET", "/v3/api-docs", null);
+            assertThat(apiDocs.statusCode()).isEqualTo(200);
+            var schema = json.readTree(apiDocs.body()).path("components").path("schemas").path("RefundReceipt");
+            assertThat(schema.path("properties").path("orderId").path("format").asString()).isEqualTo("uuid");
+            assertThat(schema.path("required").valueStream().map(node -> node.asString())).contains("orderId");
+
             assertThat(http(client, bearer, "DELETE", "/api/v1/users/me", null).body()).contains("USER_409_2");
             refunds.receive(user, request(second, STANDARD));
             assertThat(refunds.page(user, null, 1).hasNext()).isTrue();
@@ -370,9 +399,10 @@ class RefundIntakeIntegrationTest {
         assertThat(reclaimedEntries()).isEqualTo(1);
         var status = refunds.get(user, UUID.fromString(receipt.receiptId()));
         assertThat(status.processingStatus()).isEqualTo(RefundReceipt.ProcessingStatus.COMPLETED);
+        assertThat(status.orderId()).isEqualTo(paid.getPublicId());
         assertThat(status.currentEstimate()).isNull();
         assertThat(status.resolution().refundedAmount()).isEqualTo(693);
-        assertThat(refunds.page(user, null, 20).items().getFirst().resolution()).isEqualTo(status.resolution());
+        assertThat(refunds.page(user, null, 20).items()).containsExactly(status);
 
         now = now.plusSeconds(1);
         partial(paid, "33001", 350, 71);
@@ -428,20 +458,29 @@ class RefundIntakeIntegrationTest {
             throws Exception {
         var paid = approvePurchase();
         var orderId = UUID.fromString(paid.getPublicId());
-        var receipt = refunds.receive(user, request(orderId, STANDARD));
+        var originalRequest = request(orderId, STANDARD);
+        var receipt = refunds.receive(user, originalRequest);
         String snapshot = readySnapshot(operator("preview", action, receipt, null));
         // Changing the same user's balance after preview must make the approval stale.
         credits.grant(user, CreditSource.PROMOTION, "stale-close:" + user, 1);
         assertThatThrownBy(() -> operator("apply", action, receipt, snapshot)).hasMessage("SNAPSHOT_CHANGED");
         String refreshed = readySnapshot(operator("preview", action, receipt, null));
         var closed = operator("apply", action, receipt, refreshed);
-        assertThat(closed.get("status")).isEqualTo(action.equals("reject") ? "REJECTED" : "WITHDRAWN");
+        var expectedStatus = action.equals("reject")
+                ? RefundReceipt.ProcessingStatus.REJECTED : RefundReceipt.ProcessingStatus.WITHDRAWN;
+        assertThat(closed.get("status")).isEqualTo(expectedStatus.name());
+        var resolved = refunds.get(user, UUID.fromString(receipt.receiptId()));
+        assertThat(resolved.processingStatus()).isEqualTo(expectedStatus);
+        assertThat(resolved.orderId()).isEqualTo(paid.getPublicId());
+        assertThat(resolved.currentEstimate()).isNull();
+        assertThat(refunds.receive(user, originalRequest)).isEqualTo(resolved);
         var image = reserve("after-close");
         reservations.release(user, image.reservationId(), CreditReservation.ReleaseReason.FAILURE);
         var next = refunds.receive(user, request(orderId, STANDARD));
         assertThat(next.receiptId()).isNotEqualTo(receipt.receiptId());
         assertError(() -> reserve("after-receiving-again"), CreditErrorCode.INSUFFICIENT);
-        assertThat(refunds.page(user, null, 20).items()).hasSize(2);
+        assertThat(next.orderId()).isEqualTo(paid.getPublicId());
+        assertThat(refunds.page(user, null, 20).items()).containsExactly(next, resolved);
     }
 
     @Test
