@@ -5,6 +5,8 @@ import com.mongle.backend.domain.user.entity.User;
 import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.error.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -24,6 +26,9 @@ class CreditReservationIntegrationTest {
     @Autowired CreditService credits;
     @Autowired CreditReservationService reservations;
     @Autowired CreditGrantRepository grants;
+    @Autowired CreditReservationRepository rows;
+    @Autowired CreditAllocationRepository allocations;
+    @Autowired CreditLedgerRepository ledger;
     @Autowired UserRepository users;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate transaction;
@@ -142,6 +147,255 @@ class CreditReservationIntegrationTest {
         })).isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
         assertThat(credits.balance(user)).isEqualTo(new CreditBalance(30,0,30));
         assertThat(jdbc.queryForObject("select count(*) from credit_reservations where user_id=?",Long.class,user)).isZero();
+    }
+
+    @Test
+    void freeBalanceCoversTheWholeCostWithoutReservingAnOlderPurchase() {
+        var paid = credits.grant(user, CreditSource.PAYMENT, "whole-paid:" + user, 10);
+        var free = credits.grant(user, CreditSource.SIGNUP, "whole-free:" + user, 12);
+
+        var reservation = reserve("whole-free");
+
+        assertThat(allocationIds(reservation)).containsExactly(free.grantId());
+        assertGrant(paid.grantId(), 10, 0, 0);
+        assertThat(credits.balanceBreakdown(user)).isEqualTo(
+                new CreditBalanceResponse(10, 12, 22, false, 10, 0, 0, 12));
+    }
+
+    @Test
+    void freeKindsShareGrantOrderRatherThanTakingPriorityByKind() {
+        var paid = credits.grant(user, CreditSource.PAYMENT, "kind-paid:" + user, 20);
+        var promotion = credits.grant(user, CreditSource.PROMOTION, "kind-promo:" + user, 2);
+        var attendance = credits.grant(user, CreditSource.ATTENDANCE, "kind-attend:" + user, 3);
+        var signup = credits.grant(user, CreditSource.SIGNUP, "kind-signup:" + user, 4);
+        var latest = credits.grant(user, CreditSource.PROMOTION, "kind-latest:" + user, 5);
+
+        var reservation = reserve("free-kinds");
+
+        assertThat(allocationIds(reservation)).containsExactly(
+                promotion.grantId(), attendance.grantId(), signup.grantId(), latest.grantId());
+        assertThat(allocationAmounts(reservation)).containsExactly(2L, 3L, 4L, 3L);
+        assertGrant(paid.grantId(), 20, 0, 0);
+        assertGrant(latest.grantId(), 2, 3, 0);
+    }
+
+    @Test
+    void paidRemainderUsesOlderPurchasesFirst() {
+        var older = credits.grant(user, CreditSource.PAYMENT, "paid-first:" + user, 5);
+        var free = credits.grant(user, CreditSource.ATTENDANCE, "paid-free:" + user, 4);
+        var newer = credits.grant(user, CreditSource.PAYMENT, "paid-last:" + user, 10);
+
+        var reservation = reserve("paid-order");
+
+        assertThat(allocationIds(reservation)).containsExactly(free.grantId(), older.grantId(), newer.grantId());
+        assertThat(allocationAmounts(reservation)).containsExactly(4L, 5L, 3L);
+        assertThat(credits.balanceBreakdown(user)).isEqualTo(
+                new CreditBalanceResponse(7, 12, 19, false, 7, 8, 0, 4));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SETTLE", "FAILURE", "CANCELLED", "EXPIRED"})
+    void mixedReservationFinishesUsingItsOriginalSources(String outcome) {
+        var paid = credits.grant(user, CreditSource.PAYMENT, "finish-paid:" + user, 10);
+        var free = credits.grant(user, CreditSource.PROMOTION, "finish-free:" + user, 5);
+        var reservation = reserve("mixed-finish");
+        var ids = allocationIds(reservation);
+        var amounts = allocationAmounts(reservation);
+        var later = credits.grant(user, CreditSource.ATTENDANCE, "finish-later:" + user, 20);
+
+        if (outcome.equals("SETTLE")) {
+            var settled = reservations.settle(user, reservation.reservationId(), "mixed-result");
+            assertThat(reservations.settle(user, reservation.reservationId(), "mixed-result")).isEqualTo(settled);
+            assertGrant(paid.grantId(), 3, 0, 7);
+            assertGrant(free.grantId(), 0, 0, 5);
+            assertThat(credits.balanceBreakdown(user)).isEqualTo(
+                    new CreditBalanceResponse(23, 0, 23, false, 3, 0, 20, 0));
+        } else {
+            var reason = CreditReservation.ReleaseReason.valueOf(outcome);
+            if (reason == CreditReservation.ReleaseReason.EXPIRED) {
+                jdbc.update("update credit_reservations set expires_at=? where id=?",
+                        LocalDateTime.ofInstant(authClock.instant().minusSeconds(1), ZoneOffset.UTC)
+                                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+                        reservation.reservationId());
+                assertThat(reservations.expire(user, reservation.reservationId())).isTrue();
+                assertThat(reservations.expire(user, reservation.reservationId())).isFalse();
+            } else {
+                reservations.release(user, reservation.reservationId(), reason);
+            }
+            var released = reservations.get(user, reservation.reservationId());
+            assertThat(reservations.release(user, reservation.reservationId(), reason)).isEqualTo(released);
+            assertThat(released.releaseReason()).isEqualTo(reason);
+            assertGrant(paid.grantId(), 10, 0, 0);
+            assertGrant(free.grantId(), 5, 0, 0);
+            assertThat(credits.balanceBreakdown(user)).isEqualTo(
+                    new CreditBalanceResponse(35, 0, 35, false, 10, 0, 25, 0));
+        }
+        assertGrant(later.grantId(), 20, 0, 0);
+        assertThat(allocationIds(reservation)).isEqualTo(ids);
+        assertThat(allocationAmounts(reservation)).isEqualTo(amounts);
+        assertThat(jdbc.queryForObject("select count(*) from credit_ledger where reservation_id=? and kind in ('SETTLE','RELEASE')",
+                Long.class, reservation.reservationId())).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void freePrioritySurvivesAllocationPagesAndKeepsAllSources(boolean settle) {
+        var olderPaid = credits.grant(user, CreditSource.PAYMENT, "page-old:" + user, 5);
+        var freeIds = new ArrayList<Long>();
+        var kinds = List.of(CreditSource.SIGNUP, CreditSource.PROMOTION, CreditSource.ATTENDANCE);
+        for (int i = 0; i < 103; i++) {
+            freeIds.add(credits.grant(user, kinds.get(i % kinds.size()), "page-free:" + user + ":" + i, 1).grantId());
+        }
+        var newerPaid = credits.grant(user, CreditSource.PAYMENT, "page-new:" + user, 20);
+        var policy = new CreditProperties(true, CreditProperties.ExpiryPolicy.NO_EXPIRY, 3L, 115L, null, null, null);
+        var service = new CreditReservationService(credits, rows, grants, allocations, ledger, policy, authClock);
+        var reservation = transaction.execute(s -> service.reserve(user, "multi-page", CreditUsage.DREAM_IMAGE_GENERATION,
+                "multi-page", authClock.instant().plusSeconds(300)));
+        var expectedIds = new ArrayList<>(freeIds);
+        expectedIds.add(olderPaid.grantId());
+        expectedIds.add(newerPaid.grantId());
+        assertThat(allocationIds(reservation)).containsExactlyElementsOf(expectedIds);
+        assertThat(allocationAmounts(reservation)).hasSize(105).endsWith(5L, 7L);
+
+        if (settle) {
+            reservations.settle(user, reservation.reservationId(), "page-result");
+            for (var id : freeIds) assertGrant(id, 0, 0, 1);
+            assertGrant(olderPaid.grantId(), 0, 0, 5);
+            assertGrant(newerPaid.grantId(), 13, 0, 7);
+            assertThat(credits.balance(user)).isEqualTo(new CreditBalance(13, 0, 13));
+        } else {
+            reservations.release(user, reservation.reservationId(), CreditReservation.ReleaseReason.FAILURE);
+            for (var id : freeIds) assertGrant(id, 1, 0, 0);
+            assertGrant(olderPaid.grantId(), 5, 0, 0);
+            assertGrant(newerPaid.grantId(), 20, 0, 0);
+            assertThat(credits.balance(user)).isEqualTo(new CreditBalance(128, 0, 128));
+        }
+        assertThat(allocationIds(reservation)).containsExactlyElementsOf(expectedIds);
+    }
+
+    @Test
+    void duplicateRequestDoesNotRedistributeAnExistingReservationAfterNewFreeCredit() {
+        var paid = credits.grant(user, CreditSource.PAYMENT, "duplicate-paid:" + user, 20);
+        var free = credits.grant(user, CreditSource.SIGNUP, "duplicate-free:" + user, 3);
+        var reservation = reserve("duplicate-sources");
+        var later = credits.grant(user, CreditSource.PROMOTION, "duplicate-later:" + user, 20);
+        var history = jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user);
+
+        assertThat(reservations.reserve(user, "duplicate-sources", CreditUsage.DREAM_IMAGE_GENERATION,
+                "attempt:duplicate-sources", deadline().plusSeconds(100))).isEqualTo(reservation);
+
+        assertThat(allocationIds(reservation)).containsExactly(free.grantId(), paid.grantId());
+        assertThat(allocationAmounts(reservation)).containsExactly(3L, 9L);
+        assertGrant(later.grantId(), 20, 0, 0);
+        assertThat(jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user)).isEqualTo(history);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void preexistingPaidFirstReservationIsNotReallocated(boolean settle) {
+        var paid = credits.grant(user, CreditSource.PAYMENT, "legacy-paid:" + user, 10);
+        var free = credits.grant(user, CreditSource.PROMOTION, "legacy-free:" + user, 10);
+        // Persist the old paid-first allocation, as it could exist when this version is deployed.
+        var reservation = transaction.execute(s -> {
+            credits.requireUser(user, true);
+            var account = credits.account(user);
+            account.reserve(12);
+            var row = rows.saveAndFlush(CreditReservation.create(user, "legacy", CreditUsage.DREAM_IMAGE_GENERATION,
+                    "attempt:legacy", 12, deadline()));
+            var paidGrant = grants.findById(paid.grantId()).orElseThrow();
+            var freeGrant = grants.findById(free.grantId()).orElseThrow();
+            paidGrant.reserve(10);
+            freeGrant.reserve(2);
+            allocations.save(CreditAllocation.create(row, paidGrant, 10));
+            allocations.save(CreditAllocation.create(row, freeGrant, 2));
+            ledger.saveAndFlush(CreditLedger.entry(account, CreditLedger.Kind.RESERVE, null, row.getId(),
+                    null, row.getUsage(), -12, 12));
+            return CreditReservationReceipt.from(row);
+        });
+        var history = jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user);
+        assertThat(reserve("legacy")).isEqualTo(reservation);
+        assertThat(jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user)).isEqualTo(history);
+
+        if (settle) {
+            reservations.settle(user, reservation.reservationId(), "legacy-result");
+            assertGrant(paid.grantId(), 0, 0, 10);
+            assertGrant(free.grantId(), 8, 0, 2);
+        } else {
+            reservations.release(user, reservation.reservationId(), CreditReservation.ReleaseReason.FAILURE);
+            assertGrant(paid.grantId(), 10, 0, 0);
+            assertGrant(free.grantId(), 10, 0, 0);
+        }
+        assertThat(allocationIds(reservation)).containsExactly(paid.grantId(), free.grantId());
+        assertThat(allocationAmounts(reservation)).containsExactly(10L, 2L);
+    }
+
+    @Test
+    void concurrentMixedReservationsApplyEachSourceOnlyOnce() throws Exception {
+        var paid = credits.grant(user, CreditSource.PAYMENT, "race-mixed-paid:" + user, 12);
+        var free = credits.grant(user, CreditSource.SIGNUP, "race-mixed-free:" + user, 12);
+
+        assertThat(race(() -> reserve("mixed-race-a"), () -> reserve("mixed-race-b"))).containsOnly("OK");
+
+        assertGrant(paid.grantId(), 0, 12, 0);
+        assertGrant(free.grantId(), 0, 12, 0);
+        var first = rows.findByUserIdAndRequestHash(user, CreditRules.hash("mixed-race-a")).orElseThrow();
+        var second = rows.findByUserIdAndRequestHash(user, CreditRules.hash("mixed-race-b")).orElseThrow();
+        assertThat(List.of(allocationIds(CreditReservationReceipt.from(first)), allocationIds(CreditReservationReceipt.from(second))))
+                .containsExactlyInAnyOrder(List.of(free.grantId()), List.of(paid.grantId()));
+        assertThat(credits.balanceBreakdown(user)).isEqualTo(
+                new CreditBalanceResponse(0, 24, 24, false, 0, 12, 0, 12));
+    }
+
+    @Test
+    void mixedReservationRollbackRestoresBothSourcesAndLeavesNoAllocation() {
+        var paid = credits.grant(user, CreditSource.PAYMENT, "mixed-rollback-paid:" + user, 10);
+        var free = credits.grant(user, CreditSource.ATTENDANCE, "mixed-rollback-free:" + user, 5);
+        var history = jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user);
+
+        assertThatThrownBy(() -> transaction.execute(s -> {
+            reserve("mixed-rollback");
+            throw new IllegalStateException("시도 저장 실패");
+        })).isInstanceOf(IllegalStateException.class);
+
+        assertGrant(paid.grantId(), 10, 0, 0);
+        assertGrant(free.grantId(), 5, 0, 0);
+        assertThat(jdbc.queryForObject("select count(*) from credit_allocations a join credit_reservations r on r.id=a.reservation_id where r.user_id=?",
+                Long.class, user)).isZero();
+        assertThat(jdbc.queryForList("select * from credit_ledger where user_id=? order by id", user)).isEqualTo(history);
+        assertThat(credits.balance(user)).isEqualTo(new CreditBalance(15, 0, 15));
+    }
+
+    @Test
+    void insufficientMixedBalanceAndPaymentHoldDoNotAllocateEitherSource() {
+        var paid = credits.grant(user, CreditSource.PAYMENT, "reject-paid:" + user, 8);
+        var free = credits.grant(user, CreditSource.SIGNUP, "reject-free:" + user, 3);
+        error(() -> reserve("reject-insufficient"), CreditErrorCode.INSUFFICIENT);
+        credits.grant(user, CreditSource.ATTENDANCE, "reject-extra:" + user, 10);
+        credits.holdPayment(user, "reject-paid:" + user);
+        error(() -> reserve("reject-hold"), CreditErrorCode.PAYMENT_REVIEW);
+
+        assertGrant(paid.grantId(), 8, 0, 0);
+        assertGrant(free.grantId(), 3, 0, 0);
+        assertThat(credits.balanceBreakdown(user)).isEqualTo(
+                new CreditBalanceResponse(21, 0, 21, true, 8, 0, 13, 0));
+        assertThat(jdbc.queryForObject("select count(*) from credit_reservations where user_id=?", Long.class, user)).isZero();
+    }
+
+    List<Long> allocationIds(CreditReservationReceipt reservation) {
+        return jdbc.queryForList("select grant_id from credit_allocations where reservation_id=? order by id",
+                Long.class, reservation.reservationId());
+    }
+
+    List<Long> allocationAmounts(CreditReservationReceipt reservation) {
+        return jdbc.queryForList("select amount from credit_allocations where reservation_id=? order by id",
+                Long.class, reservation.reservationId());
+    }
+
+    void assertGrant(Long id, long available, long reserved, long consumed) {
+        var grant = grants.findById(id).orElseThrow();
+        assertThat(grant.getAvailable()).as("grant %s available", id).isEqualTo(available);
+        assertThat(grant.getReserved()).as("grant %s reserved", id).isEqualTo(reserved);
+        assertThat(grant.getConsumed()).as("grant %s consumed", id).isEqualTo(consumed);
     }
     Long newUser(){return users.saveAndFlush(User.create(UUID.randomUUID()+"@reserve.test","예약")).getId();}
     void error(Runnable r,ErrorCode e){assertThatThrownBy(r::run).isInstanceOfSatisfying(BusinessException.class,x->assertThat(x.getErrorCode()).isEqualTo(e));}
