@@ -50,7 +50,7 @@ final class PaymentInspector {
                             default -> "REQUEST_RESULT_UNKNOWN";
                         },
                         "createdAt", instant(row, "created_at"), "requestDeadline", instant(row, "request_deadline"),
-                        "notificationCount", notices, "lastNotificationAt", instant(row, "last_notice_at"));
+                        "notificationCount", notices, "lastNotificationAt", notices == 0 ? null : instant(row, "last_notice_at"));
             }, afterOrderId, Timestamp.from(now));
             var page = rows.stream().limit(20).toList();
             return map("event", "payment-unconfirmed-orders", "scope", "INTERNAL_DATABASE_ONLY", "observedAt", now,

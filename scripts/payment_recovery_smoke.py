@@ -64,7 +64,8 @@ def verify(repo, jar, env, sql):
                 code = ""
             allowed = {"OPERATOR_COMMAND_DISABLED", "PAYMENT_RECOVERY_FAILED", "INVALID_CONFIGURATION",
                        "INVALID_PAYAPP_CONFIGURATION", "INVALID_RECOVERY_EVIDENCE", "INVALID_ORIGINAL_NOTIFICATION",
-                       "ORDER_NOT_UNCONFIRMED", "NOTIFICATION_TIMELINE_CONFLICT", "SNAPSHOT_CHANGED"}
+                       "ORDER_NOT_UNCONFIRMED", "NOTIFICATION_TIMELINE_CONFLICT", "SNAPSHOT_CHANGED",
+                       "ORDER_DATA_INVALID", "PAYMENT_INSPECTION_FAILED", "DB_CONNECTION_FAILED"}
             raise RuntimeError("Packaged payment recovery failed. " + (code if code in allowed else ""))
         return json.loads(result.stdout)
 
@@ -76,11 +77,29 @@ def verify(repo, jar, env, sql):
 
     sql("REVOKE INSERT,UPDATE,DELETE ON credit_test.* FROM 'mongle_app'@'127.0.0.1';")
     try:
-        items = command(["--payment-inspect=unconfirmed"])["items"]
-        found = {item["orderId"]: item for item in items}
-        if (set(found) != {order, expired, pending} or fresh in found or ready in found
-                or found[expired]["effectiveState"] != "UNKNOWN" or found[pending]["notificationCount"] != 0):
-            raise RuntimeError("Unconfirmed discovery mismatch.")
+        found = {}
+        cursor = None
+        while True:
+            args = ["--payment-inspect=unconfirmed"]
+            if cursor is not None:
+                args.append("--after-order-id=" + cursor)
+            page = command(args)
+            items = page["items"]
+            if len(items) > 20 or any(item["orderId"] in found or (cursor and item["orderId"] <= cursor)
+                                      for item in items):
+                raise RuntimeError("Unconfirmed cursor repeated a previous row or exceeded the page size.")
+            found.update((item["orderId"], item) for item in items)
+            next_cursor = page["nextAfterOrderId"]
+            if next_cursor is None:
+                break
+            if not items or next_cursor != items[-1]["orderId"]:
+                raise RuntimeError("Unconfirmed cursor did not advance.")
+            cursor = next_cursor
+        if not {order, expired, pending}.issubset(found) or fresh in found or ready in found:
+            raise RuntimeError("Unconfirmed discovery did not select the expected fixture states.")
+        if (found[expired]["effectiveState"] != "UNKNOWN" or found[pending]["notificationCount"] != 0
+                or found[pending]["lastNotificationAt"] is not None):
+            raise RuntimeError("Unconfirmed discovery returned unexpected timing or notification data.")
         later = command(["--payment-inspect=unconfirmed", "--after-order-id=" + order])["items"]
         if any(item["orderId"] <= order for item in later):
             raise RuntimeError("Unconfirmed cursor repeated a previous row.")
