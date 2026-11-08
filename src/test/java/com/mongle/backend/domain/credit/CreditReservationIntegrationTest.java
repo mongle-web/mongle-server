@@ -32,13 +32,14 @@ class CreditReservationIntegrationTest {
     @BeforeEach void setup(){ user=newUser(); }
     Instant deadline(){return authClock.instant().plusSeconds(60);}
     CreditReservationReceipt reserve(String key){return reservations.reserve(user,key,CreditUsage.DREAM_IMAGE_GENERATION,"attempt:"+key,deadline());}
-    @Test void reservesOldestGrantsAndPreservesTheirPurchaseSources() {
+    @Test void reservesFreeGrantsBeforeOlderPurchasesAndPreservesTheirSources() {
         var paid=credits.grant(user,CreditSource.PAYMENT,"paid:"+user,10);
         var free=credits.grant(user,CreditSource.PROMOTION,"free:"+user,10);
         var reservation=reserve("fifo");
         assertThat(credits.balance(user)).isEqualTo(new CreditBalance(8,12,20));
-        assertThat(grants.findById(paid.grantId()).orElseThrow().getReserved()).isEqualTo(10);
-        assertThat(grants.findById(free.grantId()).orElseThrow().getReserved()).isEqualTo(2);
+        assertThat(grants.findById(paid.grantId()).orElseThrow().getReserved()).isEqualTo(2);
+        assertThat(grants.findById(free.grantId()).orElseThrow().getReserved()).isEqualTo(10);
+        assertThat(jdbc.queryForList("select grant_id from credit_allocations where reservation_id=? order by id",Long.class,reservation.reservationId())).containsExactly(free.grantId(),paid.grantId());
         assertThat(jdbc.queryForList("select amount from credit_allocations where reservation_id=? order by id",Long.class,reservation.reservationId())).containsExactly(10L,2L);
         assertThat(credits.transactions(user,null,1).items().getFirst().kind()).isEqualTo(CreditLedger.Kind.RESERVE);
     }
