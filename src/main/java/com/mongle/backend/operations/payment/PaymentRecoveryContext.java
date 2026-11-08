@@ -10,6 +10,7 @@ import com.mongle.backend.domain.user.repository.UserRepository;
 import com.mongle.backend.global.config.JpaConfig;
 
 import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.boot.model.naming.PhysicalNamingStrategySnakeCaseImpl;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -72,7 +73,10 @@ final class PaymentRecoveryContext {
                     PaymentOrder.class.getPackageName());
             factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
             factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "validate", "hibernate.jdbc.time_zone", "UTC",
-                    "hibernate.show_sql", false, "jakarta.persistence.query.timeout", 5000));
+                    "hibernate.show_sql", false, "jakarta.persistence.query.timeout", 5000,
+                    "hibernate.physical_naming_strategy", PhysicalNamingStrategySnakeCaseImpl.class.getName(),
+                    // MySQL DATETIME holds UTC wall time. Avoid conversion via the host JVM zone.
+                    "hibernate.type.java_time_use_direct_jdbc", true));
             return factory;
         }
 

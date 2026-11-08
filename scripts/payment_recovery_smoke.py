@@ -39,7 +39,8 @@ def verify(repo, jar, env, sql):
     pending, _ = fixture("PENDING", -60)
     fresh, _ = fixture("REQUESTING", 10)
     ready, _ = fixture("READY", -60)
-    stamp = (datetime.now(timezone(timedelta(hours=9))) - timedelta(hours=1)).strftime("%Y%m%d%H%M%S")
+    notice_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    stamp = notice_at.astimezone(timezone(timedelta(hours=9))).strftime("%Y%m%d%H%M%S")
     transaction = str(uuid.uuid4().int % 10**25 + 1)
     form = urlencode({
         "userid": seller, "linkkey": key, "linkval": value, "hash": hashlib.sha256((seller+stamp+secret).encode()).hexdigest(),
@@ -49,9 +50,9 @@ def verify(repo, jar, env, sql):
     evidence = json.dumps({"originalForm": form, "confirmedTransaction": transaction,
                            "confirmedState": 4, "confirmedAmount": 1100})
 
-    def command(args, data="", expected=0, overrides=None):
+    def command(args, data="", expected=0, overrides=None, zone="Asia/Seoul"):
         result = subprocess.run(
-            ["java", "-Xmx192m", "-jar", str(jar), *args], cwd=repo, env={**config, **(overrides or {})},
+            ["java", "-Duser.timezone=" + zone, "-Xmx192m", "-jar", str(jar), *args], cwd=repo, env={**config, **(overrides or {})},
             input=data, capture_output=True, text=True, timeout=90,
         )
         sensitive = (token, key, value, secret, transaction, config["DB_PASSWORD"], config["DB_TRUSTSTORE_PASSWORD"])
@@ -111,9 +112,13 @@ def verify(repo, jar, env, sql):
 
     apply_args = ["--payment-recovery=apply", *preview_args[1:], "--expected-snapshot=" + preview["snapshot"]]
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda _: command(apply_args, evidence), range(2)))
+        results = list(pool.map(lambda zone: command(apply_args, evidence, zone=zone), ("UTC", "Asia/Seoul")))
     if sorted(item["status"] for item in results) != ["ALREADY_RECOVERED", "RECOVERED"]:
         raise RuntimeError("Recovery JVMs did not serialize exactly once.")
     if sql(f"SELECT count(*) FROM credit_ledger WHERE user_id={owner} AND kind='GRANT';", database).strip() != "1":
         raise RuntimeError("Recovery duplicated or skipped the credit ledger.")
+    approved = sql(f"""SELECT DATE_FORMAT(approved_at,'%Y%m%d%H%i%s')
+        FROM payment_orders WHERE public_id='{order}';""", database).strip()
+    if approved != notice_at.strftime("%Y%m%d%H%M%S"):
+        raise RuntimeError("Recovery did not preserve the UTC provider approval time.")
     print("Packaged JAR: unconfirmed discovery and preview SELECT-only; concurrent recovery applied once.", flush=True)
