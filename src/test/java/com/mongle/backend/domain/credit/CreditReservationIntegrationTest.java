@@ -300,8 +300,9 @@ class CreditReservationIntegrationTest {
             credits.requireUser(user, true);
             var account = credits.account(user);
             account.reserve(12);
+            // Match reserve(): DATETIME(6) cannot retain Linux Clock nanoseconds.
             var row = rows.saveAndFlush(CreditReservation.create(user, "legacy", CreditUsage.DREAM_IMAGE_GENERATION,
-                    "attempt:legacy", 12, deadline()));
+                    "attempt:legacy", 12, deadline().truncatedTo(java.time.temporal.ChronoUnit.MICROS)));
             var paidGrant = grants.findById(paid.grantId()).orElseThrow();
             var freeGrant = grants.findById(free.grantId()).orElseThrow();
             paidGrant.reserve(10);
