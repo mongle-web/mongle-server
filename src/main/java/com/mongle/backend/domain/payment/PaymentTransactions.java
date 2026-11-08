@@ -13,6 +13,7 @@ import java.time.*;
 public class PaymentTransactions {
     private final UserRepository users;
     private final PaymentOrderRepository orders;
+    private final PaymentRefundRepository refunds;
     private final PaymentTransactionRepository bindings;
     private final PaymentCatalog catalog;
     private final PaymentProperties properties;
@@ -32,7 +33,9 @@ public class PaymentTransactions {
         if(prior.isPresent()) {
             if(!PaymentHashes.equal(prior.get().getInputHash(),PaymentOrder.inputHash(request)))
                 throw new BusinessException(PaymentErrorCode.REQUEST_CONFLICT);
-            return new Begin(PaymentOrderResponse.from(prior.get(),authClock.instant()),null);
+            var order = prior.get();
+            return new Begin(PaymentOrderResponse.from(order, authClock.instant(),
+                    refunds.confirmedCancellationAmount(order.getId())), null);
         }
         if(!properties.enabled() || !creditProperties.enabled() || !providerAvailable)
             throw new BusinessException(PaymentErrorCode.UNAVAILABLE);
@@ -53,7 +56,7 @@ public class PaymentTransactions {
         order.requestFinished(result);
         orders.flush();
         retainAccountingRecords(user);
-        return PaymentOrderResponse.from(order,authClock.instant());
+        return PaymentOrderResponse.from(order, authClock.instant(), refunds.confirmedCancellationAmount(order.getId()));
     }
     void bind(PaymentOrder order,String transactionId) {
         if(transactionId==null || !transactionId.matches("[1-9][0-9]{0,39}"))
