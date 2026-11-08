@@ -250,10 +250,11 @@ Refresh는 앱 전체에서 한 번씩 실행되도록 묶는다. StrictMode·�
 - PAYMENT_REVIEW 또는 잔액 `spendingBlocked=true`이면 구매/사용을 막고 확인 안내를 표시한다.
 - `POST /api/v1/payments/payapp/feedback`은 페이앱 서버 전용 FORM 통보이며 프론트에서 호출하지 않는다.
 - 잔액은 available/reserved/total 및 보류 여부를 구분한다. 최초 온보딩 완료 시 기본3크레딧, 크레딧 무기한. 지급 내역이 없는 기존 완료 계정은0이며 자동 소급하지 않는다. 구매 취소와 생성 실패 예약 해제는 다른 처리다.
-- 구매별 환불 접수와 조회는 [환불 접수 계약](payment-refund-intake.md)을 따른다. 페이앱 환불 실행과 정산은 후속 범위다.
+- 구매별 환불 접수와 조회는 [환불 접수 계약](payment-refund-intake.md)을 따른다. 페이앱 취소는 판매자 화면에서 진행하고, 확인된 취소 결과를 운영 명령으로 정산한다.
 
-## 환불 접수와 정산 (#132, #134)
+## 환불 접수와 정산 (#132, #134, #137)
 
+환불 신청·상세·목록의 최상위 `orderId`로 결제 주문을 연결합니다. 접수가 종료된 뒤에도 같은 값이 제공되며, 개별 접수는 `receiptId`로 구분합니다.
 환불 상세·목록의 `processingStatus`로 접수와 최종 처리 결과를 구분합니다.
 `RECEIVED`는 `currentEstimate`를 표시하고 종료된 건은 `resolution`의 금액·회수 수량·처리 시각을 표시합니다.
 주문 `REFUND_SETTLED`는 충전 폴링을 종료하고, 탈퇴 전에는 환불 접수번호와 문의 이메일을 저장할 수 있게 안내합니다.
