@@ -106,3 +106,59 @@ H2와 임시 MySQL 8.4에서 미결제·무상/다른 구매 혼합·구매별 �
 ## 미사용 구매 회수 이력 (#119)
 
 새 V6 적용 후 같은 릴리스의 명령을 사용한다. purchase.reclaimed와 reclamation.id/amount를 제공하고 원래 지급량=사용 가능+예약+사용 확정+회수량으로 검증한다. PAYMENT_HOLD 원장은 과거 이력으로 보존한다. 회수 완료 건은 현재 보류가 없어도 이력과 RECLAIM 원장이 일치해야 하며, RECLAMATION_STATE_MISMATCH/RECLAMATION_LEDGER_MISMATCH를 별도로 탐지한다. ACCOUNT_BALANCE_OUT_OF_RANGE는 계정 합계가 long 범위를 벗어났다는 의미다. 실제 PG 거래 상태는 별도로 확인한다.
+
+## 미확정 주문 목록과 통보 복구 (#141)
+
+`--payment-inspect=unconfirmed`는 `UNKNOWN`, 요청 기한이 지난 `REQUESTING`,
+`PENDING`을 읽기 전용으로 조회한다. 미사용 결제창 `READY`와 기한 전 `REQUESTING`은 제외한다.
+주문 UUID·저장 상태·유효 상태·미확정 사유·통보 건수·마지막 통보 시각을 최대 20건 반환한다.
+다음 페이지는 `nextAfterOrderId`를 `--after-order-id`에 넣어 조회한다. 목록에는 개인 연락처,
+PG 거래번호나 원본 통보가 없다. 특정 건은 기존 `--payment-inspect=order`로 대조한다.
+
+```bash
+java -jar "$MONGLE_JAR" --payment-inspect=unconfirmed
+java -jar "$MONGLE_JAR" --payment-inspect=order --order-id="$ORDER_ID"
+```
+
+### 운영 대조와 승인
+
+1. 페이앱 판매자 화면에서 **현재 최종 결과**와 거래번호·금액을 확인한다.
+   기존 결제요청번호가 없으면 주문 식별값 등 독립적으로 확인 가능한 자료로 원주문을 먼저 연결한다.
+   금액만 같거나 정산 전후 취소가 진행 중이면 보류한다.
+2. 우선 페이앱에 정상 재통보를 요청한다. 공개 웹훅을 통해 검증되고 커밋되면 운영 복구가 필요 없다.
+   공개 매뉴얼에서 확인할 수 있는 재시도와 별개로, 재통보 가능 여부와 새 시각 발급 여부는 판매자 계정의 지원 채널에서 확인한다.
+3. 정상 재통보가 되지 않았고 신뢰할 수 있는 경로로 페이앱 원본 FORM 통보를 확보했다면
+   아래 명령을 사용한다. 판매자 화면에서 별도로 대조한 `confirmedTransaction`, `confirmedState`,
+   `confirmedAmount`와 URL 인코딩된 `originalForm`을 JSON으로 담아 권한이 제한된 임시 파일에서
+   표준입력으로 전달한다. 원본을 편집하거나 서명·토큰을 새로 조합하지 않는다. 실행 인자·출력·지원 티켓에는
+   원본이나 인증값을 넣지 않고, 작업 후 임시 파일을 정리한다.
+4. `READY`의 스냅샷을 받아 적용하고 다시 조회한다. 원본이나 독립 대조 근거가 없으면
+   미확정 상태를 유지한다. 현재 문서에서 확인된 일반 주문 상태 조회 API가 없으므로 자동 조회·승인·취소는 실행하지 않는다.
+
+### 복구 명령 실행
+
+V12 적용이 완료된 릴리스에서 단발 프로세스로 실행한다.
+`MONGLE_PAYMENT_RECOVERY_ENABLED=true`와 `MONGLE_PAYMENT_RECOVERY_EXPECTED_HOST`,
+`MONGLE_PAYMENT_RECOVERY_EXPECTED_DATABASE`를 해당 실행 환경에만 설정한다.
+기존 앱의 검증 TLS 연결과 페이앱 인증 설정을 사용한다. 구매 크레딧을 지급하려면 기존 크레딧 기능이 활성화돼 있어야 한다.
+기존 [EC2/SSM 실행 방식](#ec2ssm-실행-순서)을 사용할 때는 제한된 파일을 표준입력으로 전달할 수 있도록 구성한다.
+
+```bash
+java -jar "$MONGLE_JAR" --payment-recovery=preview --order-id="$ORDER_ID" \
+  --operator-reference=case-141-001 < "$PROTECTED_EVIDENCE_FILE"
+
+java -jar "$MONGLE_JAR" --payment-recovery=apply --order-id="$ORDER_ID" \
+  --operator-reference=case-141-001 --expected-snapshot="$RECOVERY_SNAPSHOT" < "$PROTECTED_EVIDENCE_FILE"
+```
+
+이 명령은 결제 완료(4), 최종 요청 취소(8/32), 전액 승인 취소(9/64)를 해당 미확정 주문에 반영한다.
+대기·부분취소 결과는 이 경로로 확정하지 않는다. 오래된 원본은 운영 명령에서만 검사하며
+공개 웹훅의 시각 제한은 유지한다. 주문보다 이르거나 허용 미래 시각을 넘은 통보, 더 새 통보와 충돌하는
+원본, 거래번호·금액·주문 토큰이 불일치하는 증빙은 거절한다.
+
+적용은 정상 웹훅과 같은 사용자 잠금·통보 저장·지급 원장을 사용한다. 복구 이력은 원통보·주문과
+함께 보존 및 파기한다. 정상 통보가 먼저 들어온 동일 건은 `ALREADY_RECORDED`,
+이미 같은 입력으로 복구한 경우 `ALREADY_RECOVERED`다.
+다른 통보나 주문 상태 변경이 미리보기를 무효화하면 최신 상태를 다시 확인한다.
+취소 확인으로 결제가 종료되면 기존 정책에 따라 탈퇴를 재시도할 수 있다. 승인 확인 후 유료분이 남으면
+환불 접수가 필요한 기존 탈퇴 조건을 적용한다.
