@@ -31,6 +31,8 @@ public class WithdrawalData {
                   union all select max(created_at) event_at from payment_refund_requests where user_id=:user
                   union all select max(s.resolved_at) event_at from payment_refund_resolutions s
                     join payment_refund_requests r on r.id=s.refund_id where r.user_id=:user
+                  union all select max(f.confirmed_at) event_at from payment_refund_follow_ups f
+                    join payment_refund_requests r on r.id=f.refund_id where r.user_id=:user
                   union all select max(created_at) event_at from credit_ledger where user_id=:user and source_type='PAYMENT'
                 ) accounting_dates
                 """)
@@ -139,6 +141,7 @@ public class WithdrawalData {
         for(String sql:List.of(
                 "delete from legal_consents where user_id=:user",
                 "delete from payment_refund_evidence where refund_id in (select id from payment_refund_requests where user_id=:user)",
+                "delete from payment_refund_follow_ups where refund_id in (select id from payment_refund_requests where user_id=:user)",
                 "delete from payment_refund_resolutions where refund_id in (select id from payment_refund_requests where user_id=:user)",
                 "delete from payment_refund_requests where user_id=:user",
                 "delete from payment_credit_reclamations where user_id=:user",

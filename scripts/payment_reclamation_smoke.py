@@ -16,9 +16,17 @@ def verify(repo, jar, credit_env, sql):
     owner = sql("INSERT INTO users(email,nickname,created_at,updated_at) VALUES('reclamation-cli@test.invalid','Reclaim',NOW(),NOW()); SELECT LAST_INSERT_ID();", "credit_test").strip()
     sql(f"INSERT INTO credit_accounts(user_id,available,reserved,version,created_at,updated_at) VALUES({owner},0,0,0,NOW(),NOW());", "credit_test")
 
-    def cancelled():
+    def cancelled(partial_amount=None):
         order = str(uuid.uuid4())
         tx = str(uuid.uuid4().int % (10**30) + 1)
+        cancel_tx = str(uuid.uuid4().int % (10**30) + 1) if partial_amount else tx
+        cancel_state = 70 if partial_amount else 9
+        cancel_amount = partial_amount or 1100
+        partial_binding = (
+            f"INSERT INTO payment_transaction_bindings(transaction_id,order_id) "
+            f"SELECT '{cancel_tx}',id FROM payment_orders WHERE public_id='{order}';"
+            if partial_amount else ""
+        )
         key = "payapp:" + order
         digest = hashlib.sha256(key.encode()).hexdigest()
         grant = sql(f"""INSERT INTO credit_grants(user_id,source_type,source_key,source_hash,amount,available,reserved,consumed,version,created_at)
@@ -31,8 +39,9 @@ def verify(repo, jar, credit_env, sql):
             INSERT INTO payment_transaction_bindings(transaction_id,order_id) SELECT '{tx}',id FROM payment_orders WHERE public_id='{order}';
             INSERT INTO payment_notifications(event_hash,order_id,provider_transaction,state_code,amount,responded_at,created_at)
             SELECT SHA2('{uuid.uuid4()}',256),id,'{tx}',4,1100,UTC_TIMESTAMP()-INTERVAL 30 SECOND,NOW() FROM payment_orders WHERE public_id='{order}';
+            {partial_binding}
             INSERT INTO payment_notifications(event_hash,order_id,provider_transaction,state_code,amount,responded_at,created_at)
-            SELECT SHA2('{uuid.uuid4()}',256),id,'{tx}',9,1100,UTC_TIMESTAMP(),NOW() FROM payment_orders WHERE public_id='{order}';
+            SELECT SHA2('{uuid.uuid4()}',256),id,'{cancel_tx}',{cancel_state},{cancel_amount},UTC_TIMESTAMP(),NOW() FROM payment_orders WHERE public_id='{order}';
             INSERT INTO credit_payment_holds(grant_id,user_id,created_at) VALUES({grant},{owner},NOW());
             INSERT INTO credit_ledger(user_id,entry_key,kind,source_type,grant_id,available_delta,reserved_delta,available_after,reserved_after,created_at)
             SELECT {owner},'PAYMENT_HOLD:{grant}','PAYMENT_HOLD','PAYMENT',{grant},0,0,available,reserved,NOW() FROM credit_accounts WHERE user_id={owner};""", "credit_test")
@@ -91,7 +100,7 @@ def verify(repo, jar, credit_env, sql):
         raise RuntimeError("Packaged reclamation final balance mismatch.")
     print("Packaged JAR: reclaim preview SELECT-only/apply/replay/safe rejection/concurrent JVMs passed without Boot or provider calls.", flush=True)
 
-    order, grant = cancelled()
+    order, grant = cancelled(partial_amount=900)
     verify_refund(repo, jar, credit_env, sql, order, grant)
 
 
@@ -105,11 +114,14 @@ def verify_refund(repo, jar, credit_env, sql, order, grant):
         SELECT '{receipt}','{uuid.uuid4()}',user_id,id,{grant},'RIGHTS_REVIEW','REVIEW_REQUIRED',10,0,0,NOW()
         FROM payment_orders WHERE public_id='{order}';""", "credit_test")
 
-    def command(mode, token=None, enabled=True, expected_exit=0):
-        args = ["java", "-Xmx128m", "-jar", str(jar), "--payment-refund=" + mode, "--receipt-id=" + receipt]
-        if mode != "inspect":
-            args.extend(["--action=settle", "--amount=1100", "--credits=10", "--basis=REVIEW",
-                         "--operator-reference=fixture-134"])
+    def command(mode, token=None, enabled=True, expected_exit=0, follow_up=False):
+        args = ["java", "-Xmx128m", "-jar", str(jar), "--payment-refund=" + mode]
+        if mode != "list-follow-ups":
+            args.append("--receipt-id=" + receipt)
+        if mode in {"preview", "apply"}:
+            args.extend(["--action=follow-up", "--amount=200", "--operator-reference=fixture-139"] if follow_up
+                        else ["--action=settle", "--amount=900", "--credits=10", "--basis=REVIEW",
+                              "--operator-reference=fixture-134"])
         if token:
             args.append("--expected-snapshot=" + token)
         outcome = subprocess.run(args, cwd=repo, env={
@@ -131,3 +143,34 @@ def verify_refund(repo, jar, credit_env, sql, order, grant):
     if sql(f"SELECT available FROM credit_grants WHERE id={grant};", "credit_test").strip() != "0":
         raise RuntimeError("Packaged refund did not reclaim the target grant.")
     print("Packaged JAR: refund inspect/preview/flag and concurrent apply passed without Boot or provider calls.", flush=True)
+
+    extra_tx = str(uuid.uuid4().int % (10**30) + 1)
+    sql(f"""UPDATE payment_orders SET state='PAYMENT_REVIEW',version=version+1 WHERE public_id='{order}';
+        INSERT INTO payment_transaction_bindings(transaction_id,order_id)
+        SELECT '{extra_tx}',id FROM payment_orders WHERE public_id='{order}';
+        INSERT INTO payment_notifications(event_hash,order_id,provider_transaction,state_code,amount,responded_at,created_at)
+        SELECT SHA2('{uuid.uuid4()}',256),id,'{extra_tx}',71,200,UTC_TIMESTAMP(),NOW()
+        FROM payment_orders WHERE public_id='{order}';
+        INSERT INTO credit_payment_holds(grant_id,user_id,created_at)
+        SELECT {grant},user_id,NOW() FROM payment_orders WHERE public_id='{order}';
+        INSERT INTO credit_ledger(user_id,entry_key,kind,source_type,grant_id,
+            available_delta,reserved_delta,available_after,reserved_after,created_at)
+        SELECT a.user_id,'PAYMENT_HOLD:{grant}:1','PAYMENT_HOLD','PAYMENT',{grant},0,0,a.available,a.reserved,NOW()
+        FROM payment_orders o JOIN credit_accounts a ON a.user_id=o.user_id WHERE o.public_id='{order}';""", "credit_test")
+    sql("REVOKE INSERT,UPDATE,DELETE ON credit_test.* FROM 'mongle_app'@'127.0.0.1';")
+    try:
+        if command("list-follow-ups").get("items") != [{"receiptId": receipt, "orderId": order}]:
+            raise RuntimeError("Packaged follow-up discovery mismatch.")
+        if command("inspect-follow-up").get("unreviewedCancellationAmount") != 200:
+            raise RuntimeError("Packaged follow-up inspection mismatch.")
+        follow_up = command("preview", follow_up=True)
+        if follow_up.get("decision") != "READY":
+            raise RuntimeError("Packaged follow-up preview mismatch.")
+    finally:
+        sql("GRANT SELECT,INSERT,UPDATE,DELETE ON credit_test.* TO 'mongle_app'@'127.0.0.1';")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: command("apply", follow_up["snapshot"], follow_up=True), range(2)))
+    if (outcomes[0] != outcomes[1] or outcomes[0].get("confirmedCancellationAmount") != 1100
+            or command("list-follow-ups").get("items") != []):
+        raise RuntimeError("Independent follow-up JVMs did not clear the target hold exactly once.")
+    print("Packaged JAR: follow-up discovery/inspection/preview SELECT-only and concurrent apply passed.", flush=True)
